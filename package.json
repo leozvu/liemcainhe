@@ -6,7 +6,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-sites.mjs",
     "preview": "vite preview",
     "electron:dev": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder",
