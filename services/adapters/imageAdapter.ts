@@ -40,12 +40,12 @@ export const callImageApi = async (
 ): Promise<string> => {
   const activeModel = model || getActiveImageModel();
   if (!activeModel) {
-    throw new Error('没有可用的图片模型');
+    throw new Error('Không có mô hình tạo ảnh khả dụng');
   }
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('API Key 缺失，请在设置中配置 API Key');
+    throw new ApiKeyError('Thiếu API Key. Hãy cấu hình API Key trong phần cài đặt');
   }
   
   const apiBase = getApiBaseUrlForModel(activeModel.id);
@@ -125,13 +125,13 @@ export const callImageApi = async (
 
     if (!res.ok) {
       if (res.status === 400) {
-        throw new Error('内容安全拦截：该提示词可能包含不安全或违规内容。请编辑关键帧/图片提示词，避免暴力、血腥、敏感描述后重试。');
+        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh prompt khung hình/ảnh, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
       }
       if (res.status === 500) {
-        throw new Error('当前请求较多，暂时未能处理成功，请稍后重试。');
+        throw new Error('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.');
       }
       
-      let errorMessage = `HTTP 错误: ${res.status}`;
+      let errorMessage = `Lỗi HTTP: ${res.status}`;
       try {
         const errorText = await res.text();
         try {
@@ -151,7 +151,7 @@ export const callImageApi = async (
   if (extracted) {
     return normalizeImageResult(extracted);
   }
-  throw new Error(`图片生成失败：模型 ${apiModel} 未返回图片数据`);
+  throw new Error(`Tạo ảnh thất bại: mô hình ${apiModel} không trả về dữ liệu ảnh`);
 };
 
 export const isAspectRatioSupported = (

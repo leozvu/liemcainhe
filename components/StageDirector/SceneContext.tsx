@@ -30,7 +30,7 @@ const SceneContext: React.FC<SceneContextProps> = ({
       <div className="flex items-center gap-2 mb-2">
         <MapPin className="w-4 h-4 text-zinc-500" />
         <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-          场景环境 (Scene Context)
+          Ngữ cảnh bối cảnh
         </h4>
       </div>
       
@@ -63,7 +63,7 @@ const SceneContext: React.FC<SceneContextProps> = ({
               </select>
             ) : (
               <span className="text-white text-sm font-bold truncate max-w-[180px]" title={scene?.location}>
-                {scene?.location || '未知场景'}
+                {scene?.location || 'Bối cảnh không xác định'}
               </span>
             )}
             <span className="text-sm px-2 py-0.5 bg-cyan-300/10 text-cyan-100/65 rounded-full flex items-center gap-1 shrink-0 border border-cyan-200/15">
@@ -99,7 +99,7 @@ const SceneContext: React.FC<SceneContextProps> = ({
                         onChange={(e) => onVariationChange(char.id, e.target.value)}
                         className="text-[10px] bg-white/[0.06] text-zinc-400 border border-white/10 rounded-lg px-1.5 py-0.5 outline-none"
                       >
-                        <option value="">基础造型</option>
+                        <option value="">Tạo hình cơ bản</option>
                         {char.variations!.map(v => (
                           <option key={v.id} value={v.id}>
                             <Shirt className="w-2 h-2 inline mr-1" />
@@ -111,7 +111,7 @@ const SceneContext: React.FC<SceneContextProps> = ({
                     <button
                       onClick={() => onRemoveCharacter(char.id)}
                       className="p-1 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
-                      title="移除角色"
+                      title="Gỡ nhân vật"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -131,7 +131,7 @@ const SceneContext: React.FC<SceneContextProps> = ({
                   }}
                   className="flex-1 bg-white/[0.06] text-[11px] text-zinc-400 border border-white/10 rounded-xl px-2 py-1.5 outline-none focus:border-cyan-300/40 hover:border-cyan-300/30 transition-colors"
                 >
-                  <option value="">+ 添加角色到此镜头</option>
+                  <option value="">+ Thêm nhân vật vào cảnh quay</option>
                   {availableCharacters.map(char => (
                     <option key={char.id} value={char.id}>{char.name}</option>
                   ))}

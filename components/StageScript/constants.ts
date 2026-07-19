@@ -1,28 +1,29 @@
 export const DURATION_OPTIONS = [
-  { label: '30秒 (广告)', value: '30s' },
-  { label: '60秒 (预告)', value: '60s' },
-  { label: '2分钟 (片花)', value: '120s' },
-  { label: '5分钟 (短片)', value: '300s' },
-  { label: '15分钟 (长剧/单集)', value: '900s' },
-  { label: '自定义', value: 'custom' }
+  { label: '30 giây (quảng cáo)', value: '30s' },
+  { label: '60 giây (trailer)', value: '60s' },
+  { label: '2 phút (teaser)', value: '120s' },
+  { label: '5 phút (phim ngắn)', value: '300s' },
+  { label: '15 phút (tập phim)', value: '900s' },
+  { label: 'Tùy chỉnh', value: 'custom' }
 ];
 
 export const LANGUAGE_OPTIONS = [
-  { label: '中文 (Chinese)', value: '中文' },
+  { label: 'Tiếng Việt', value: 'Vietnamese' },
+  { label: 'Tiếng Trung', value: 'Chinese' },
   { label: 'English (US)', value: 'English' },
-  { label: '日本語 (Japanese)', value: 'Japanese' },
+  { label: 'Tiếng Nhật', value: 'Japanese' },
   { label: 'Français (French)', value: 'French' },
   { label: 'Español (Spanish)', value: 'Spanish' }
 ];
 
 export const VISUAL_STYLE_OPTIONS = [
-  { label: '🌟 日式动漫', value: 'anime', desc: '日本动漫风格，线条感强' },
-  { label: '🎨 2D动画', value: '2d-animation', desc: '经典卓别林/迪士尼风格' },
-  { label: '👾 3D动画', value: '3d-animation', desc: '皮克斯/梦工厂风格' },
-  { label: '🌌 赛博朋克', value: 'cyberpunk', desc: '高科技赛博朋克风' },
-  { label: '🖼️ 油画风格', value: 'oil-painting', desc: '油画质感艺术风' },
-  { label: '🎬 真人影视', value: 'live-action', desc: '超写实电影/电视剧风格' },
-  { label: '✨ 其他 (自定义)', value: 'custom', desc: '手动输入风格' }
+  { label: 'Anime Nhật Bản', value: 'anime', desc: 'Phong cách anime Nhật với đường nét rõ' },
+  { label: 'Hoạt hình 2D', value: '2d-animation', desc: 'Phong cách hoạt hình 2D kinh điển' },
+  { label: 'Hoạt hình 3D', value: '3d-animation', desc: 'Phong cách phim hoạt hình 3D điện ảnh' },
+  { label: 'Cyberpunk', value: 'cyberpunk', desc: 'Thẩm mỹ cyberpunk công nghệ cao' },
+  { label: 'Tranh sơn dầu', value: 'oil-painting', desc: 'Chất liệu nghệ thuật sơn dầu' },
+  { label: 'Live-action', value: 'live-action', desc: 'Phong cách phim điện ảnh siêu thực' },
+  { label: 'Phong cách khác', value: 'custom', desc: 'Tự nhập phong cách mong muốn' }
 ];
 
 export const STYLES = {
@@ -44,7 +45,7 @@ export const STYLES = {
 
 export const DEFAULTS = {
   duration: '60s',
-  language: '中文',
+  language: 'Vietnamese',
   model: 'gpt-5.2',
   visualStyle: 'live-action'
 };

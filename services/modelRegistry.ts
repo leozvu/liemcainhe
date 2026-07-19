@@ -45,7 +45,7 @@ export const loadRegistry = (): ModelRegistryState => {
     const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as ModelRegistryState;
-      // 合并内置提供商，并强制覆盖内置提供商的 baseUrl/name（避免 localStorage 里残留旧地址如 api.antsk.cn）
+      // Hợp nhất nhà cung cấp tích hợp và ghi đè baseUrl/tên để loại bỏ dữ liệu cũ trong localStorage.
       BUILTIN_PROVIDERS.forEach(bp => {
         const idx = parsed.providers.findIndex(p => p.id === bp.id);
         if (idx === -1) {
@@ -55,7 +55,7 @@ export const loadRegistry = (): ModelRegistryState => {
         }
       });
 
-      // 按 baseUrl 去重提供商（保留先出现的项，通常为内置）
+      // Loại nhà cung cấp trùng baseUrl, ưu tiên mục xuất hiện trước (thường là mục tích hợp).
       const seenBaseUrls = new Set<string>();
       parsed.providers = parsed.providers.filter(p => {
         const key = normalizeBaseUrl(p.baseUrl);
@@ -64,14 +64,14 @@ export const loadRegistry = (): ModelRegistryState => {
         return true;
       });
       
-      // 合并内置模型，并确保内置模型的参数与代码保持同步
+      // Hợp nhất mô hình tích hợp và đồng bộ tham số với mã nguồn.
       ALL_BUILTIN_MODELS.forEach(bm => {
         const existingIndex = parsed.models.findIndex(m => m.id === bm.id);
         if (existingIndex === -1) {
-          // 内置模型不存在，添加
+          // Thêm mô hình tích hợp còn thiếu.
           parsed.models.push(bm);
         } else {
-          // 内置模型已存在，更新 params 以确保与代码同步（保留用户的 isEnabled 设置）
+          // Cập nhật tham số mô hình tích hợp nhưng giữ lựa chọn isEnabled của người dùng.
           const existing = parsed.models[existingIndex];
           parsed.models[existingIndex] = {
             ...bm,
@@ -80,7 +80,7 @@ export const loadRegistry = (): ModelRegistryState => {
         }
       });
 
-      // 迁移缺失的 apiModel（优先从 id 或 providerId 前缀推断）
+      // Di chuyển apiModel còn thiếu, ưu tiên suy ra từ id hoặc tiền tố providerId.
       parsed.models = parsed.models.map(m => {
         if (m.apiModel) return m;
         if (m.providerId && m.id.startsWith(`${m.providerId}:`)) {
@@ -140,7 +140,7 @@ export const loadRegistry = (): ModelRegistryState => {
         (m) => !(m.isBuiltIn && m.id === 'doubao-seedance-2-0')
       );
       
-      // 同步全局 API Key
+      // Đồng bộ API Key toàn cục.
       parsed.globalApiKey = localStorage.getItem(API_KEY_STORAGE_KEY) || parsed.globalApiKey;
       
       registryState = parsed;
@@ -149,7 +149,7 @@ export const loadRegistry = (): ModelRegistryState => {
       return parsed;
     }
   } catch (e) {
-    console.error('加载模型注册中心失败:', e);
+    console.error('Tải sổ đăng ký mô hình thất bại:', e);
   }
 
   registryState = getDefaultState();
@@ -157,7 +157,7 @@ export const loadRegistry = (): ModelRegistryState => {
 };
 
 /**
- * 保存状态到 localStorage
+ * Lưu trạng thái vào localStorage.
  */
 export const saveRegistry = (state: ModelRegistryState): void => {
   try {
@@ -165,19 +165,19 @@ export const saveRegistry = (state: ModelRegistryState): void => {
     localStorage.removeItem(LEGACY_STORAGE_KEY);
     registryState = state;
   } catch (e) {
-    console.error('保存模型注册中心失败:', e);
+    console.error('Lưu sổ đăng ký mô hình thất bại:', e);
   }
 };
 
 /**
- * 获取当前状态
+ * Lấy trạng thái hiện tại.
  */
 export const getRegistryState = (): ModelRegistryState => {
   return loadRegistry();
 };
 
 /**
- * 重置为默认状态
+ * Đặt lại về trạng thái mặc định.
  */
 export const resetRegistry = (): void => {
   registryState = null;
@@ -187,32 +187,32 @@ export const resetRegistry = (): void => {
 };
 
 // ============================================
-// 提供商管理
+// Quản lý nhà cung cấp
 // ============================================
 
 /**
- * 获取所有提供商
+ * Lấy tất cả nhà cung cấp.
  */
 export const getProviders = (): ModelProvider[] => {
   return loadRegistry().providers;
 };
 
 /**
- * 根据 ID 获取提供商
+ * Lấy nhà cung cấp theo ID.
  */
 export const getProviderById = (id: string): ModelProvider | undefined => {
   return getProviders().find(p => p.id === id);
 };
 
 /**
- * 获取默认提供商
+ * Lấy nhà cung cấp mặc định.
  */
 export const getDefaultProvider = (): ModelProvider => {
   return getProviders().find(p => p.isDefault) || BUILTIN_PROVIDERS[0];
 };
 
 /**
- * 添加提供商
+ * Thêm nhà cung cấp.
  */
 export const addProvider = (provider: Omit<ModelProvider, 'id' | 'isBuiltIn'>): ModelProvider => {
   const state = loadRegistry();
@@ -230,7 +230,7 @@ export const addProvider = (provider: Omit<ModelProvider, 'id' | 'isBuiltIn'>): 
 };
 
 /**
- * 更新提供商
+ * Cập nhật nhà cung cấp.
  */
 export const updateProvider = (id: string, updates: Partial<ModelProvider>): boolean => {
   const state = loadRegistry();
@@ -249,7 +249,7 @@ export const updateProvider = (id: string, updates: Partial<ModelProvider>): boo
 };
 
 /**
- * 删除提供商
+ * Xóa nhà cung cấp.
  */
 export const removeProvider = (id: string): boolean => {
   const state = loadRegistry();
@@ -265,11 +265,11 @@ export const removeProvider = (id: string): boolean => {
 };
 
 // ============================================
-// 模型管理
+// Quản lý mô hình
 // ============================================
 
 /**
- * 获取所有模型
+ * Lấy tất cả mô hình.
  */
 export const getModels = (type?: ModelType): ModelDefinition[] => {
   const models = loadRegistry().models;
@@ -280,35 +280,35 @@ export const getModels = (type?: ModelType): ModelDefinition[] => {
 };
 
 /**
- * 获取对话模型列表
+ * Lấy danh sách mô hình hội thoại.
  */
 export const getChatModels = (): ChatModelDefinition[] => {
   return getModels('chat') as ChatModelDefinition[];
 };
 
 /**
- * 获取图片模型列表
+ * Lấy danh sách mô hình ảnh.
  */
 export const getImageModels = (): ImageModelDefinition[] => {
   return getModels('image') as ImageModelDefinition[];
 };
 
 /**
- * 获取视频模型列表
+ * Lấy danh sách mô hình video.
  */
 export const getVideoModels = (): VideoModelDefinition[] => {
   return getModels('video') as VideoModelDefinition[];
 };
 
 /**
- * 根据 ID 获取模型
+ * Lấy mô hình theo ID.
  */
 export const getModelById = (id: string): ModelDefinition | undefined => {
   return getModels().find(m => m.id === id);
 };
 
 /**
- * 获取当前激活的模型
+ * Lấy mô hình đang hoạt động.
  */
 export const getActiveModel = (type: ModelType): ModelDefinition | undefined => {
   const state = loadRegistry();
@@ -317,28 +317,28 @@ export const getActiveModel = (type: ModelType): ModelDefinition | undefined => 
 };
 
 /**
- * 获取当前激活的对话模型
+ * Lấy mô hình hội thoại đang hoạt động.
  */
 export const getActiveChatModel = (): ChatModelDefinition | undefined => {
   return getActiveModel('chat') as ChatModelDefinition | undefined;
 };
 
 /**
- * 获取当前激活的图片模型
+ * Lấy mô hình ảnh đang hoạt động.
  */
 export const getActiveImageModel = (): ImageModelDefinition | undefined => {
   return getActiveModel('image') as ImageModelDefinition | undefined;
 };
 
 /**
- * 获取当前激活的视频模型
+ * Lấy mô hình video đang hoạt động.
  */
 export const getActiveVideoModel = (): VideoModelDefinition | undefined => {
   return getActiveModel('video') as VideoModelDefinition | undefined;
 };
 
 /**
- * 设置激活的模型
+ * Đặt mô hình đang hoạt động.
  */
 export const setActiveModel = (type: ModelType, modelId: string): boolean => {
   const model = getModelById(modelId);
@@ -351,8 +351,8 @@ export const setActiveModel = (type: ModelType, modelId: string): boolean => {
 };
 
 /**
- * 注册新模型
- * @param model - 模型定义（可包含自定义 id，不包含 isBuiltIn）
+ * Đăng ký mô hình mới.
+ * @param model - Định nghĩa mô hình (có thể có id tùy chỉnh, không gồm isBuiltIn).
  */
 export const registerModel = (model: Omit<ModelDefinition, 'isBuiltIn'> & { id?: string }): ModelDefinition => {
   const state = loadRegistry();
@@ -362,14 +362,14 @@ export const registerModel = (model: Omit<ModelDefinition, 'isBuiltIn'> & { id?:
   const baseId = providedId || (apiModel ? `${model.providerId}:${apiModel}` : `model_${Date.now()}`);
   let modelId = baseId;
 
-  // 若未显式提供 ID，则自动生成唯一 ID（允许 API 模型名重复）
+  // Tự tạo ID duy nhất khi không được cung cấp; tên mô hình API có thể trùng nhau.
   if (!providedId) {
     let suffix = 1;
     while (state.models.some(m => m.id === modelId)) {
       modelId = `${baseId}_${suffix++}`;
     }
   } else if (state.models.some(m => m.id === modelId)) {
-    throw new Error(`模型 ID "${modelId}" 已存在，请使用其他 ID`);
+    throw new Error(`ID mô hình "${modelId}" đã tồn tại. Hãy dùng ID khác`);
   }
   
   const newModel = {
@@ -387,14 +387,14 @@ export const registerModel = (model: Omit<ModelDefinition, 'isBuiltIn'> & { id?:
 };
 
 /**
- * 更新模型
+ * Cập nhật mô hình.
  */
 export const updateModel = (id: string, updates: Partial<ModelDefinition>): boolean => {
   const state = loadRegistry();
   const index = state.models.findIndex(m => m.id === id);
   if (index === -1) return false;
 
-  // 内置模型只能修改 isEnabled 和 params
+  // Mô hình tích hợp chỉ cho phép đổi isEnabled và params.
   if (state.models[index].isBuiltIn) {
     const allowedUpdates: Partial<ModelDefinition> = {};
     if (updates.isEnabled !== undefined) allowedUpdates.isEnabled = updates.isEnabled;
@@ -409,16 +409,16 @@ export const updateModel = (id: string, updates: Partial<ModelDefinition>): bool
 };
 
 /**
- * 删除模型
+ * Xóa mô hình.
  */
 export const removeModel = (id: string): boolean => {
   const state = loadRegistry();
   const model = state.models.find(m => m.id === id);
   
-  // 不能删除内置模型
+  // Không thể xóa mô hình tích hợp.
   if (!model || model.isBuiltIn) return false;
   
-  // 如果删除的是当前激活的模型，切换到同类型的第一个启用模型
+  // Nếu xóa mô hình đang hoạt động, chuyển sang mô hình cùng loại khả dụng đầu tiên.
   if (state.activeModels[model.type] === id) {
     const fallback = state.models.find(m => m.type === model.type && m.id !== id && m.isEnabled);
     if (fallback) {
@@ -432,25 +432,25 @@ export const removeModel = (id: string): boolean => {
 };
 
 /**
- * 启用/禁用模型
+ * Bật hoặc tắt mô hình.
  */
 export const toggleModelEnabled = (id: string, enabled: boolean): boolean => {
   return updateModel(id, { isEnabled: enabled });
 };
 
 // ============================================
-// API Key 管理
+// Quản lý API Key
 // ============================================
 
 /**
- * 获取全局 API Key
+ * Lấy API Key toàn cục.
  */
 export const getGlobalApiKey = (): string | undefined => {
   return loadRegistry().globalApiKey || localStorage.getItem(API_KEY_STORAGE_KEY) || undefined;
 };
 
 /**
- * 设置全局 API Key
+ * Đặt API Key toàn cục.
  */
 export const setGlobalApiKey = (apiKey: string): void => {
   const state = loadRegistry();
@@ -460,32 +460,32 @@ export const setGlobalApiKey = (apiKey: string): void => {
 };
 
 /**
- * 获取模型对应的 API Key
- * 优先级：模型专属 Key > 提供商 Key > 全局 Key
+ * Lấy API Key cho mô hình.
+ * Ưu tiên: khóa riêng của mô hình > khóa nhà cung cấp > khóa toàn cục.
  */
 export const getApiKeyForModel = (modelId: string): string | undefined => {
   const model = getModelById(modelId);
   if (!model) return getGlobalApiKey();
   
-  // 1. 优先使用模型专属 API Key
+  // 1. Ưu tiên API Key riêng của mô hình.
   if (model.apiKey) {
     return model.apiKey;
   }
   
-  // 2. 其次使用提供商的 API Key
+  // 2. Tiếp theo dùng API Key của nhà cung cấp.
   const provider = getProviderById(model.providerId);
   if (provider?.apiKey) {
     return provider.apiKey;
   }
   
-  // 3. 最后使用全局 API Key
+  // 3. Cuối cùng dùng API Key toàn cục.
   return getGlobalApiKey();
 };
 
-/** 本地用相对路径走 Vite 代理，避免 CORS */
+/** Dùng đường dẫn tương đối qua proxy Vite khi chạy cục bộ để tránh CORS. */
 const API_PROXY_PATH = '/api-proxy';
 
-/** 是否当前运行在本地（localhost/127.0.0.1），用于决定是否走代理规避 CORS */
+/** Kiểm tra môi trường localhost/127.0.0.1 để quyết định định tuyến qua proxy. */
 function isLocalOrigin(): boolean {
   if (typeof window === 'undefined') return false;
   const o = window.location.origin;
@@ -501,17 +501,17 @@ function isGitccApiBaseUrl(baseUrl: string): boolean {
 }
 
 /**
- * 获取模型对应的 API 基础 URL
- * 供应商使用 GitCC（api.gitcc.com），为了避免 CORS 和便于切换，
- * - 本地开发时：通过 /api-proxy 代理到 GitCC
- * - 线上环境：同样通过 /api-proxy，由后端 Nginx 代理到 GitCC
+ * Lấy URL API cơ sở cho mô hình.
+ * Nhà cung cấp dùng GitCC (api.gitcc.com); định tuyến qua /api-proxy để tránh CORS.
+ * - Khi phát triển cục bộ: proxy Vite chuyển tiếp đến GitCC.
+ * - Khi triển khai: Nginx chuyển tiếp đến GitCC.
  */
 export const getApiBaseUrlForModel = (modelId: string): string => {
   const model = getModelById(modelId);
   const provider = model ? getProviderById(model.providerId) : BUILTIN_PROVIDERS[0];
   let baseUrl = (provider?.baseUrl || BUILTIN_PROVIDERS[0].baseUrl).replace(/\/+$/, '');
 
-  // 统一通过 /api-proxy 代理到 GitCC，避免浏览器直接跨域访问 api.gitcc.com
+  // Luôn đi qua /api-proxy để trình duyệt không truy cập chéo miền trực tiếp.
   if (isGitccApiBaseUrl(baseUrl)) {
     return API_PROXY_PATH;
   }
@@ -520,18 +520,18 @@ export const getApiBaseUrlForModel = (modelId: string): string => {
 };
 
 // ============================================
-// 辅助函数
+// Hàm tiện ích
 // ============================================
 
 /**
- * 获取激活模型的完整配置
+ * Lấy cấu hình đầy đủ của mô hình đang hoạt động.
  */
 export const getActiveModelsConfig = (): ActiveModels => {
   return loadRegistry().activeModels;
 };
 
 /**
- * 检查模型是否可用（已启用且有 API Key）
+ * Kiểm tra mô hình khả dụng (đã bật và có API Key).
  */
 export const isModelAvailable = (modelId: string): boolean => {
   const model = getModelById(modelId);
@@ -542,11 +542,11 @@ export const isModelAvailable = (modelId: string): boolean => {
 };
 
 // ============================================
-// 默认值辅助函数（向后兼容）
+// Tiện ích giá trị mặc định để tương thích ngược
 // ============================================
 
 /**
- * 获取默认横竖屏比例
+ * Lấy tỷ lệ khung hình mặc định.
  */
 export const getDefaultAspectRatio = (): AspectRatio => {
   const imageModel = getActiveImageModel();
@@ -557,7 +557,7 @@ export const getDefaultAspectRatio = (): AspectRatio => {
 };
 
 /**
- * 获取默认视频时长
+ * Lấy thời lượng video mặc định.
  */
 export const getDefaultVideoDuration = (): VideoDuration => {
   const videoModel = getActiveVideoModel();
@@ -568,7 +568,7 @@ export const getDefaultVideoDuration = (): VideoDuration => {
 };
 
 /**
- * 获取视频模型类型
+ * Lấy loại mô hình video.
  */
 export const getVideoModelType = (): 'sora' | 'veo' => {
   const videoModel = getActiveVideoModel();

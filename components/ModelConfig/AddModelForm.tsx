@@ -52,7 +52,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
 
   const handleSave = () => {
     if (!name.trim() || !apiModel.trim()) {
-      showAlert('请填写模型名称和 API 模型名', { type: 'warning' });
+      showAlert('Vui lòng nhập tên hiển thị và tên model API', { type: 'warning' });
       return;
     }
 
@@ -93,49 +93,49 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
 
   return (
     <div className="bg-white/[0.045] border border-white/10 rounded-2xl p-4 space-y-4">
-      <h4 className="text-sm font-bold text-white">添加自定义模型</h4>
+      <h4 className="text-sm font-bold text-white">Thêm model tùy chỉnh</h4>
       
       {/* 基础信息 */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-[10px] text-zinc-500 block mb-1">模型名称 *</label>
+          <label className="text-[10px] text-zinc-500 block mb-1">Tên hiển thị *</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="如：GPT-4 Turbo"
+            placeholder="Ví dụ: GPT-4 Turbo"
             className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500"
           />
         </div>
         <div>
-          <label className="text-[10px] text-zinc-500 block mb-1">API 模型名 *（可与内置重复）</label>
+          <label className="text-[10px] text-zinc-500 block mb-1">Tên model API * (có thể trùng model tích hợp)</label>
           <input
             type="text"
             value={apiModel}
             onChange={(e) => setApiModel(e.target.value)}
-            placeholder="如：gpt-4-turbo、claude-3-opus"
+            placeholder="Ví dụ: gpt-4-turbo, claude-3-opus"
             className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 font-mono"
           />
           <p className="text-[9px] text-zinc-600 mt-1">
-            该字段会作为 API 请求中的 model 参数；内部 ID 会自动生成
+            Trường này được gửi trong tham số model của API; ID nội bộ sẽ được tạo tự động
           </p>
         </div>
       </div>
 
       <div>
-        <label className="text-[10px] text-zinc-500 block mb-1">描述（可选）</label>
+        <label className="text-[10px] text-zinc-500 block mb-1">Mô tả (tùy chọn)</label>
         <input
           type="text"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="可选的描述信息"
+          placeholder="Mô tả ngắn về model"
           className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500"
         />
       </div>
 
       {/* API 端点 */}
       <div>
-        <label className="text-[10px] text-zinc-500 block mb-1">API 端点 (Endpoint)</label>
+        <label className="text-[10px] text-zinc-500 block mb-1">Endpoint API</label>
         <input
           type="text"
           value={endpoint}
@@ -144,29 +144,29 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
           className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 font-mono"
         />
         <p className="text-[9px] text-zinc-600 mt-1">
-          留空则使用默认端点
+          Để trống để dùng endpoint mặc định
         </p>
       </div>
 
       {/* 模型专属 API Key（可选） */}
       <div>
-        <label className="text-[10px] text-zinc-500 block mb-1">API Key（可选）</label>
+        <label className="text-[10px] text-zinc-500 block mb-1">API Key (tùy chọn)</label>
         <input
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="留空则使用全局 API Key"
+          placeholder="Để trống để dùng API Key toàn cục"
           className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 font-mono"
         />
         <p className="text-[9px] text-zinc-600 mt-1">
-          为此模型单独配置 API Key，留空则使用全局配置的 Key
+          Cấu hình API Key riêng cho model này, hoặc để trống để dùng Key toàn cục
         </p>
       </div>
 
       {/* 视频模型特有选项 */}
       {type === 'video' && (
         <div>
-          <label className="text-[10px] text-zinc-500 block mb-1">API 模式</label>
+          <label className="text-[10px] text-zinc-500 block mb-1">Chế độ API</label>
           <div className="flex gap-2">
             <button
               onClick={() => setVideoMode('sync')}
@@ -176,7 +176,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
                   : 'bg-white/[0.06] text-zinc-400 hover:bg-white/10'
               }`}
             >
-              同步模式（Chat Completion 类）
+              Đồng bộ (nhóm Chat Completion)
             </button>
             <button
               onClick={() => setVideoMode('async')}
@@ -186,7 +186,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
                   : 'bg-white/[0.06] text-zinc-400 hover:bg-white/10'
               }`}
             >
-              异步模式（Sora 类）
+              Bất đồng bộ (nhóm Sora)
             </button>
             <button
               onClick={() => setVideoMode('doubao')}
@@ -196,11 +196,11 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
                   : 'bg-white/[0.06] text-zinc-400 hover:bg-white/10'
               }`}
             >
-              Doubao Seedance（Ark 任务制）
+              Doubao Seedance (tác vụ Ark)
             </button>
           </div>
           <p className="text-[9px] text-zinc-600 mt-1">
-            同步模式：直接返回结果；异步模式：先创建任务，再轮询获取结果；Doubao：适配 Doubao Seedance 的 Ark 任务制接口
+            Đồng bộ trả kết quả trực tiếp; bất đồng bộ tạo tác vụ rồi thăm dò kết quả; Doubao tương thích giao diện tác vụ Ark của Seedance
           </p>
         </div>
       )}
@@ -212,7 +212,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({ type, onSave, onCancel }) =
           className="flex-1 py-2.5 bg-cyan-300 text-slate-950 text-xs font-bold rounded-xl hover:bg-cyan-200 transition-colors flex items-center justify-center gap-1"
         >
           <Check className="w-3 h-3" />
-          添加模型
+          Thêm model
         </button>
         <button
           onClick={onCancel}

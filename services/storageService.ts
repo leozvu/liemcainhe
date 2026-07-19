@@ -75,7 +75,7 @@ const migrateLegacyDB = async (): Promise<void> => {
     await writeStoreItems(targetDb, ASSET_STORE_NAME, assets);
     localStorage.setItem(DB_MIGRATION_KEY, 'true');
   } catch (error) {
-    console.warn('本地项目数据迁移失败，将使用新的数据库继续运行。', error);
+    console.warn('Không thể di chuyển dữ liệu dự án cục bộ; ứng dụng sẽ tiếp tục với cơ sở dữ liệu mới.', error);
   } finally {
     legacyDb?.close();
     targetDb?.close();
@@ -196,7 +196,7 @@ export const deleteProjectFromDB = async (id: string): Promise<void> => {
     request.onsuccess = () => resolve();
     
     request.onerror = () => {
-      console.error(`删除项目失败: ${id}`, request.error);
+      console.error(`Không thể xóa dự án: ${id}`, request.error);
       reject(request.error);
     };
   });
@@ -205,13 +205,13 @@ export const deleteProjectFromDB = async (id: string): Promise<void> => {
 export const convertImageToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
-      reject(new Error('只支持图片文件'));
+      reject(new Error('Chỉ hỗ trợ tệp hình ảnh'));
       return;
     }
 
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      reject(new Error('图片大小不能超过 10MB'));
+      reject(new Error('Kích thước ảnh không được vượt quá 10 MB'));
       return;
     }
 
@@ -223,7 +223,7 @@ export const convertImageToBase64 = (file: File): Promise<string> => {
     };
     
     reader.onerror = () => {
-      reject(new Error('图片读取失败'));
+      reject(new Error('Không thể đọc hình ảnh'));
     };
     
     reader.readAsDataURL(file);
@@ -234,23 +234,23 @@ export const createNewProjectState = (): ProjectState => {
   const id = 'proj_' + Date.now().toString(36);
   return {
     id,
-    title: '未命名项目',
+    title: 'Dự án chưa đặt tên',
     createdAt: Date.now(),
     lastModified: Date.now(),
     stage: 'script',
     targetDuration: '60s',
-    language: '中文',
+    language: 'Vietnamese',
     visualStyle: 'live-action',
     shotGenerationModel: 'gpt-5.2',
-    rawScript: `标题：示例剧本
+    rawScript: `Tên: Kịch bản mẫu
 
-场景 1
-外景。夜晚街道 - 雨夜
-霓虹灯在水坑中反射出破碎的光芒。
-侦探（30岁,穿着风衣）站在街角,点燃了一支烟。
+Cảnh 1
+Ngoại cảnh. Đường phố ban đêm — trời mưa
+Ánh neon vỡ vụn phản chiếu trong những vũng nước.
+Vị thám tử (30 tuổi, mặc áo khoác dài) đứng ở góc phố và châm một điếu thuốc.
 
-侦探
-这雨什么时候才会停？`,
+THÁM TỬ
+Bao giờ cơn mưa này mới dừng?`,
     scriptData: null,
     shots: [],
     isParsingScript: false,

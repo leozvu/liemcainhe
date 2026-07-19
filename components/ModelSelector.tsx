@@ -29,9 +29,9 @@ interface ModelSelectorProps {
 }
 
 const typeLabels: Record<ModelType, string> = {
-  chat: '对话模型',
-  image: '图片模型',
-  video: '视频模型',
+  chat: 'Mô hình hội thoại',
+  image: 'Mô hình hình ảnh',
+  video: 'Mô hình video',
 };
 
 const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -146,7 +146,7 @@ export const VideoModelSelector: React.FC<{
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-        视频模型
+        Mô hình video
       </label>
       <div className="relative">
         <select
@@ -157,7 +157,7 @@ export const VideoModelSelector: React.FC<{
         >
           {models.map((model) => {
             const videoModel = model as VideoModelDefinition;
-            const modeLabel = videoModel.params.mode === 'async' ? '异步' : '同步';
+            const modeLabel = videoModel.params.mode === 'async' ? 'Bất đồng bộ' : 'Đồng bộ';
             return (
               <option key={model.id} value={model.id}>
                 {model.name} ({modeLabel})
@@ -169,9 +169,9 @@ export const VideoModelSelector: React.FC<{
       </div>
       {selectedModel && (
         <p className="text-[9px] text-zinc-600">
-          模式: {selectedModel.params.mode === 'async' ? '异步（需要轮询）' : '同步（直接返回）'}
+          Chế độ: {selectedModel.params.mode === 'async' ? 'Bất đồng bộ (cần thăm dò)' : 'Đồng bộ (trả kết quả trực tiếp)'}
           {selectedModel.params.supportedDurations.length > 1 && 
-            ` · 支持时长: ${selectedModel.params.supportedDurations.join('/')}秒`
+            ` · Thời lượng hỗ trợ: ${selectedModel.params.supportedDurations.join('/')} giây`
           }
         </p>
       )}

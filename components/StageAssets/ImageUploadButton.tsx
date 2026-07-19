@@ -17,8 +17,8 @@ const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   onGenerate,
   isGenerating = false,
   hasImage = false,
-  uploadLabel = '上传',
-  generateLabel = '生成',
+  uploadLabel = 'Tải lên',
+  generateLabel = 'Tạo ảnh',
   size = 'medium',
   variant = 'separate',
 }) => {
@@ -80,12 +80,12 @@ const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
           {isGenerating ? (
             <>
               <Loader2 className="w-3 h-3 animate-spin" />
-              生成中...
+              Đang tạo...
             </>
           ) : (
             <>
               <Sparkles className="w-3 h-3" />
-              重新生成
+              Tạo lại
             </>
           )}
         </button>

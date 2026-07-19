@@ -105,7 +105,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, curre
         <button
           onClick={handleSkip}
           className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-white transition-colors rounded-xl hover:bg-white/10"
-          aria-label="关闭引导"
+          aria-label="Đóng hướng dẫn"
         >
           <X className="w-4 h-4" />
         </button>

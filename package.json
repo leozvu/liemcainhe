@@ -1,5 +1,5 @@
 {
-  "name": "ai-manga-studio",
+  "name": "egoric-studio",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -30,8 +30,8 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.forsearch.ai-manga-studio",
-    "productName": "AI 漫剧工场",
+    "appId": "agency.egoric.studio",
+    "productName": "Egoric Studio",
     "directories": {
       "output": "release"
     },

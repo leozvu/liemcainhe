@@ -1,6 +1,6 @@
 // Onboarding 常量配置
 
-export const ONBOARDING_STORAGE_KEY = 'ai_manga_studio_onboarding_completed';
+export const ONBOARDING_STORAGE_KEY = 'egoric_studio_onboarding_completed';
 export const LEGACY_ONBOARDING_STORAGE_KEY = ['big' + 'banana', 'onboarding', 'completed'].join('_');
 
 export const ONBOARDING_PAGES = {
@@ -17,42 +17,39 @@ export const TOTAL_PAGES = 5;
 export const WORKFLOW_STEPS = [
   {
     number: '①',
-    title: '剧情创作',
-    description: 'AI自动提取角色和场景',
+    title: 'Sáng tạo kịch bản',
+    description: 'AI tự động trích xuất nhân vật và bối cảnh',
   },
   {
     number: '②',
-    title: '定形象',
-    description: '一键生成角色定妆照',
+    title: 'Định hình nhân vật',
+    description: 'Tạo ảnh concept nhân vật chỉ với một thao tác',
   },
   {
     number: '③',
-    title: '排分镜',
-    description: '关键帧驱动视频生成',
+    title: 'Dựng storyboard',
+    description: 'Tạo video theo hệ thống keyframe',
   },
   {
     number: '④',
-    title: '导成片',
-    description: '合并导出完整短剧',
+    title: 'Xuất thành phẩm',
+    description: 'Ghép và xuất phim ngắn hoàn chỉnh',
   },
 ] as const;
 
 // 核心亮点
 export const HIGHLIGHTS = [
   {
-    icon: '🎬',
-    title: '首尾帧锁定',
-    description: '上一镜的结尾，就是下一镜的开头',
+    title: 'Khóa khung hình đầu & cuối',
+    description: 'Khung hình cuối của cảnh trước trở thành điểm bắt đầu của cảnh sau',
   },
   {
-    icon: '👔',
-    title: '角色衣橱',
-    description: '同一角色，多套造型随时切换',
+    title: 'Tủ trang phục nhân vật',
+    description: 'Chuyển đổi linh hoạt nhiều tạo hình cho cùng một nhân vật',
   },
   {
-    icon: '🎨',
-    title: '风格统一',
-    description: '真人、动漫、3D任选，全片一致',
+    title: 'Phong cách nhất quán',
+    description: 'Chọn live-action, hoạt hình hoặc 3D và duy trì nhất quán toàn phim',
   },
 ] as const;
 
@@ -60,14 +57,12 @@ export const HIGHLIGHTS = [
 export const QUICK_START_OPTIONS = [
   {
     id: 'script',
-    icon: '📝',
-    title: '从剧本开始',
-    description: '粘贴你的故事，AI帮你拆分镜',
+    title: 'Bắt đầu từ kịch bản',
+    description: 'Dán câu chuyện, AI sẽ hỗ trợ chia cảnh',
   },
   {
     id: 'example',
-    icon: '🎬',
-    title: '看看示例项目',
-    description: '先逛逛别人怎么做的',
+    title: 'Xem dự án mẫu',
+    description: 'Khám phá một quy trình có sẵn trước khi bắt đầu',
   },
 ] as const;

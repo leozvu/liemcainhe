@@ -91,7 +91,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       scriptData.visualStyle = finalVisualStyle;
       scriptData.shotGenerationModel = finalModel;
 
-      if (localTitle && localTitle !== "未命名项目") {
+      if (localTitle && localTitle !== "Dự án chưa đặt tên") {
         scriptData.title = localTitle;
       }
 
@@ -108,7 +108,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
 
     } catch (err: any) {
       console.error(err);
-      setError(`错误: ${err.message || "AI 连接失败"}`);
+      setError(`Lỗi: ${err.message || "Không thể kết nối AI"}`);
       updateProject({ isParsingScript: false });
     } finally {
       setIsProcessing(false);
@@ -119,11 +119,11 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     const finalModel = migrateDeprecatedChatModelId(getFinalValue(localModel, customModelInput));
     
     if (!localScript.trim()) {
-      setError("请先输入一些剧本内容作为基础。");
+      setError("Hãy nhập nội dung kịch bản làm cơ sở trước.");
       return;
     }
     if (!finalModel) {
-      setError("请选择或输入模型名称。");
+      setError("Hãy chọn hoặc nhập tên model.");
       return;
     }
 
@@ -150,7 +150,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setError(`AI续写失败: ${err.message || "连接失败"}`);
+      setError(`AI không thể viết tiếp: ${err.message || "Lỗi kết nối"}`);
       try {
         const continuedContent = await continueScript(baseScript, localLanguage, finalModel);
         const newScript = baseScript + '\n\n' + continuedContent;
@@ -168,11 +168,11 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     const finalModel = migrateDeprecatedChatModelId(getFinalValue(localModel, customModelInput));
     
     if (!localScript.trim()) {
-      setError("请先输入剧本内容。");
+      setError("Hãy nhập nội dung kịch bản trước.");
       return;
     }
     if (!finalModel) {
-      setError("请选择或输入模型名称。");
+      setError("Hãy chọn hoặc nhập tên model.");
       return;
     }
 
@@ -199,7 +199,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setError(`AI改写失败: ${err.message || "连接失败"}`);
+      setError(`AI không thể viết lại: ${err.message || "Lỗi kết nối"}`);
       try {
         const rewrittenContent = await rewriteScript(baseScript, localLanguage, finalModel);
         setLocalScript(rewrittenContent);

@@ -1,4 +1,4 @@
-// Author: forsearch | Updated: 2026-04-30
+// Egoric Studio desktop runtime by Egoric Agency
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const http = require('http');

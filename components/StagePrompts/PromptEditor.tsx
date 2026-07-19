@@ -17,7 +17,7 @@ const PromptEditor: React.FC<Props> = ({
   onChange,
   onSave,
   onCancel,
-  placeholder = '输入提示词...',
+  placeholder = 'Nhập prompt...',
   size = 'large',
   isVideo = false
 }) => {
@@ -49,11 +49,11 @@ const PromptEditor: React.FC<Props> = ({
       <div className="flex gap-2">
         <button onClick={onSave} className={saveButtonClass}>
           <Save className="w-3 h-3" />
-          保存
+          Lưu
         </button>
         <button onClick={onCancel} className={cancelButtonClass}>
           <X className="w-3 h-3" />
-          取消
+          Hủy
         </button>
       </div>
     </div>

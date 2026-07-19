@@ -13,7 +13,7 @@ async function downloadFile(urlOrBase64: string): Promise<Blob> {
   
   const response = await fetch(urlOrBase64);
   if (!response.ok) {
-    throw new Error(`下载失败: ${response.statusText}`);
+    throw new Error(`Tải xuống thất bại: ${response.statusText}`);
   }
   return await response.blob();
 }
@@ -26,15 +26,15 @@ export async function downloadMasterVideo(
     const completedShots = project.shots.filter(shot => shot.interval?.videoUrl);
     
     if (completedShots.length === 0) {
-      throw new Error('没有可导出的视频片段');
+      throw new Error('Không có đoạn video nào để xuất');
     }
 
-    onProgress?.('正在加载 ZIP 库...', 0);
+    onProgress?.('Đang tải thư viện ZIP...', 0);
     
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
 
-    onProgress?.('下载视频片段...', 10);
+    onProgress?.('Đang tải các đoạn video...', 10);
 
     for (let i = 0; i < completedShots.length; i++) {
       const shot = completedShots[i];
@@ -47,23 +47,23 @@ export async function downloadMasterVideo(
         zip.file(fileName, videoBlob);
         
         const progress = 10 + Math.round((i + 1) / completedShots.length * 75);
-        onProgress?.(`下载中 (${i + 1}/${completedShots.length})...`, progress);
+        onProgress?.(`Đang tải (${i + 1}/${completedShots.length})...`, progress);
       } catch (err) {
-        console.error(`下载视频片段 ${i + 1} 失败:`, err);
+        console.error(`Tải đoạn video ${i + 1} thất bại:`, err);
       }
     }
 
-    onProgress?.('正在生成 ZIP 文件...', 85);
+    onProgress?.('Đang tạo tệp ZIP...', 85);
 
     const zipBlob = await zip.generateAsync(
       { type: 'blob' },
       (metadata) => {
         const progress = 85 + Math.round(metadata.percent / 10);
-        onProgress?.('正在压缩...', progress);
+        onProgress?.('Đang nén...', progress);
       }
     );
 
-    onProgress?.('准备下载...', 95);
+    onProgress?.('Đang chuẩn bị tải xuống...', 95);
 
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
@@ -74,9 +74,9 @@ export async function downloadMasterVideo(
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    onProgress?.('完成！', 100);
+    onProgress?.('Hoàn tất!', 100);
   } catch (error) {
-    console.error('视频导出失败:', error);
+    console.error('Xuất video thất bại:', error);
     throw error;
   }
 }
@@ -92,7 +92,7 @@ export async function downloadSourceAssets(
   onProgress?: (phase: string, progress: number) => void
 ): Promise<void> {
   try {
-    onProgress?.('正在加载 ZIP 库...', 0);
+    onProgress?.('Đang tải thư viện ZIP...', 0);
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
 
@@ -156,10 +156,10 @@ export async function downloadSourceAssets(
     }
 
     if (assets.length === 0) {
-      throw new Error('没有可下载的资源');
+      throw new Error('Không có tài nguyên để tải xuống');
     }
 
-    onProgress?.('正在下载资源...', 5);
+    onProgress?.('Đang tải tài nguyên...', 5);
 
     for (let i = 0; i < assets.length; i++) {
       const asset = assets[i];
@@ -168,19 +168,19 @@ export async function downloadSourceAssets(
         zip.file(asset.path, blob);
         
         const progress = 5 + Math.round((i + 1) / assets.length * 80);
-        onProgress?.(`下载中 (${i + 1}/${assets.length})...`, progress);
+        onProgress?.(`Đang tải (${i + 1}/${assets.length})...`, progress);
       } catch (error) {
-        console.error(`下载资源失败: ${asset.path}`, error);
+        console.error(`Tải tài nguyên thất bại: ${asset.path}`, error);
       }
     }
 
-    onProgress?.('正在生成 ZIP 文件...', 90);
+    onProgress?.('Đang tạo tệp ZIP...', 90);
 
     const zipBlob = await zip.generateAsync(
       { type: 'blob' },
       (metadata) => {
         const progress = 90 + Math.round(metadata.percent / 10);
-        onProgress?.('正在压缩...', progress);
+        onProgress?.('Đang nén...', progress);
       }
     );
 
@@ -193,9 +193,9 @@ export async function downloadSourceAssets(
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    onProgress?.('完成！', 100);
+    onProgress?.('Hoàn tất!', 100);
   } catch (error) {
-    console.error('下载源资源失败:', error);
+    console.error('Tải tài nguyên gốc thất bại:', error);
     throw error;
   }
 }

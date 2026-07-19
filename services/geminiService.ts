@@ -63,7 +63,7 @@ const checkApiKey = (type: 'chat' | 'image' | 'video' = 'chat', modelId?: string
   const registryKey = getRegistryApiKey();
   if (registryKey) return registryKey;
   
-  if (!runtimeApiKey) throw new ApiKeyError("API Key 缺失，请在模型配置中设置 API Key。");
+  if (!runtimeApiKey) throw new ApiKeyError('Thiếu API Key. Hãy thiết lập khóa trong phần cấu hình mô hình.');
   return runtimeApiKey;
 };
 
@@ -135,14 +135,14 @@ export const verifyApiKey = async (key: string): Promise<{ success: boolean; mes
       },
       body: JSON.stringify({
         model: DEFAULT_CHAT_MODEL_ID,
-        messages: [{ role: 'user', content: '仅返回1' }],
+        messages: [{ role: 'user', content: 'Chỉ trả về số 1' }],
         temperature: 0.1,
         max_tokens: 5
       })
     });
 
     if (!response.ok) {
-      let errorMessage = `验证失败: ${response.status}`;
+      let errorMessage = `Xác thực thất bại: ${response.status}`;
       try {
         const errorData = await response.json();
         errorMessage = errorData.error?.message || errorMessage;
@@ -154,22 +154,22 @@ export const verifyApiKey = async (key: string): Promise<{ success: boolean; mes
 
     const data = await response.json();
     if (data.choices?.[0]?.message?.content !== undefined) {
-      return { success: true, message: 'API Key 验证成功' };
+      return { success: true, message: 'Xác thực API Key thành công' };
     } else {
-      return { success: false, message: '返回格式异常' };
+      return { success: false, message: 'Định dạng phản hồi không hợp lệ' };
     }
   } catch (error: any) {
-    return { success: false, message: error.message || '网络错误' };
+    return { success: false, message: error.message || 'Lỗi mạng' };
   }
 };
 
 /**
- * 重试操作辅助函数，用于处理429限流错误、超时错误和其他临时性错误
- * @param operation - 要执行的异步操作函数
- * @param maxRetries - 最大重试次数，默认3次
- * @param baseDelay - 基础延迟时间（毫秒），默认2000ms，采用指数退避策略
- * @returns 返回操作结果
- * @throws 如果所有重试都失败，则抛出最后一次的错误
+ * Thử lại các thao tác gặp giới hạn 429, hết thời gian chờ hoặc lỗi tạm thời.
+ * @param operation - Thao tác bất đồng bộ cần thực thi.
+ * @param maxRetries - Số lần thử tối đa, mặc định là 3.
+ * @param baseDelay - Độ trễ cơ sở tính bằng mili giây, dùng chiến lược lùi theo cấp số nhân.
+ * @returns Kết quả thao tác.
+ * @throws Lỗi cuối cùng khi mọi lần thử đều thất bại.
  */
 const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number = 3, baseDelay: number = 2000): Promise<T> => {
   let lastError;
@@ -178,7 +178,7 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
       return await operation();
     } catch (e: any) {
       lastError = e;
-      // 判断是否是可重试的错误
+      // Xác định lỗi có thể thử lại.
       const isRetryableError = 
         e.status === 429 || 
         e.status === 502 ||
@@ -192,7 +192,7 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
         e.message?.includes('RESOURCE_EXHAUSTED') ||
         e.message?.includes('overloaded') ||
         e.message?.includes('cpu overloaded') ||
-        e.message?.includes('超时') ||
+        e.message?.includes('hết thời gian') ||
         e.message?.includes('timeout') ||
         e.message?.includes('Gateway Timeout') ||
         e.message?.includes('504') ||
@@ -203,7 +203,7 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
       
       if (isRetryableError && i < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, i);
-        console.warn(`请求失败，正在重试... (第 ${i + 1}/${maxRetries} 次，${delay}ms后重试)`, e.message);
+        console.warn(`Yêu cầu thất bại, đang thử lại lần ${i + 1}/${maxRetries} sau ${delay} ms...`, e.message);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -258,7 +258,7 @@ const chatCompletion = async (prompt: string, model: string = DEFAULT_CHAT_MODEL
     });
 
   if (!response.ok) {
-    let errorMessage = `HTTP错误: ${response.status}`;
+    let errorMessage = `Lỗi HTTP: ${response.status}`;
     const raw = await response.text();
     try {
       if (raw) {
@@ -275,23 +275,23 @@ const chatCompletion = async (prompt: string, model: string = DEFAULT_CHAT_MODEL
   return data.choices?.[0]?.message?.content || '';
   } catch (error: any) {
     clearTimeout(timeoutId);
-    // 检查是否是超时错误
+    // Kiểm tra lỗi hết thời gian chờ.
     if (error.name === 'AbortError') {
-      throw new Error(`请求超时（${timeout}ms）`);
+      throw new Error(`Yêu cầu hết thời gian chờ (${timeout} ms)`);
     }
     throw error;
   }
 };
 
 /**
- * 调用聊天完成API（SSE流式模式）
- * @param prompt - 提示词内容
- * @param model - 使用的模型名称
- * @param temperature - 温度参数
- * @param responseFormat - 响应格式（仅用于JSON场景）
- * @param timeout - 超时时间（毫秒）
- * @param onDelta - 每次收到增量文本时回调
- * @returns 返回完整文本
+ * Gọi API hoàn tất hội thoại ở chế độ luồng SSE.
+ * @param prompt - Nội dung prompt.
+ * @param model - Tên mô hình.
+ * @param temperature - Tham số temperature.
+ * @param responseFormat - Định dạng phản hồi, chỉ dùng cho JSON.
+ * @param timeout - Thời gian chờ tính bằng mili giây.
+ * @param onDelta - Hàm gọi lại cho từng phần văn bản nhận được.
+ * @returns Toàn bộ văn bản.
  */
 const chatCompletionStream = async (
   prompt: string,
@@ -332,7 +332,7 @@ const chatCompletionStream = async (
     });
 
     if (!response.ok) {
-      let errorMessage = `HTTP错误: ${response.status}`;
+      let errorMessage = `Lỗi HTTP: ${response.status}`;
       const raw = await response.text();
       try {
         if (raw) {
@@ -346,7 +346,7 @@ const chatCompletionStream = async (
     }
 
     if (!response.body) {
-      throw new Error('响应流为空，无法进行流式处理');
+      throw new Error('Luồng phản hồi trống, không thể xử lý theo luồng');
     }
 
     const reader = response.body.getReader();
@@ -381,7 +381,7 @@ const chatCompletionStream = async (
                 onDelta?.(delta);
               }
             } catch (e) {
-              // 忽略解析失败的行
+              // Bỏ qua dòng không phân tích được.
             }
           }
         }
@@ -395,27 +395,27 @@ const chatCompletionStream = async (
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      throw new Error(`请求超时（${timeout}ms）`);
+      throw new Error(`Yêu cầu hết thời gian chờ (${timeout} ms)`);
     }
     throw error;
   }
 };
 
 /**
- * Agent 1 & 2: Script Structuring & Breakdown（長文本兩階段解析）
- * 第一階段：只抽取結構（title, genre, logline, characters, scenes），避免單次輸出過長被截斷
- * 第二階段：按場景分塊抽取 storyParagraphs，每場景一次請求，再合併
+ * Agent 1 & 2: cấu trúc và phân rã kịch bản dài theo hai giai đoạn.
+ * Giai đoạn 1 chỉ trích xuất title, genre, logline, characters và scenes.
+ * Giai đoạn 2 trích xuất storyParagraphs theo từng cảnh rồi hợp nhất.
  */
-export const parseScriptToData = async (rawText: string, language: string = '中文', model: string = DEFAULT_CHAT_MODEL_ID, visualStyle: string = 'live-action'): Promise<ScriptData> => {
-  console.log('📝 parseScriptToData 调用（長文本兩階段）- 模型:', model, '视觉风格:', visualStyle);
+export const parseScriptToData = async (rawText: string, language: string = 'Vietnamese', model: string = DEFAULT_CHAT_MODEL_ID, visualStyle: string = 'live-action'): Promise<ScriptData> => {
+  console.log('📝 parseScriptToData được gọi (hai giai đoạn) - mô hình:', model, 'phong cách:', visualStyle);
   const startTime = Date.now();
   const inputText = rawText.slice(0, SCRIPT_INPUT_MAX_CHARS);
   if (rawText.length > SCRIPT_INPUT_MAX_CHARS) {
-    console.warn(`[parseScriptToData] 劇本已截斷至 ${SCRIPT_INPUT_MAX_CHARS} 字，原始長度: ${rawText.length}`);
+    console.warn(`[parseScriptToData] Kịch bản đã được cắt còn ${SCRIPT_INPUT_MAX_CHARS} ký tự; độ dài ban đầu: ${rawText.length}`);
   }
 
   try {
-    // ---------- 階段 1：只抽取結構，不包含 storyParagraphs ----------
+    // Giai đoạn 1: chỉ trích xuất cấu trúc, không gồm storyParagraphs.
     const structurePrompt = `
 Analyze the text and output a JSON object in the language: ${language}.
 
@@ -443,7 +443,7 @@ Output ONLY valid JSON with this structure (no storyParagraphs):
     );
 
     if (!responseText?.trim()) {
-      throw new Error('AI 未返回任何內容，請檢查模型是否可用或稍後重試。');
+      throw new Error('AI không trả về nội dung. Hãy kiểm tra mô hình hoặc thử lại sau.');
     }
 
     const text = cleanJsonString(responseText);
@@ -453,7 +453,7 @@ Output ONLY valid JSON with this structure (no storyParagraphs):
     } catch (e) {
       console.error("Failed to parse script structure JSON:", e);
       console.error("Raw (first 500 chars):", responseText.slice(0, 500));
-      throw new Error('AI 返回的結構格式無法解析，請重試或換用其他模型。');
+      throw new Error('Không thể phân tích cấu trúc do AI trả về. Hãy thử lại hoặc đổi mô hình.');
     }
 
     const characters = Array.isArray(parsed.characters)
@@ -468,12 +468,12 @@ Output ONLY valid JSON with this structure (no storyParagraphs):
       : [];
 
     if (characters.length === 0 && scenes.length === 0) {
-      throw new Error('AI 未能從文本中提取角色或場景。請確保輸入的是完整故事/劇本（含人物與地點）。');
+      throw new Error('AI không trích xuất được nhân vật hoặc cảnh. Hãy nhập một câu chuyện/kịch bản đầy đủ có nhân vật và địa điểm.');
     }
 
-    const genre = parsed.genre || '通用';
+    const genre = parsed.genre || 'Tổng hợp';
 
-    // ---------- 階段 2：按場景分塊抽取 storyParagraphs ----------
+    // Giai đoạn 2: trích xuất storyParagraphs theo từng cảnh.
     const storyParagraphs: { id: number; text: string; sceneRefId: string }[] = [];
     let nextId = 1;
 
@@ -512,7 +512,7 @@ Use short paragraph texts. Language: ${language}.
                     return Array.isArray(v) ? v : [];
                   })();
         } catch (_) {
-          // 解析失敗時保留空陣列，該場景段落略過
+          // Giữ mảng rỗng và bỏ qua cảnh khi không phân tích được.
           arr = [];
         }
         arr.forEach((p: any) => {
@@ -525,13 +525,13 @@ Use short paragraph texts. Language: ${language}.
           }
         });
       } catch (e) {
-        console.warn(`[parseScriptToData] 場景 ${scene.location} 段落抽取失敗，跳過:`, e);
+        console.warn(`[parseScriptToData] Không trích xuất được đoạn cho cảnh ${scene.location}; đang bỏ qua:`, e);
       }
     }
 
-    // 若按場景抽取結果為空，可選：做一次整體抽取（較長輸出）
+    // Nếu không có kết quả theo cảnh, thử trích xuất toàn bộ một lần.
     if (storyParagraphs.length === 0 && scenes.length > 0) {
-      console.log('[parseScriptToData] 按場景抽取無段落，嘗試單次整體抽取...');
+      console.log('[parseScriptToData] Không có đoạn theo cảnh; đang thử trích xuất toàn bộ...');
       const fallbackPrompt = `
 Break down the story into paragraphs linked to scenes. Language: ${language}.
 Script:
@@ -557,12 +557,12 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
           }
         });
       } catch (e2) {
-        console.warn('[parseScriptToData] 整體段落抽取也失敗:', e2);
+        console.warn('[parseScriptToData] Trích xuất toàn bộ cũng thất bại:', e2);
       }
     }
 
-    // ---------- 生成角色與場景的視覺提示詞 ----------
-    console.log('🎨 正在为角色和场景生成视觉提示词...', `风格: ${visualStyle}`);
+    // Tạo prompt hình ảnh cho nhân vật và bối cảnh.
+    console.log('🎨 Đang tạo prompt hình ảnh cho nhân vật và bối cảnh...', `phong cách: ${visualStyle}`);
     for (let i = 0; i < characters.length; i++) {
       try {
         if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -584,9 +584,9 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
       }
     }
 
-    console.log('✅ 视觉提示词生成完成！');
+    console.log('✅ Đã tạo xong prompt hình ảnh');
     const result: ScriptData = {
-      title: parsed.title || '未命名剧本',
+      title: parsed.title || 'Kịch bản chưa đặt tên',
       genre,
       logline: parsed.logline || '',
       language,
@@ -609,7 +609,7 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
     addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: 'script-parse-' + Date.now(),
-      resourceName: '剧本解析',
+      resourceName: 'Phân tích kịch bản',
       status: 'failed',
       model,
       prompt: '',
@@ -621,12 +621,11 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
 };
 
 /**
- * 生成分镜列表
- * 根据剧本数据和目标时长，为每个场景生成适量的分镜头
- * 算法：目标时长(秒) ÷ 10秒/镜头 = 总镜头数，然后平均分配到各场景
- * @param scriptData - 剧本数据，包含场景、角色、目标时长等信息
- * @param model - 使用的AI模型，默认DEFAULT_CHAT_MODEL_ID
- * @returns 返回分镜头列表，每个镜头包含关键帧、镜头运动等信息
+ * Tạo danh sách cảnh quay theo dữ liệu kịch bản và thời lượng mục tiêu.
+ * Số cảnh quay = thời lượng mục tiêu (giây) / 10 giây mỗi cảnh, rồi phân bổ theo cảnh.
+ * @param scriptData - Dữ liệu kịch bản gồm cảnh, nhân vật và thời lượng.
+ * @param model - Mô hình AI, mặc định DEFAULT_CHAT_MODEL_ID.
+ * @returns Danh sách cảnh quay gồm khung hình chính và chuyển động máy quay.
  */
 export const generateShotList = async (scriptData: ScriptData, model: string = DEFAULT_CHAT_MODEL_ID): Promise<Shot[]> => {
   const overallStartTime = Date.now();
@@ -635,11 +634,11 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
     return [];
   }
 
-  const lang = scriptData.language || '中文';
+  const lang = scriptData.language || 'Vietnamese';
   const visualStyle = scriptData.visualStyle || 'live-action';
   const stylePrompt = VISUAL_STYLE_PROMPTS[visualStyle] || visualStyle;
   
-  // 逐场景生成可降低长文本 JSON 解析失败和 token 超限风险。
+  // Xử lý từng cảnh để giảm lỗi JSON dài và nguy cơ vượt giới hạn token.
   const processScene = async (scene: Scene, index: number): Promise<Shot[]> => {
     const sceneStartTime = Date.now();
     const paragraphs = scriptData.storyParagraphs
@@ -681,35 +680,35 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
       ${JSON.stringify(scriptData.characters.map(c => ({ id: c.id, name: c.name, desc: c.visualPrompt || c.personality })))}
 
       Professional Camera Movement Reference (Choose from these categories):
-      - Horizontal Left Shot (向左平移) - Camera moves left
-      - Horizontal Right Shot (向右平移) - Camera moves right
-      - Pan Left Shot (平行向左扫视) - Pan left
-      - Pan Right Shot (平行向右扫视) - Pan right
-      - Vertical Up Shot (向上直线运动) - Move up vertically
-      - Vertical Down Shot (向下直线运动) - Move down vertically
-      - Tilt Up Shot (向上仰角运动) - Tilt upward
-      - Tilt Down Shot (向下俯角运动) - Tilt downward
-      - Zoom Out Shot (镜头缩小/拉远) - Pull back/zoom out
-      - Zoom In Shot (镜头放大/拉近) - Push in/zoom in
-      - Dolly Shot (推镜头) - Dolly in/out movement
-      - Circular Shot (环绕拍摄) - Orbit around subject
-      - Over the Shoulder Shot (越肩镜头) - Over shoulder perspective
-      - Pan Shot (摇镜头) - Pan movement
-      - Low Angle Shot (仰视镜头) - Low angle view
-      - High Angle Shot (俯视镜头) - High angle view
-      - Tracking Shot (跟踪镜头) - Follow subject
-      - Handheld Shot (摇摄镜头) - Handheld camera
-      - Static Shot (静止镜头) - Fixed camera position
-      - POV Shot (主观视角) - Point of view
-      - Bird's Eye View Shot (俯瞰镜头) - Overhead view
-      - 360-Degree Circular Shot (360度环绕) - Full circle
-      - Parallel Tracking Shot (平行跟踪) - Side tracking
-      - Diagonal Tracking Shot (对角跟踪) - Diagonal tracking
-      - Rotating Shot (旋转镜头) - Rotating movement
-      - Slow Motion Shot (慢动作) - Slow-mo effect
-      - Time-Lapse Shot (延时摄影) - Time-lapse
-      - Canted Shot (斜视镜头) - Dutch angle
-      - Cinematic Dolly Zoom (电影式变焦推轨) - Vertigo effect
+      - Horizontal Left Shot (trượt ngang sang trái) - Camera moves left
+      - Horizontal Right Shot (trượt ngang sang phải) - Camera moves right
+      - Pan Left Shot (lia trái) - Pan left
+      - Pan Right Shot (lia phải) - Pan right
+      - Vertical Up Shot (di chuyển thẳng lên) - Move up vertically
+      - Vertical Down Shot (di chuyển thẳng xuống) - Move down vertically
+      - Tilt Up Shot (ngẩng máy lên) - Tilt upward
+      - Tilt Down Shot (hạ máy xuống) - Tilt downward
+      - Zoom Out Shot (thu nhỏ/lùi xa) - Pull back/zoom out
+      - Zoom In Shot (phóng to/tiến gần) - Push in/zoom in
+      - Dolly Shot (dolly tiến/lùi) - Dolly in/out movement
+      - Circular Shot (quay vòng quanh chủ thể) - Orbit around subject
+      - Over the Shoulder Shot (qua vai) - Over shoulder perspective
+      - Pan Shot (lia máy) - Pan movement
+      - Low Angle Shot (góc thấp) - Low angle view
+      - High Angle Shot (góc cao) - High angle view
+      - Tracking Shot (bám theo chủ thể) - Follow subject
+      - Handheld Shot (máy cầm tay) - Handheld camera
+      - Static Shot (máy cố định) - Fixed camera position
+      - POV Shot (góc nhìn chủ quan) - Point of view
+      - Bird's Eye View Shot (góc nhìn từ trên cao) - Overhead view
+      - 360-Degree Circular Shot (quay vòng 360 độ) - Full circle
+      - Parallel Tracking Shot (bám song song) - Side tracking
+      - Diagonal Tracking Shot (bám chéo) - Diagonal tracking
+      - Rotating Shot (xoay máy) - Rotating movement
+      - Slow Motion Shot (chuyển động chậm) - Slow-mo effect
+      - Time-Lapse Shot (tua nhanh thời gian) - Time-lapse
+      - Canted Shot (góc nghiêng Dutch) - Dutch angle
+      - Cinematic Dolly Zoom (dolly zoom điện ảnh) - Vertigo effect
 
       Instructions:
       1. Create EXACTLY ${shotsPerScene} shots (or ${shotsPerScene - 1} to ${shotsPerScene + 1} shots if needed for story flow) for this scene.
@@ -745,7 +744,7 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
       const text = cleanJsonString(responseText);
       const parsed = JSON.parse(text);
 
-      // json_object 會強制返回物件，這裡兼容舊版陣列與新版 { shots: [...] }。
+      // json_object buộc phản hồi là object; hỗ trợ cả mảng cũ và { shots: [...] } mới.
       const shots = Array.isArray(parsed)
         ? parsed
         : (parsed && Array.isArray((parsed as any).shots) ? (parsed as any).shots : []);
@@ -759,7 +758,7 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
       addRenderLogWithTokens({
         type: 'script-parsing',
         resourceId: `shot-gen-scene-${scene.id}-${Date.now()}`,
-        resourceName: `分镜生成 - 场景${index + 1}: ${scene.location}`,
+        resourceName: `Tạo cảnh quay - Cảnh ${index + 1}: ${scene.location}`,
         status: 'success',
         model: model,
         prompt: prompt.substring(0, 200) + '...',
@@ -779,7 +778,7 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
       addRenderLogWithTokens({
         type: 'script-parsing',
         resourceId: `shot-gen-scene-${scene.id}-${Date.now()}`,
-        resourceName: `分镜生成 - 场景${index + 1}: ${scene.location}`,
+        resourceName: `Tạo cảnh quay - Cảnh ${index + 1}: ${scene.location}`,
         status: 'failed',
         model: model,
         prompt: prompt.substring(0, 200) + '...',
@@ -805,7 +804,7 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
   }
 
   if (allShots.length === 0) {
-    throw new Error('分镜生成失败：AI返回为空（可能是 JSON 结构不匹配或场景内容未被识别）。请打开控制台查看分镜生成日志。');
+    throw new Error('Tạo cảnh quay thất bại: AI trả về dữ liệu rỗng. Có thể cấu trúc JSON không khớp hoặc nội dung cảnh chưa được nhận diện; hãy xem nhật ký trong bảng điều khiển.');
   }
 
   return allShots.map((s, idx) => ({
@@ -838,17 +837,16 @@ const NEGATIVE_PROMPTS: { [key: string]: string } = {
 };
 
 /**
- * 生成角色或场景的视觉提示词
- * 根据指定的视觉风格和语言，为角色或场景生成详细的视觉描述
- * @param type - 类型，'character'（角色）或'scene'（场景）
- * @param data - 角色或场景的数据
- * @param genre - 剧本类型/题材
- * @param model - 使用的AI模型，默认DEFAULT_CHAT_MODEL_ID
- * @param visualStyle - 视觉风格，如'live-action'、'anime'等，默认'live-action'
- * @param language - 输出语言，默认'中文'
- * @returns 返回包含visualPrompt和negativePrompt的对象
+ * Tạo prompt hình ảnh chi tiết cho nhân vật hoặc bối cảnh.
+ * @param type - Loại dữ liệu: character hoặc scene.
+ * @param data - Dữ liệu nhân vật hoặc bối cảnh.
+ * @param genre - Thể loại kịch bản.
+ * @param model - Mô hình AI, mặc định DEFAULT_CHAT_MODEL_ID.
+ * @param visualStyle - Phong cách hình ảnh, mặc định live-action.
+ * @param language - Ngôn ngữ đầu ra, mặc định Vietnamese.
+ * @returns Object gồm visualPrompt và negativePrompt.
  */
-export const generateVisualPrompts = async (type: 'character' | 'scene', data: Character | Scene, genre: string, model: string = DEFAULT_CHAT_MODEL_ID, visualStyle: string = 'live-action', language: string = '中文'): Promise<{ visualPrompt: string; negativePrompt: string }> => {
+export const generateVisualPrompts = async (type: 'character' | 'scene', data: Character | Scene, genre: string, model: string = DEFAULT_CHAT_MODEL_ID, visualStyle: string = 'live-action', language: string = 'Vietnamese'): Promise<{ visualPrompt: string; negativePrompt: string }> => {
    const stylePrompt = VISUAL_STYLE_PROMPTS[visualStyle] || visualStyle;
    const negativePrompt = NEGATIVE_PROMPTS[visualStyle] || NEGATIVE_PROMPTS['live-action'];
    
@@ -924,15 +922,13 @@ Output ONLY the visual prompt text, no explanations.`;
 };
 
 /**
- * 生成图像（Agent 4 & 6）
- * 使用 GitCC 图像生成 API（默认 qwen-image-2.0，Gemini 类走 chat/completions）
- * 支持参考图像，确保角色和场景的一致性
- * @param prompt - 图像生成提示词
- * @param referenceImages - 参考图像数组（base64格式），第一张为场景参考，后续为角色参考
- * @param aspectRatio - 横竖屏比例，支持 '16:9'（横屏，默认）、'9:16'（竖屏）。注意：Gemini 3 Pro Image 不支持方形(1:1)
- * @param isVariation - 是否为角色变体生成模式（服装变体），变体模式下保持面部一致但改变服装
- * @returns 返回生成的图像base64字符串
- * @throws 如果图像生成失败则抛出错误
+ * Tạo ảnh (Agent 4 & 6) qua API hình ảnh hoặc chat/completions tương thích.
+ * @param prompt - Prompt tạo ảnh.
+ * @param referenceImages - Ảnh tham chiếu base64; ảnh đầu là bối cảnh, các ảnh sau là nhân vật.
+ * @param aspectRatio - Tỷ lệ 16:9 hoặc 9:16; một số mô hình không hỗ trợ 1:1.
+ * @param isVariation - Chế độ biến thể trang phục, giữ khuôn mặt nhất quán.
+ * @returns Ảnh dạng base64.
+ * @throws Lỗi khi tạo ảnh thất bại.
  */
 export const generateImage = async (
   prompt: string, 
@@ -942,7 +938,7 @@ export const generateImage = async (
 ): Promise<string> => {
   const startTime = Date.now();
   
-  // 从 modelRegistry 获取当前激活的图片模型（GitCC 使用 OpenAI 端点 /v1/chat/completions + model 名称）
+  // Lấy mô hình ảnh đang hoạt động từ modelRegistry.
   const activeImageModel = getActiveModel('image');
   const imageModelId = activeImageModel?.apiModel || activeImageModel?.id || DEFAULT_IMAGE_MODEL_ID;
   const imageEndpoint = activeImageModel?.endpoint;
@@ -951,7 +947,7 @@ export const generateImage = async (
   const requestEndpoint = '/v1/chat/completions';
 
   try {
-    // qwen-image-2.0 等模型需走 /v1/images/generations，chat/completions 会返回空 message
+    // Các mô hình như qwen-image-2.0 dùng /v1/images/generations.
     if (shouldUseImagesGenerationsEndpoint(imageModelId, imageEndpoint)) {
       const result = await callImagesGenerationsApi({
         apiBase,
@@ -975,7 +971,7 @@ export const generateImage = async (
     let finalPrompt = prompt;
     if (referenceImages.length > 0) {
       if (isVariation) {
-        // 变体模式：保持面部一致，但改变服装/造型
+        // Chế độ biến thể: giữ khuôn mặt, thay trang phục/tạo hình.
         finalPrompt = `
       ⚠️⚠️⚠️ CRITICAL REQUIREMENTS - CHARACTER OUTFIT VARIATION ⚠️⚠️⚠️
       
@@ -1005,7 +1001,7 @@ export const generateImage = async (
       ⚠️ If the new outfit is not clearly visible and different from the reference, the task has FAILED!
     `;
       } else {
-        // 普通模式：完全一致性（分镜生成等场景）
+        // Chế độ thường: ưu tiên tính nhất quán hoàn toàn.
         finalPrompt = `
       ⚠️⚠️⚠️ CRITICAL REQUIREMENTS - CHARACTER CONSISTENCY ⚠️⚠️⚠️
       
@@ -1033,7 +1029,7 @@ export const generateImage = async (
       }
     }
 
-  // GitCC Gemini 图片模型要求 content 为数组（multimodal），纯字符串会报 invalid_parameter_error
+  // Mô hình ảnh Gemini yêu cầu content dạng mảng đa phương thức.
   const messageContent: Array<
     { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
   > = [{ type: 'text', text: finalPrompt }];
@@ -1063,15 +1059,15 @@ export const generateImage = async (
     });
 
     if (!res.ok) {
-      // 特殊处理400、500状态码 - 提示词被风控拦截
+      // Xử lý riêng lỗi 400/500 do bộ lọc nội dung.
       if (res.status === 400) {
-        throw new Error('内容安全拦截：该提示词可能包含不安全或违规内容。请点击本镜头的「编辑」修改关键帧提示词，避免暴力、血腥、敏感描述后重试。');
+        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh prompt khung hình, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
       }
       else if (res.status === 500) {
-        throw new Error('当前请求较多，暂时未能处理成功，请稍后重试。');
+        throw new Error('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.');
       }
       
-      let errorMessage = `HTTP错误: ${res.status}`;
+      let errorMessage = `Lỗi HTTP: ${res.status}`;
       try {
         const errorText = await res.text();
         try {
@@ -1081,7 +1077,7 @@ export const generateImage = async (
           if (errorText) errorMessage = errorText;
         }
       } catch (_) {
-        // body 已读或解析失败，用默认 errorMessage
+        // Dùng thông báo mặc định khi body đã đọc hoặc không phân tích được.
       }
       throw new Error(errorMessage);
     }
@@ -1105,8 +1101,8 @@ export const generateImage = async (
   }
 
   throw new Error(
-    `图片生成失败：模型 ${imageModelId} 未返回图片数据（响应中无 content / data）。` +
-      ` qwen-image 类模型将自动走 /v1/images/generations；Gemini 类走 chat/completions。`
+    `Tạo ảnh thất bại: mô hình ${imageModelId} không trả về dữ liệu ảnh trong content/data. ` +
+      'Mô hình kiểu qwen-image tự động dùng /v1/images/generations; mô hình kiểu Gemini dùng chat/completions.'
   );
   } catch (error: any) {
     // Log failed generation
@@ -1126,23 +1122,23 @@ export const generateImage = async (
 };
 
 /**
- * 将视频URL转换为base64格式
- * @param url - 视频文件的URL
- * @returns 返回base64编码的视频数据
- * @throws 如果下载或转换失败则抛出错误
+ * Chuyển URL video sang base64.
+ * @param url - URL tệp video.
+ * @returns Dữ liệu video base64.
+ * @throws Lỗi khi tải hoặc chuyển đổi thất bại.
  */
 const convertVideoUrlToBase64 = async (url: string): Promise<string> => {
   try {
-    // 下载视频文件
+    // Tải tệp video.
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`下载视频失败: HTTP ${response.status}`);
+      throw new Error(`Tải video thất bại: HTTP ${response.status}`);
     }
     
-    // 获取视频blob
+    // Lấy blob video.
     const blob = await response.blob();
     
-    // 转换为base64
+    // Chuyển sang base64.
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -1150,22 +1146,22 @@ const convertVideoUrlToBase64 = async (url: string): Promise<string> => {
         resolve(base64String);
       };
       reader.onerror = () => {
-        reject(new Error('转换视频为base64失败'));
+        reject(new Error('Chuyển video sang base64 thất bại'));
       };
       reader.readAsDataURL(blob);
     });
   } catch (error: any) {
-    console.error('视频URL转base64失败:', error);
-    throw new Error(`视频转换失败: ${error.message}`);
+    console.error('Chuyển URL video sang base64 thất bại:', error);
+    throw new Error(`Chuyển đổi video thất bại: ${error.message}`);
   }
 };
 
 /**
- * 调整图片尺寸到指定宽高
- * @param base64Data - 原始图片base64数据（不含前缀）
- * @param targetWidth - 目标宽度
- * @param targetHeight - 目标高度
- * @returns 调整后的图片base64数据（不含前缀）
+ * Đổi kích thước ảnh theo chiều rộng và chiều cao mục tiêu.
+ * @param base64Data - Dữ liệu ảnh base64 không có tiền tố.
+ * @param targetWidth - Chiều rộng mục tiêu.
+ * @param targetHeight - Chiều cao mục tiêu.
+ * @returns Dữ liệu base64 đã đổi kích thước, không có tiền tố.
  */
 const resizeImageToSize = async (base64Data: string, targetWidth: number, targetHeight: number): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -1176,21 +1172,21 @@ const resizeImageToSize = async (base64Data: string, targetWidth: number, target
       canvas.height = targetHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        reject(new Error('无法创建canvas上下文'));
+        reject(new Error('Không thể tạo ngữ cảnh canvas'));
         return;
       }
-      // 使用 cover 模式填充，保持比例并居中裁剪
+      // Dùng chế độ cover, giữ tỷ lệ và cắt giữa.
       const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
       const scaledWidth = img.width * scale;
       const scaledHeight = img.height * scale;
       const offsetX = (targetWidth - scaledWidth) / 2;
       const offsetY = (targetHeight - scaledHeight) / 2;
       ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
-      // 返回不含前缀的base64
+      // Trả về base64 không có tiền tố.
       const result = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
       resolve(result);
     };
-    img.onerror = () => reject(new Error('图片加载失败'));
+    img.onerror = () => reject(new Error('Tải ảnh thất bại'));
     img.src = `data:image/png;base64,${base64Data}`;
   });
 };
@@ -1213,13 +1209,13 @@ const generateVideoWithSora2 = async (
   duration: VideoDuration = 8,
   modelName: string = 'sora-2'
 ): Promise<string> => {
-  console.log(`🎬 使用异步模式生成视频 (${modelName}, ${aspectRatio}, ${duration}秒)...`);
+  console.log(`🎬 Đang tạo video bất đồng bộ (${modelName}, ${aspectRatio}, ${duration} giây)...`);
   
   // 根据横竖屏比例计算视频尺寸
   const videoSize = getSoraVideoSize(aspectRatio);
   const [VIDEO_WIDTH, VIDEO_HEIGHT] = videoSize.split('x').map(Number);
   
-  console.log(`📐 视频尺寸: ${VIDEO_WIDTH}x${VIDEO_HEIGHT}`);
+  console.log(`📐 Kích thước video: ${VIDEO_WIDTH}x${VIDEO_HEIGHT}`);
   
   // 获取 API 基础 URL
   const apiBase = getApiBase('video', modelName);
@@ -1236,7 +1232,7 @@ const generateVideoWithSora2 = async (
     const cleanBase64 = startImageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     
     // 调整图片尺寸以匹配视频尺寸要求
-    console.log(`📐 调整参考图片尺寸至 ${VIDEO_WIDTH}x${VIDEO_HEIGHT}...`);
+    console.log(`📐 Đang đổi kích thước ảnh tham chiếu thành ${VIDEO_WIDTH}x${VIDEO_HEIGHT}...`);
     const resizedBase64 = await resizeImageToSize(cleanBase64, VIDEO_WIDTH, VIDEO_HEIGHT);
     
     // 将base64转换为Blob
@@ -1248,7 +1244,7 @@ const generateVideoWithSora2 = async (
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], { type: 'image/png' });
     formData.append('input_reference', blob, 'reference.png');
-    console.log('✅ 参考图片已调整尺寸并添加');
+    console.log('✅ Đã đổi kích thước và thêm ảnh tham chiếu');
   }
   
   // 创建任务
@@ -1269,10 +1265,10 @@ const generateVideoWithSora2 = async (
   // 响应格式可能是 { id: "sora-2:task_xxx" } 或 { task_id: "xxx" }
   const taskId = createData.id || createData.task_id;
   if (!taskId) {
-    throw new Error('创建视频任务失败：未返回任务ID');
+    throw new Error('Không thể tạo tác vụ video: máy chủ không trả về mã tác vụ');
   }
   
-  console.log('📋 sora-2任务已创建，任务ID:', taskId);
+  console.log('📋 Đã tạo tác vụ sora-2, mã tác vụ:', taskId);
   
   // Step 2: 轮询查询任务状态
   const maxPollingTime = 1200000; // 20分钟超时
@@ -1294,14 +1290,14 @@ const generateVideoWithSora2 = async (
     });
     
     if (!statusResponse.ok) {
-      console.warn('⚠️ 查询任务状态失败，继续重试...');
+      console.warn('⚠️ Không thể truy vấn trạng thái tác vụ, đang thử lại...');
       continue;
     }
     
     const statusData = await statusResponse.json();
     const status = statusData.status;
     
-    console.log('🔄 sora-2任务状态:', status, '进度:', statusData.progress);
+    console.log('🔄 Trạng thái tác vụ sora-2:', status, 'tiến độ:', statusData.progress);
     
     if (status === 'completed' || status === 'succeeded') {
       completedStatus = statusData as Record<string, unknown>;
@@ -1313,7 +1309,7 @@ const generateVideoWithSora2 = async (
       if (!videoId) {
         videoId = statusData.id || null;
       }
-      console.log('✅ 任务完成，用于下载的 ID:', videoId);
+      console.log('✅ Tác vụ hoàn tất, ID dùng để tải:', videoId);
       break;
     } else if (status === 'failed' || status === 'error') {
       throw new Error(formatVideoTaskErrorForUser(statusData.error ?? statusData, statusData.message, 'sora'));
@@ -1322,10 +1318,10 @@ const generateVideoWithSora2 = async (
   }
 
   if (!videoId && !completedStatus) {
-    throw new Error('视频生成超时 (20分钟) 或未返回视频ID');
+    throw new Error('Tạo video hết thời gian chờ (20 phút) hoặc không có mã video');
   }
 
-  console.log('✅ sora-2视频生成完成，开始下载，任务ID:', taskId, '资源ID:', videoId);
+  console.log('✅ Sora-2 đã tạo xong video, bắt đầu tải; mã tác vụ:', taskId, 'mã tài nguyên:', videoId);
 
   return downloadSoraCompletedVideo({
     apiBase,
@@ -1386,11 +1382,11 @@ export const generateVideo = async (
   if (actualModel === 'veo' || actualModel.startsWith('veo_3_1')) {
     const hasReferenceImage = !!startImageBase64;
     actualModel = getVeoModelName(hasReferenceImage, aspectRatio);
-    console.log(`🎬 使用 Veo 模型: ${actualModel} (${aspectRatio})`);
+    console.log(`🎬 Đang dùng mô hình Veo: ${actualModel} (${aspectRatio})`);
     
     // Veo 不支持 1:1 方形视频
     if (aspectRatio === '1:1') {
-      console.warn('⚠️ Veo 不支持方形视频 (1:1)，将使用横屏 (16:9)');
+      console.warn('⚠️ Veo không hỗ trợ video vuông (1:1); sẽ dùng tỷ lệ ngang 16:9');
       actualModel = getVeoModelName(hasReferenceImage, '16:9');
     }
   }
@@ -1465,58 +1461,54 @@ export const generateVideo = async (
     const videoUrl = urlMatch ? urlMatch[1] : '';
 
     if (!videoUrl) {
-      throw new Error("视频生成失败 (No video URL returned)");
+      throw new Error('Tạo video thất bại (không có URL video)');
     }
 
-    console.log('🎬 视频URL获取成功,正在转换为base64...');
+    console.log('🎬 Đã nhận URL video, đang chuyển sang base64...');
     
     // 将视频URL转换为base64,避免URL过期问题
     try {
       const videoBase64 = await convertVideoUrlToBase64(videoUrl);
-      console.log('✅ 视频已转换为base64格式,可安全存储到IndexedDB');
+      console.log('✅ Đã chuyển video sang base64 để lưu an toàn trong IndexedDB');
       return videoBase64;
     } catch (error: any) {
-      console.error('❌ 视频转base64失败,返回原始URL:', error);
+      console.error('❌ Chuyển video sang base64 thất bại, dùng URL gốc:', error);
       // 如果转换失败,返回原始URL作为降级方案
       return videoUrl;
     }
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      throw new Error('视频生成超时 (20分钟)');
+      throw new Error('Tạo video hết thời gian chờ (20 phút)');
     }
     throw error;
   }
 };
 
-/**
- * AI续写功能 - 基于已有剧本内容续写后续情节
- * @param existingScript - 已有的剧本内容
- * @param language - 输出语言
- * @param model - 使用的AI模型
- * @returns 续写的内容
- */
-export const continueScript = async (existingScript: string, language: string = '中文', model: string = DEFAULT_CHAT_MODEL_ID): Promise<string> => {
-  console.log('✍️ continueScript 调用 - 使用模型:', model);
-  const startTime = Date.now();
-  
-  const prompt = `
-你是一位资深剧本创作者。请在充分理解下方已有剧本内容的基础上，续写后续情节。
+const buildContinueScriptPrompt = (existingScript: string, language: string): string => `
+Bạn là một biên kịch giàu kinh nghiệm. Hãy đọc kỹ phần kịch bản hiện có dưới đây và viết tiếp diễn biến.
 
-续写要求：
-1. 严格保持原剧本的风格、语气、人物性格和叙事节奏，确保无明显风格断层。
-2. 情节发展需自然流畅，逻辑严密，因果关系合理，避免突兀转折。
-3. 有效增加戏剧冲突和情感张力，使故事更具吸引力和张力。
-4. 续写内容应为原有剧本长度的30%-50%，字数适中，避免过短或过长。
-5. 保持剧本的原有格式，包括场景描述、人物对白、舞台指示等，确保格式一致。
-6. 输出语言为：${language}，用词准确、表达流畅。
-7. 仅输出续写剧本内容，不添加任何说明、前缀或后缀。
+Yêu cầu:
+1. Giữ nhất quán phong cách, giọng điệu, tính cách nhân vật và nhịp kể của bản gốc.
+2. Phát triển tình tiết tự nhiên, logic và có quan hệ nhân quả rõ ràng; tránh chuyển hướng đột ngột.
+3. Tăng xung đột kịch tính và sức nặng cảm xúc một cách hợp lý.
+4. Phần viết tiếp dài khoảng 30–50% nội dung hiện có, không quá ngắn hoặc dài dòng.
+5. Giữ nguyên định dạng kịch bản gồm mô tả cảnh, thoại và chỉ dẫn sân khấu.
+6. Ngôn ngữ đầu ra: ${language}; dùng từ chính xác và tự nhiên.
+7. Chỉ xuất phần kịch bản viết tiếp, không thêm giải thích, tiền tố hoặc hậu tố.
 
-已有剧本内容：
+Kịch bản hiện có:
 ${existingScript}
 
-请直接续写剧本内容。（不要包含"续写："等前缀）：
+Hãy viết tiếp trực tiếp, không thêm nhãn như “Phần tiếp theo:”.
 `;
+
+/** Viết tiếp kịch bản dựa trên nội dung hiện có. */
+export const continueScript = async (existingScript: string, language: string = 'Vietnamese', model: string = DEFAULT_CHAT_MODEL_ID): Promise<string> => {
+  console.log('✍️ continueScript được gọi - mô hình:', model);
+  const startTime = Date.now();
+
+  const prompt = buildContinueScriptPrompt(existingScript, language);
 
   try {
     const result = await retryOperation(() => chatCompletion(prompt, model, 0.8, 4096));
@@ -1525,7 +1517,7 @@ ${existingScript}
     await addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: 'continue-script',
-      resourceName: 'AI续写剧本',
+      resourceName: 'AI viết tiếp kịch bản',
       status: 'success',
       model,
       duration,
@@ -1534,45 +1526,22 @@ ${existingScript}
     
     return result;
   } catch (error) {
-    console.error('❌ 续写失败:', error);
+    console.error('❌ Viết tiếp kịch bản thất bại:', error);
     throw error;
   }
 };
 
-/**
- * AI续写功能（流式）- 基于已有剧本内容续写后续情节
- * @param existingScript - 已有的剧本内容
- * @param language - 输出语言
- * @param model - 使用的AI模型
- * @param onDelta - 流式增量回调
- * @returns 续写的完整内容
- */
+/** Viết tiếp kịch bản ở chế độ luồng. */
 export const continueScriptStream = async (
   existingScript: string,
-  language: string = '中文',
+  language: string = 'Vietnamese',
   model: string = DEFAULT_CHAT_MODEL_ID,
   onDelta?: (delta: string) => void
 ): Promise<string> => {
-  console.log('✍️ continueScriptStream 调用 - 使用模型:', model);
+  console.log('✍️ continueScriptStream được gọi - mô hình:', model);
   const startTime = Date.now();
 
-  const prompt = `
-你是一位资深剧本创作者。请在充分理解下方已有剧本内容的基础上，续写后续情节。
-
-续写要求：
-1. 严格保持原剧本的风格、语气、人物性格和叙事节奏，确保无明显风格断层。
-2. 情节发展需自然流畅，逻辑严密，因果关系合理，避免突兀转折。
-3. 有效增加戏剧冲突和情感张力，使故事更具吸引力和张力。
-4. 续写内容应为原有剧本长度的30%-50%，字数适中，避免过短或过长。
-5. 保持剧本的原有格式，包括场景描述、人物对白、舞台指示等，确保格式一致。
-6. 输出语言为：${language}，用词准确、表达流畅。
-7. 仅输出续写剧本内容，不添加任何说明、前缀或后缀。
-
-已有剧本内容：
-${existingScript}
-
-请直接续写剧本内容。（不要包含"续写："等前缀）：
-`;
+  const prompt = buildContinueScriptPrompt(existingScript, language);
 
   try {
     const result = await retryOperation(() => chatCompletionStream(prompt, model, 0.8, undefined, 600000, onDelta));
@@ -1581,7 +1550,7 @@ ${existingScript}
     await addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: 'continue-script',
-      resourceName: 'AI续写剧本（流式）',
+      resourceName: 'AI viết tiếp kịch bản (luồng)',
       status: 'success',
       model,
       duration,
@@ -1590,43 +1559,38 @@ ${existingScript}
 
     return result;
   } catch (error) {
-    console.error('❌ 续写失败（流式）:', error);
+    console.error('❌ Viết tiếp kịch bản theo luồng thất bại:', error);
     throw error;
   }
 };
 
-/**
- * AI改写功能 - 对整个剧本进行改写，让情节更连贯
- * @param originalScript - 原始剧本内容
- * @param language - 输出语言
- * @param model - 使用的AI模型
- * @returns 改写后的完整剧本
- */
-export const rewriteScript = async (originalScript: string, language: string = '中文', model: string = DEFAULT_CHAT_MODEL_ID): Promise<string> => {
-  console.log('🔄 rewriteScript 调用 - 使用模型:', model);
-  const startTime = Date.now();
-  
-  const prompt = `
-你是一位顶级剧本编剧顾问，擅长提升剧本的结构、情感和戏剧张力。请对下方提供的剧本进行系统性、创造性改写，目标是使剧本在连贯性、流畅性和戏剧冲突等方面显著提升。
+const buildRewriteScriptPrompt = (originalScript: string, language: string): string => `
+Bạn là cố vấn biên kịch chuyên nghiệp, có thế mạnh về cấu trúc, cảm xúc và kịch tính. Hãy viết lại kịch bản dưới đây một cách có hệ thống và sáng tạo để tăng tính liền mạch, trôi chảy và xung đột.
 
-改写具体要求如下：
+Yêu cầu:
+1. Giữ cốt truyện cốt lõi, nhân vật chính và chủ đề của bản gốc.
+2. Tối ưu cấu trúc để diễn biến có quan hệ nhân quả rõ ràng và logic.
+3. Cải thiện chuyển cảnh để mạch kể tự nhiên.
+4. Làm phong phú lời thoại, tăng cá tính, cảm xúc và độ chân thực; tránh máy móc.
+5. Tăng xung đột và căng thẳng cảm xúc giữa các nhân vật.
+6. Đào sâu nội tâm và cảm xúc nhân vật.
+7. Cân bằng cao trào với khoảng lắng, tránh lê thê hoặc quá gấp.
+8. Giữ hoặc tăng vừa phải độ dài để nội dung đầy đặn nhưng súc tích.
+9. Tuân thủ định dạng kịch bản gồm tiêu đề cảnh, thoại và chỉ dẫn sân khấu.
+10. Ngôn ngữ đầu ra: ${language}; bảo đảm văn phong phù hợp thể loại.
 
-1. 保留原剧本的核心故事线和主要人物设定，不改变故事主旨。
-2. 优化情节结构，确保事件发展具有清晰的因果关系，逻辑严密。
-3. 增强场景之间的衔接与转换，使整体叙事流畅自然。
-4. 丰富和提升人物对话，使其更具个性、情感色彩和真实感，避免生硬或刻板。
-5. 强化戏剧冲突，突出人物之间的矛盾与情感张力，增加情节的吸引力和感染力。
-6. 深化人物内心活动和情感描写，提升剧本的情感深度。
-7. 优化整体节奏，合理分配高潮与缓和段落，避免情节拖沓或推进过快。
-8. 保持或适度增加剧本内容长度，确保内容充实但不过度冗长。
-9. 严格遵循剧本格式规范，包括场景标注、人物台词、舞台指示等。
-10. 输出语言为：${language}，确保语言风格与剧本类型相符。
-
-原始剧本内容如下：
+Kịch bản gốc:
 ${originalScript}
 
-请根据以上要求，输出经过全面改写、结构优化、情感丰富的完整剧本文本。
+Chỉ xuất toàn bộ kịch bản đã viết lại, không thêm lời giải thích.
 `;
+
+/** Viết lại toàn bộ kịch bản để cải thiện cấu trúc và mạch kể. */
+export const rewriteScript = async (originalScript: string, language: string = 'Vietnamese', model: string = DEFAULT_CHAT_MODEL_ID): Promise<string> => {
+  console.log('🔄 rewriteScript được gọi - mô hình:', model);
+  const startTime = Date.now();
+
+  const prompt = buildRewriteScriptPrompt(originalScript, language);
 
   try {
     const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 8192));
@@ -1635,7 +1599,7 @@ ${originalScript}
     await addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: 'rewrite-script',
-      resourceName: 'AI改写剧本',
+      resourceName: 'AI viết lại kịch bản',
       status: 'success',
       model,
       duration,
@@ -1644,49 +1608,22 @@ ${originalScript}
     
     return result;
   } catch (error) {
-    console.error('❌ 改写失败:', error);
+    console.error('❌ Viết lại kịch bản thất bại:', error);
     throw error;
   }
 };
 
-/**
- * AI改写功能（流式）- 对整个剧本进行改写，让情节更连贯
- * @param originalScript - 原始剧本内容
- * @param language - 输出语言
- * @param model - 使用的AI模型
- * @param onDelta - 流式增量回调
- * @returns 改写后的完整剧本
- */
+/** Viết lại kịch bản ở chế độ luồng. */
 export const rewriteScriptStream = async (
   originalScript: string,
-  language: string = '中文',
+  language: string = 'Vietnamese',
   model: string = DEFAULT_CHAT_MODEL_ID,
   onDelta?: (delta: string) => void
 ): Promise<string> => {
-  console.log('🔄 rewriteScriptStream 调用 - 使用模型:', model);
+  console.log('🔄 rewriteScriptStream được gọi - mô hình:', model);
   const startTime = Date.now();
 
-  const prompt = `
-你是一位顶级剧本编剧顾问，擅长提升剧本的结构、情感和戏剧张力。请对下方提供的剧本进行系统性、创造性改写，目标是使剧本在连贯性、流畅性和戏剧冲突等方面显著提升。
-
-改写具体要求如下：
-
-1. 保留原剧本的核心故事线和主要人物设定，不改变故事主旨。
-2. 优化情节结构，确保事件发展具有清晰的因果关系，逻辑严密。
-3. 增强场景之间的衔接与转换，使整体叙事流畅自然。
-4. 丰富和提升人物对话，使其更具个性、情感色彩和真实感，避免生硬或刻板。
-5. 强化戏剧冲突，突出人物之间的矛盾与情感张力，增加情节的吸引力和感染力。
-6. 深化人物内心活动和情感描写，提升剧本的情感深度。
-7. 优化整体节奏，合理分配高潮与缓和段落，避免情节拖沓或推进过快。
-8. 保持或适度增加剧本内容长度，确保内容充实但不过度冗长。
-9. 严格遵循剧本格式规范，包括场景标注、人物台词、舞台指示等。
-10. 输出语言为：${language}，确保语言风格与剧本类型相符。
-
-原始剧本内容如下：
-${originalScript}
-
-请根据以上要求，输出经过全面改写、结构优化、情感丰富的完整剧本文本。
-`;
+  const prompt = buildRewriteScriptPrompt(originalScript, language);
 
   try {
     const result = await retryOperation(() => chatCompletionStream(prompt, model, 0.7, undefined, 600000, onDelta));
@@ -1695,7 +1632,7 @@ ${originalScript}
     await addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: 'rewrite-script',
-      resourceName: 'AI改写剧本（流式）',
+      resourceName: 'AI viết lại kịch bản (luồng)',
       status: 'success',
       model,
       duration,
@@ -1704,23 +1641,12 @@ ${originalScript}
 
     return result;
   } catch (error) {
-    console.error('❌ 改写失败（流式）:', error);
+    console.error('❌ Viết lại kịch bản theo luồng thất bại:', error);
     throw error;
   }
 };
 
-/**
- * AI一次性优化起始帧和结束帧视觉描述（推荐使用）
- * 根据场景信息和叙事动作，同时生成起始帧和结束帧的详细视觉描述
- * 相比单独优化，这个方法能让AI更好地理解两帧的关系，确保视觉过渡更协调
- * @param actionSummary - 叙事动作描述
- * @param cameraMovement - 镜头运动
- * @param sceneInfo - 场景信息（地点、时间、氛围）
- * @param characterInfo - 角色信息（可选）
- * @param visualStyle - 视觉风格
- * @param model - 使用的模型，默认DEFAULT_CHAT_MODEL_ID
- * @returns 返回包含起始帧和结束帧的优化描述对象
- */
+/** Tối ưu đồng thời mô tả khung hình đầu và cuối để bảo đảm chuyển tiếp liền mạch. */
 export const optimizeBothKeyframes = async (
   actionSummary: string,
   cameraMovement: string,
@@ -1729,165 +1655,70 @@ export const optimizeBothKeyframes = async (
   visualStyle: string,
   model: string = DEFAULT_CHAT_MODEL_ID
 ): Promise<{ startPrompt: string; endPrompt: string }> => {
-  console.log('🎨 optimizeBothKeyframes 调用 - 同时优化起始帧和结束帧 - 使用模型:', model);
+  console.log('🎨 optimizeBothKeyframes được gọi - mô hình:', model);
   const startTime = Date.now();
 
   const stylePrompts: { [key: string]: string } = {
-    'live-action': '真人实拍电影风格，photorealistic，8K高清，专业摄影',
-    'anime': '日本动漫风格，cel-shaded，鲜艳色彩，Studio Ghibli品质',
-    '3d-animation': '3D CGI动画，Pixar/DreamWorks风格，精细材质',
-    'cyberpunk': '赛博朋克美学，霓虹灯光，未来科技感',
-    'oil-painting': '油画风格，可见笔触，古典艺术构图'
+    'live-action': 'phim người đóng chân thực, photorealistic, 8K, quay phim chuyên nghiệp',
+    'anime': 'anime Nhật Bản, cel-shaded, màu sắc sống động, chất lượng điện ảnh',
+    '3d-animation': 'hoạt hình 3D CGI, chất liệu chi tiết, chất lượng Pixar/DreamWorks',
+    'cyberpunk': 'thẩm mỹ cyberpunk, ánh sáng neon, công nghệ tương lai',
+    'oil-painting': 'tranh sơn dầu, nét cọ rõ, bố cục mỹ thuật cổ điển'
   };
 
   const styleDesc = stylePrompts[visualStyle] || visualStyle;
 
   const prompt = `
-你是一位专业的电影视觉导演和概念艺术家。请为以下镜头同时创作起始帧和结束帧的详细视觉描述。
+Bạn là đạo diễn hình ảnh và họa sĩ ý tưởng điện ảnh. Hãy viết mô tả chi tiết cho khung hình đầu và cuối của một cảnh quay dài 8–10 giây.
 
-## 场景信息
-**地点：** ${sceneInfo.location}
-**时间：** ${sceneInfo.time}
-**氛围：** ${sceneInfo.atmosphere}
+Thông tin cảnh:
+- Địa điểm: ${sceneInfo.location}
+- Thời gian: ${sceneInfo.time}
+- Không khí: ${sceneInfo.atmosphere}
+- Hành động: ${actionSummary}
+- Chuyển động máy: ${cameraMovement}
+- Nhân vật: ${characterInfo.length > 0 ? characterInfo.join(', ') : 'Không có nhân vật cụ thể'}
+- Phong cách: ${styleDesc}
 
-## 叙事动作
-${actionSummary}
+Yêu cầu:
+- Khung đầu thiết lập rõ bối cảnh, vị trí, biểu cảm, tư thế, ánh sáng và không gian cho hành động sắp diễn ra.
+- Khung cuối thể hiện kết quả hành động, thay đổi cảm xúc, góc nhìn và bố cục do chuyển động máy tạo ra.
+- Hai khung phải nhất quán về nhân vật, môi trường, phong cách, màu sắc và có quỹ đạo chuyển động hợp lý.
+- Mỗi mô tả là một đoạn tiếng Việt khoảng 100–150 từ, giàu hình ảnh nhưng không gắn nhãn kỹ thuật.
+- Bao gồm bố cục, tiền/trung/hậu cảnh, ánh sáng, màu sắc, chi tiết nhân vật, môi trường, chiều sâu trường ảnh và gợi ý chuyển động.
 
-## 镜头运动
-${cameraMovement}
-
-## 角色信息
-${characterInfo.length > 0 ? characterInfo.join('、') : '无特定角色'}
-
-## 视觉风格
-${styleDesc}
-
-## 任务要求
-
-你需要为这个8-10秒的镜头创作**起始帧**和**结束帧**两个关键画面的视觉描述。
-
-### 起始帧要求：
-• 建立清晰的初始场景和人物状态
-• 为即将发生的动作预留视觉空间和动势
-• 设定光影和色调基调
-• 展现角色的起始表情、姿态和位置
-• 根据镜头运动（${cameraMovement}）设置合适的初始构图
-• 营造场景氛围，让观众明确故事的起点
-
-### 结束帧要求：
-• 展现动作完成后的最终状态和结果
-• 体现镜头运动（${cameraMovement}）带来的视角和构图变化
-• 展现角色的情绪变化、最终姿态和位置
-• 可以有戏剧性的光影和色彩变化
-• 达到视觉高潮或情绪释放点
-• 为下一个镜头的衔接做准备
-
-### 两帧协调性：
-⚠️ **关键**：起始帧和结束帧必须在视觉上连贯协调
-- 保持一致的视觉风格和色调基础
-- 镜头运动轨迹要清晰可推导
-- 人物/物体的空间位置变化要合理
-- 光影变化要有逻辑性
-- 两帧描述应该能够自然串联成一个流畅的视觉叙事
-
-### 每帧必须包含的视觉元素：
-
-**1. 构图与景别**
-- 根据镜头运动确定画面框架和视角
-- 主体在画面中的位置和大小
-- 前景、中景、背景的层次关系
-
-**2. 光影与色彩**
-- 光源的方向、强度和色温
-- 主光、辅光、轮廓光的配置
-- 整体色调和色彩情绪（暖色/冷色）
-- 阴影的长度和密度
-
-**3. 角色细节**（如有）
-- 面部表情和眼神方向
-- 肢体姿态和重心分布
-- 服装状态和细节
-- 与环境的互动关系
-
-**4. 环境细节**
-- 场景的具体视觉元素
-- 环境氛围（雾气、光束、粒子等）
-- 背景的清晰度和景深效果
-- 环境对叙事的支持
-
-**5. 运动暗示**
-- 动态模糊或静止清晰
-- 运动方向的视觉引导
-- 张力和动势的体现
-
-**6. 电影感细节**
-- 画面质感和材质
-- 大气透视效果
-- 电影级的视觉特征
-
-## 输出格式
-
-请按以下JSON格式输出（注意：描述文本用中文，每个约100-150字）：
-
-\`\`\`json
+Chỉ trả về JSON hợp lệ:
 {
-  "startFrame": "起始帧的详细视觉描述...",
-  "endFrame": "结束帧的详细视觉描述..."
+  "startFrame": "Mô tả chi tiết khung hình đầu...",
+  "endFrame": "Mô tả chi tiết khung hình cuối..."
 }
-\`\`\`
-
-❌ 避免：
-- 不要在描述中包含"Visual Style:"等标签
-- 不要分段或使用项目符号
-- 不要过于技术化的术语
-- 不要描述整个动作过程，只描述画面本身
-
-✅ 追求：
-- 流畅的单段描述
-- 富有画面感的语言
-- 两帧描述相互呼应、逻辑连贯
-- 与叙事动作和镜头运动协调一致
-- 具体、可视觉化的细节
-
-请开始创作：
 `;
 
   try {
     const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 2048, 'json_object'));
     const duration = Date.now() - startTime;
     
-    // 解析JSON响应
+    // Phân tích phản hồi JSON.
     const cleaned = cleanJsonString(result);
     const parsed = JSON.parse(cleaned);
     
     if (!parsed.startFrame || !parsed.endFrame) {
-      throw new Error('AI返回的JSON格式不正确');
+      throw new Error('Định dạng JSON do AI trả về không hợp lệ');
     }
     
-    console.log('✅ AI同时优化起始帧和结束帧成功，耗时:', duration, 'ms');
+    console.log('✅ AI đã tối ưu khung đầu và khung cuối, thời gian:', duration, 'ms');
     
     return {
       startPrompt: parsed.startFrame.trim(),
       endPrompt: parsed.endFrame.trim()
     };
   } catch (error: any) {
-    console.error('❌ AI关键帧优化失败:', error);
-    throw new Error(`AI关键帧优化失败: ${error.message}`);
+    console.error('❌ AI tối ưu khung hình thất bại:', error);
+    throw new Error(`AI tối ưu khung hình thất bại: ${error.message}`);
   }
 };
 
-/**
- * AI优化单个关键帧视觉描述（兼容旧版，建议使用 optimizeBothKeyframes）
- * 根据场景信息和叙事动作，生成详细的起始帧或结束帧视觉描述
- * @param frameType - 帧类型 'start' 或 'end'
- * @param actionSummary - 叙事动作描述
- * @param cameraMovement - 镜头运动
- * @param sceneInfo - 场景信息（地点、时间、氛围）
- * @param characterInfo - 角色信息（可选）
- * @param visualStyle - 视觉风格
- * @param model - 使用的模型，默认DEFAULT_CHAT_MODEL_ID
- * @returns 返回AI优化后的关键帧视觉描述
- */
+/** Tối ưu một khung hình; được giữ để tương thích với luồng cũ. */
 export const optimizeKeyframePrompt = async (
   frameType: 'start' | 'end',
   actionSummary: string,
@@ -1897,251 +1728,115 @@ export const optimizeKeyframePrompt = async (
   visualStyle: string,
   model: string = DEFAULT_CHAT_MODEL_ID
 ): Promise<string> => {
-  console.log(`🎨 optimizeKeyframePrompt 调用 - ${frameType === 'start' ? '起始帧' : '结束帧'} - 使用模型:`, model);
+  console.log(`🎨 optimizeKeyframePrompt được gọi - ${frameType === 'start' ? 'khung đầu' : 'khung cuối'} - mô hình:`, model);
   const startTime = Date.now();
 
-  const frameLabel = frameType === 'start' ? '起始帧' : '结束帧';
+  const frameLabel = frameType === 'start' ? 'khung hình đầu' : 'khung hình cuối';
   const frameFocus = frameType === 'start' 
-    ? '初始状态、起始姿态、预备动作、场景建立'
-    : '最终状态、结束姿态、动作完成、情绪高潮';
+    ? 'trạng thái ban đầu, tư thế mở đầu, chuẩn bị hành động và thiết lập bối cảnh'
+    : 'trạng thái cuối, tư thế kết thúc, kết quả hành động và cao trào cảm xúc';
 
   const stylePrompts: { [key: string]: string } = {
-    'live-action': '真人实拍电影风格，photorealistic，8K高清，专业摄影',
-    'anime': '日本动漫风格，cel-shaded，鲜艳色彩，Studio Ghibli品质',
-    '3d-animation': '3D CGI动画，Pixar/DreamWorks风格，精细材质',
-    'cyberpunk': '赛博朋克美学，霓虹灯光，未来科技感',
-    'oil-painting': '油画风格，可见笔触，古典艺术构图'
+    'live-action': 'phim người đóng chân thực, photorealistic, 8K, quay phim chuyên nghiệp',
+    'anime': 'anime Nhật Bản, cel-shaded, màu sắc sống động, chất lượng điện ảnh',
+    '3d-animation': 'hoạt hình 3D CGI, chất liệu chi tiết, chất lượng Pixar/DreamWorks',
+    'cyberpunk': 'thẩm mỹ cyberpunk, ánh sáng neon, công nghệ tương lai',
+    'oil-painting': 'tranh sơn dầu, nét cọ rõ, bố cục mỹ thuật cổ điển'
   };
 
   const styleDesc = stylePrompts[visualStyle] || visualStyle;
 
   const prompt = `
-你是一位专业的电影视觉导演和概念艺术家。请为以下镜头的${frameLabel}创作详细的视觉描述。
+Bạn là đạo diễn hình ảnh và họa sĩ ý tưởng điện ảnh. Hãy viết mô tả cho ${frameLabel} của cảnh quay sau.
 
-## 场景信息
-**地点：** ${sceneInfo.location}
-**时间：** ${sceneInfo.time}
-**氛围：** ${sceneInfo.atmosphere}
+- Địa điểm: ${sceneInfo.location}
+- Thời gian: ${sceneInfo.time}
+- Không khí: ${sceneInfo.atmosphere}
+- Hành động: ${actionSummary}
+- Chuyển động máy: ${cameraMovement}
+- Nhân vật: ${characterInfo.length > 0 ? characterInfo.join(', ') : 'Không có nhân vật cụ thể'}
+- Phong cách: ${styleDesc}
+- Trọng tâm: ${frameFocus}
 
-## 叙事动作
-${actionSummary}
-
-## 镜头运动
-${cameraMovement}
-
-## 角色信息
-${characterInfo.length > 0 ? characterInfo.join('、') : '无特定角色'}
-
-## 视觉风格
-${styleDesc}
-
-## 任务要求
-
-作为${frameLabel}，你需要重点描述：**${frameFocus}**
-
-### ${frameType === 'start' ? '起始帧' : '结束帧'}特殊要求：
-${frameType === 'start' ? `
-• 建立清晰的初始场景和人物状态
-• 为即将发生的动作预留视觉空间和动势
-• 设定光影和色调基调
-• 展现角色的起始表情、姿态和位置
-• 根据镜头运动（${cameraMovement}）设置合适的初始构图
-• 营造场景氛围，让观众明确故事的起点
-` : `
-• 展现动作完成后的最终状态和结果
-• 体现镜头运动（${cameraMovement}）带来的视角和构图变化
-• 展现角色的情绪变化、最终姿态和位置
-• 可以有戏剧性的光影和色彩变化
-• 达到视觉高潮或情绪释放点
-• 为下一个镜头的衔接做准备
-`}
-
-### 必须包含的视觉元素：
-
-**1. 构图与景别**
-- 根据镜头运动确定画面框架和视角
-- 主体在画面中的位置和大小
-- 前景、中景、背景的层次关系
-
-**2. 光影与色彩**
-- 光源的方向、强度和色温
-- 主光、辅光、轮廓光的配置
-- 整体色调和色彩情绪（暖色/冷色）
-- 阴影的长度和密度
-
-**3. 角色细节**（如有）
-- 面部表情和眼神方向
-- 肢体姿态和重心分布
-- 服装状态和细节
-- 与环境的互动关系
-
-**4. 环境细节**
-- 场景的具体视觉元素
-- 环境氛围（雾气、光束、粒子等）
-- 背景的清晰度和景深效果
-- 环境对叙事的支持
-
-**5. 运动暗示**
-- 动态模糊或静止清晰
-- 运动方向的视觉引导
-- 张力和动势的体现
-
-**6. 电影感细节**
-- 画面质感和材质
-- 大气透视效果
-- 电影级的视觉特征
-
-## 输出格式
-
-请直接输出简洁但详细的视觉描述，约100-150字，用中文。
-
-❌ 避免：
-- 不要包含"Visual Style:"等标签
-- 不要分段或使用项目符号
-- 不要过于技术化的术语
-- 不要描述整个动作过程，只描述这一帧的画面
-
-✅ 追求：
-- 流畅的单段描述
-- 富有画面感的语言
-- 突出${frameLabel}的特点
-- 与叙事动作和镜头运动协调一致
-- 具体、可视觉化的细节
-
-请开始创作这一帧的视觉描述：
+Mô tả bằng một đoạn tiếng Việt khoảng 100–150 từ. Nêu rõ bố cục, cỡ cảnh, vị trí chủ thể, tiền/trung/hậu cảnh, nguồn sáng, nhiệt độ màu, bóng đổ, biểu cảm, tư thế, trang phục, môi trường, chiều sâu trường ảnh và gợi ý chuyển động. Chỉ mô tả hình ảnh tại đúng thời điểm này; không thêm nhãn, danh sách hay giải thích.
 `;
 
   try {
     const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 1024));
     const duration = Date.now() - startTime;
     
-    console.log(`✅ AI ${frameLabel}优化成功，耗时:`, duration, 'ms');
+    console.log(`✅ AI đã tối ưu ${frameLabel}, thời gian:`, duration, 'ms');
     
     return result.trim();
   } catch (error: any) {
-    console.error(`❌ AI ${frameLabel}优化失败:`, error);
-    throw new Error(`AI ${frameLabel}优化失败: ${error.message}`);
+    console.error(`❌ AI tối ưu ${frameLabel} thất bại:`, error);
+    throw new Error(`AI tối ưu ${frameLabel} thất bại: ${error.message}`);
   }
 };
 
-/**
- * AI生成叙事动作建议
- * 根据首帧和尾帧信息，结合高质量动作提示词参考，生成适合场景的动作
- * @param startFramePrompt - 首帧提示词
- * @param endFramePrompt - 尾帧提示词
- * @param cameraMovement - 镜头运动
- * @param model - 使用的模型，默认DEFAULT_CHAT_MODEL_ID
- * @returns 返回AI生成的动作建议
- */
+/** Gợi ý hành động nối liền khung đầu và khung cuối. */
 export const generateActionSuggestion = async (
   startFramePrompt: string,
   endFramePrompt: string,
   cameraMovement: string,
   model: string = DEFAULT_CHAT_MODEL_ID
 ): Promise<string> => {
-  console.log('🎬 generateActionSuggestion 调用 - 使用模型:', model);
+  console.log('🎬 generateActionSuggestion được gọi - mô hình:', model);
   const startTime = Date.now();
 
   const actionReferenceExamples = `
-## 高质量动作提示词参考示例
-
-### 特效魔法戏示例
-与男生飞在空中，随着抬起手臂，镜头迅速拉远到大远景，天空不断劈下密密麻麻的闪电，男生的机甲化作蓝光，形成一个压迫感拉满，巨大的魔法冲向镜头，震撼感和压迫感拉满。要求电影级运镜，有多个镜头的转换，内容动作符合要求，运镜要有大片的既视感，动作炫酷且合理，迅速且富有张力。
-
-### 打斗戏示例
-面具人和白发男生赤手空拳展开肉搏，他们会使用魔法。要求拥有李小龙、成龙级别的打斗动作。要求电影级运镜，有多个镜头的转换，内容动作符合要求，运镜要有大片的既视感，动作炫酷且合理，迅速且富有张力。
-
-### 蓄力攻击示例
-机甲蓄力，朝天空猛开几炮，震撼感和压迫感拉满。要求电影级运镜，有多个镜头的转换，内容动作符合要求，运镜要有大片的既视感，动作炫酷且合理，迅速且富有张力。
-
-### 魔法展开示例
-男生脚下的地面突然剧烈震动，一根根粗壮的石刺破土而出如同怪兽的獠牙，压迫感拉满，疯狂地朝他刺来(给石刺特写)！男生快速跃起，同时双手在胸前合拢。眼睛散发出蓝色的魔法光芒，大喊：领域展开·无尽冰原！嗡！一股肉眼可见的蓝色波纹瞬间扩散开来，所过之处，无论是地面、墙壁全都被一层厚厚的坚冰覆盖！整个仓库还是废弃的集装箱，瞬间变成了一片光滑的溜冰场！石刺也被冻住。要求电影级运镜，有多个镜头的转换，内容动作符合要求，运镜要有大片的既视感，动作炫酷且合理，迅速且富有张力。
-
-### 快速移动示例
-镜头1：天台左侧中景，郑一剑初始站立，背后是夜色笼罩下灯火闪烁的城市，圆月高悬。他保持着一种蓄势待发的静态站立姿态，周身氛围沉静。
-镜头2：郑一剑消失："模糊拖影"特效与空气扰动，画面瞬间触发"模糊拖影"特效，身影如被快速拉扯的幻影般，以极快的速度淡化、消失，原地只残留极其轻微的空气扰动波纹。
-镜头3：镜头急速移至曲飞面前，从郑一剑消失的位置，以迅猛的速度横向移动，画面里天台的栏杆、地面等景物飞速掠过，产生强烈的动态模糊效果。最终镜头定格在曲飞面前，脸上露出明显的惊讶与警惕。
-镜头4：郑一剑突然出现准备出拳，毫无征兆地出现在画面中央，身体大幅度前倾，呈现出极具张力的准备出拳姿势，右手紧紧握拳，带起的劲风使得衣角大幅度向后飘动。
-
-### 能量爆发示例
-镜头在倾盆大雨中快速抖动向前推进，对准在黑暗海平面中屹立不动的黑影。几道闪电快速划过，轮廓在雨幕中若隐若现。突然，一股巨大的雷暴能量在他身后快速汇聚，光芒猛烈爆发。镜头立刻快速向地面猛冲，并同时向上极度仰起，锁定他被能量光芒完全照亮的、张开双臂的威严姿态。
+Tham khảo phong cách: mô tả ngắn gọn nhưng giàu động lực, có một điểm nhấn thị giác rõ ràng, chuyển động máy điện ảnh và hành động khả thi trong 8–10 giây. Với cảnh hành động, ưu tiên nhịp tăng tốc–cao trào–hạ nhịp; với cảnh cảm xúc, ưu tiên vi biểu cảm, cử chỉ và thay đổi ánh sáng có chủ đích.
 `;
 
   const prompt = `
-你是一位专业的电影动作导演和叙事顾问。请根据提供的首帧和尾帧信息，结合镜头运动，设计一个既符合叙事逻辑又充满视觉冲击力的动作场景。
+Bạn là đạo diễn hành động và cố vấn kể chuyện điện ảnh. Hãy thiết kế hành động nối tự nhiên từ khung đầu đến khung cuối.
 
-## 重要约束
-⏱️ **时长限制**：这是一个8-10秒的单镜头场景，请严格控制动作复杂度
-📹 **镜头要求**：这是一个连续镜头，不要设计多个镜头切换（除非绝对必要，最多2-3个快速切换）
-
-## 输入信息
-**首帧描述：** ${startFramePrompt}
-**尾帧描述：** ${endFramePrompt}
-**镜头运动：** ${cameraMovement}
+- Khung đầu: ${startFramePrompt}
+- Khung cuối: ${endFramePrompt}
+- Chuyển động máy: ${cameraMovement}
 
 ${actionReferenceExamples}
 
-## 任务要求
-1. **时长适配**：动作设计必须在8-10秒内完成，避免过于复杂的多步骤动作
-2. **单镜头思维**：优先设计一个连贯的镜头内动作，而非多镜头组合
-3. **自然衔接**：动作需要自然地从首帧过渡到尾帧，确保逻辑合理
-4. **风格借鉴**：参考上述示例的风格和语言，但要简化步骤：
-   - 富有张力但简洁的描述语言
-   - 强调关键的视觉冲击点
-   - 电影级的运镜描述但避免过度分解
-5. **创新适配**：不要重复已有提示词，结合当前场景创新
-6. **镜头语言**：根据提供的镜头运动（${cameraMovement}），设计相应的运镜方案
-
-## 输出格式
-请直接输出动作描述文本，无需JSON格式或额外标记。内容应包含：
-- 简洁的单镜头动作场景描述（不要"镜头1、镜头2..."的分段，除非场景确实需要快速切换）
-- 关键的运镜说明（推拉摇移等）
-- 核心的视觉特效或情感氛围
-- 确保描述具有电影感但控制篇幅
-
-❌ 避免：过多的镜头切换、冗长的分步描述、超过10秒的复杂动作序列
-✅ 追求：精炼、有冲击力、符合8-10秒时长的单镜头动作
-
-请开始创作：
+Yêu cầu:
+1. Hành động hoàn tất trong 8–10 giây và có logic không gian rõ ràng.
+2. Ưu tiên một cảnh quay liên tục; chỉ dùng tối đa 2–3 cú cắt nhanh khi thực sự cần.
+3. Mô tả điểm nhấn hình ảnh, hiệu ứng hoặc chuyển biến cảm xúc và cách máy quay hỗ trợ chúng.
+4. Không lặp lại nguyên văn prompt đầu/cuối, không chia thành “Cảnh 1, Cảnh 2”.
+5. Chỉ trả về một đoạn mô tả hành động bằng tiếng Việt, súc tích và có tính điện ảnh.
 `;
 
   try {
     const result = await retryOperation(() => chatCompletion(prompt, model, 0.8, 2048));
     const duration = Date.now() - startTime;
     
-    console.log('✅ AI动作生成成功，耗时:', duration, 'ms');
+    console.log('✅ AI đã tạo gợi ý hành động, thời gian:', duration, 'ms');
     
     return result.trim();
   } catch (error: any) {
-    console.error('❌ AI动作生成失败:', error);
-    throw new Error(`AI动作生成失败: ${error.message}`);
+    console.error('❌ AI tạo gợi ý hành động thất bại:', error);
+    throw new Error(`AI tạo gợi ý hành động thất bại: ${error.message}`);
   }
 };
 
-/**
- * 将视频提示词改写为更易通过平台内容审核的版本（弱化暴力、血腥、敏感表述，保留氛围与剧情）
- * @param videoPrompt - 原始视频生成提示词（完整段落）
- * @param model - 使用的对话模型 id，默认使用当前激活的 chat 模型
- * @returns 改写后的提示词，可直接用于再次请求视频生成
- */
+/** Viết lại prompt video theo hướng an toàn hơn nhưng giữ ý đồ điện ảnh. */
 export const rewritePromptForModeration = async (
   videoPrompt: string,
   model?: string
 ): Promise<string> => {
   const chatModel = model || getActiveChatModel()?.apiModel || getActiveChatModel()?.id || 'gpt-4o';
   const prompt = `
-你是一位专业的影视剧本审稿与合规顾问。下面是一段用于 AI 视频生成的镜头描述，因涉及暴力、血腥或敏感表述被平台内容审核拦截。
+Bạn là biên tập viên kịch bản và cố vấn an toàn nội dung. Prompt video dưới đây đã bị bộ lọc nội dung chặn.
 
-请在不改变场景氛围、剧情走向和镜头意图的前提下，对描述进行「温和化」改写：
-- 将直接描写暴力、血腥、尸骨、残肢等改为含蓄或氛围化表述（如：古战场遗迹、荒凉、肃杀、风沙中的残破兵甲等）
-- 保留：时间、地点、角色动作、镜头运动、光影与情绪
-- 输出语言与原文一致（中文则中文）
-- 只输出改写后的完整提示词正文，不要加「改写如下」等前缀或任何解释
+Hãy viết lại theo hướng nhẹ nhàng hơn mà không thay đổi không khí, diễn biến và ý đồ máy quay:
+- Thay mô tả trực diện về bạo lực, máu me, thi thể hoặc thương tích bằng ngôn ngữ gợi tả, không đồ họa.
+- Giữ thời gian, địa điểm, hành động, chuyển động máy, ánh sáng và cảm xúc.
+- Giữ nguyên ngôn ngữ của văn bản gốc.
+- Chỉ xuất prompt hoàn chỉnh đã viết lại, không thêm tiền tố hoặc giải thích.
 
-## 原始提示词
+Prompt gốc:
 ${videoPrompt}
 
-## 改写后的提示词（仅正文）
+Prompt đã viết lại:
 `;
   const result = await retryOperation(() => chatCompletion(prompt, chatModel, 0.5, 4096));
   return result.trim();
@@ -2164,15 +1859,15 @@ export const splitShotIntoSubShots = async (
   visualStyle: string,
   model: string = DEFAULT_CHAT_MODEL_ID
 ): Promise<{ subShots: any[] }> => {
-  console.log('✂️ splitShotIntoSubShots 调用 - 使用模型:', model);
+  console.log('✂️ splitShotIntoSubShots được gọi - mô hình:', model);
   const startTime = Date.now();
 
   const stylePrompts: { [key: string]: string } = {
-    'live-action': '真人实拍电影风格',
-    'anime': '日本动漫风格',
-    '3d-animation': '3D CGI动画风格',
-    'cyberpunk': '赛博朋克风格',
-    'oil-painting': '油画艺术风格'
+    'live-action': 'phim người đóng chân thực',
+    'anime': 'anime Nhật Bản',
+    '3d-animation': 'hoạt hình 3D CGI',
+    'cyberpunk': 'thẩm mỹ cyberpunk',
+    'oil-painting': 'mỹ thuật sơn dầu'
   };
 
   const styleDesc = stylePrompts[visualStyle] || visualStyle;
@@ -2349,70 +2044,107 @@ ${shot.dialogue ? `**对白：** "${shot.dialogue}"
 请开始拆分，直接输出JSON格式（不要包含markdown代码块标记）：
 `;
 
+  const localizedPrompt = `
+Bạn là họa sĩ storyboard và đạo diễn điện ảnh. Hãy chia cảnh quay thô thành các cảnh quay con rõ ràng, chuyên nghiệp.
+
+Thông tin nguồn:
+- Địa điểm: ${sceneInfo.location}
+- Thời gian: ${sceneInfo.time}
+- Không khí: ${sceneInfo.atmosphere}
+- Nhân vật: ${characterNames.length > 0 ? characterNames.join(', ') : 'Không có nhân vật cụ thể'}
+- Phong cách: ${styleDesc}
+- Chuyển động máy ban đầu: ${shot.cameraMovement || 'Chưa chỉ định'}
+- Hành động: ${shot.actionSummary}
+${shot.dialogue ? `- Thoại: "${shot.dialogue}"` : ''}
+
+Yêu cầu:
+1. Mỗi cảnh con chỉ có một góc nhìn hoặc một chi tiết hành động, dài khoảng 2–4 giây; tổng thời lượng 8–10 giây.
+2. Kết hợp hợp lý toàn cảnh, trung cảnh, cận cảnh và đặc tả; bảo đảm chuyển tiếp liên tục.
+3. Nếu có thoại, đặt toàn bộ câu thoại vào cảnh con phù hợp nhất và nêu rõ trong actionSummary.
+4. Mỗi cảnh con phải có shotSize, cameraMovement, actionSummary, visualFocus và hai keyframes loại start/end.
+5. Mỗi visualPrompt dài khoảng 100–150 từ tiếng Việt, gồm bố cục, nhân vật, ánh sáng, màu sắc, chiều sâu trường ảnh và phong cách ${styleDesc}.
+
+Chỉ trả về JSON hợp lệ theo cấu trúc:
+{
+  "subShots": [
+    {
+      "shotSize": "Cỡ cảnh",
+      "cameraMovement": "Chuyển động máy",
+      "actionSummary": "Mô tả hành động",
+      "visualFocus": "Trọng tâm hình ảnh",
+      "keyframes": [
+        { "type": "start", "visualPrompt": "Mô tả khung đầu" },
+        { "type": "end", "visualPrompt": "Mô tả khung cuối" }
+      ]
+    }
+  ]
+}
+`;
+
   try {
-    const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 4096, 'json_object'));
+    const result = await retryOperation(() => chatCompletion(localizedPrompt, model, 0.7, 4096, 'json_object'));
     const duration = Date.now() - startTime;
     
-    // 清理和解析JSON
+    // Làm sạch và phân tích JSON.
     const cleaned = cleanJsonString(result);
     const parsed = JSON.parse(cleaned);
     
     if (!parsed.subShots || !Array.isArray(parsed.subShots) || parsed.subShots.length === 0) {
-      throw new Error('AI返回的JSON格式不正确或子镜头数组为空');
+      throw new Error('JSON do AI trả về không hợp lệ hoặc mảng cảnh quay con đang trống');
     }
     
-    // 验证每个子镜头包含必需字段
+    // Xác thực các trường bắt buộc của mỗi cảnh quay con.
     for (const subShot of parsed.subShots) {
       if (!subShot.shotSize || !subShot.cameraMovement || !subShot.actionSummary || !subShot.visualFocus) {
-        throw new Error('子镜头缺少必需字段（shotSize、cameraMovement、actionSummary、visualFocus）');
+        throw new Error('Cảnh quay con thiếu shotSize, cameraMovement, actionSummary hoặc visualFocus');
       }
       
-      // 验证关键帧数组
+      // Xác thực mảng khung hình chính.
       if (!subShot.keyframes || !Array.isArray(subShot.keyframes) || subShot.keyframes.length === 0) {
-        throw new Error('子镜头缺少关键帧数组（keyframes）');
+        throw new Error('Cảnh quay con thiếu mảng keyframes');
       }
       
-      // 验证每个关键帧
+      // Xác thực từng khung hình.
       for (const kf of subShot.keyframes) {
         if (!kf.type || !kf.visualPrompt) {
-          throw new Error('关键帧缺少必需字段（type、visualPrompt）');
+          throw new Error('Khung hình thiếu type hoặc visualPrompt');
         }
         if (kf.type !== 'start' && kf.type !== 'end') {
-          throw new Error('关键帧type必须是"start"或"end"');
+          throw new Error('type của khung hình phải là "start" hoặc "end"');
         }
       }
     }
     
-    console.log(`✅ 镜头拆分成功，生成 ${parsed.subShots.length} 个子镜头，耗时:`, duration, 'ms');
+    console.log(`✅ Đã tạo ${parsed.subShots.length} cảnh quay con, thời gian:`, duration, 'ms');
     
-    // 记录成功日志
+    // Ghi nhật ký thành công.
     addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: `shot-split-${shot.id}-${Date.now()}`,
-      resourceName: `镜头拆分 - ${shot.actionSummary.substring(0, 30)}...`,
+      resourceName: `Tách cảnh quay - ${shot.actionSummary.substring(0, 30)}...`,
       status: 'success',
       model: model,
-      prompt: prompt.substring(0, 200) + '...',
+      prompt: localizedPrompt.substring(0, 200) + '...',
       duration: duration
     });
     
     return parsed;
   } catch (error: any) {
-    console.error('❌ 镜头拆分失败:', error);
+    console.error('❌ Tách cảnh quay thất bại:', error);
     
-    // 记录失败日志
+    // Ghi nhật ký thất bại.
     addRenderLogWithTokens({
       type: 'script-parsing',
       resourceId: `shot-split-${shot.id}-${Date.now()}`,
-      resourceName: `镜头拆分 - ${shot.actionSummary.substring(0, 30)}...`,
+      resourceName: `Tách cảnh quay - ${shot.actionSummary.substring(0, 30)}...`,
       status: 'failed',
       model: model,
-      prompt: prompt.substring(0, 200) + '...',
+      prompt: localizedPrompt.substring(0, 200) + '...',
       error: error.message,
       duration: Date.now() - startTime
     });
     
-    throw new Error(`镜头拆分失败: ${error.message}`);
+    throw new Error(`Tách cảnh quay thất bại: ${error.message}`);
   }
 };
 
@@ -2433,19 +2165,19 @@ export const enhanceKeyframePrompt = async (
   frameType: 'start' | 'end',
   model: string = DEFAULT_CHAT_MODEL_ID
 ): Promise<string> => {
-  console.log(`🎨 enhanceKeyframePrompt 调用 - ${frameType === 'start' ? '起始帧' : '结束帧'} - 使用模型:`, model);
+  console.log(`🎨 enhanceKeyframePrompt được gọi - ${frameType === 'start' ? 'khung đầu' : 'khung cuối'} - mô hình:`, model);
   const startTime = Date.now();
 
   const stylePrompts: { [key: string]: string } = {
-    'live-action': '真人实拍电影风格，photorealistic，8K Ultra HD',
-    'anime': '日本动漫风格，cel-shaded，高饱和度色彩',
-    '3d-animation': '3D CGI动画，Pixar级别渲染质量',
-    'cyberpunk': '赛博朋克美学，霓虹灯光，未来科技',
-    'oil-painting': '油画艺术风格，可见笔触，古典构图'
+    'live-action': 'phim người đóng chân thực, photorealistic, 8K Ultra HD',
+    'anime': 'anime Nhật Bản, cel-shaded, màu sắc bão hòa',
+    '3d-animation': 'hoạt hình 3D CGI, chất lượng kết xuất điện ảnh',
+    'cyberpunk': 'thẩm mỹ cyberpunk, ánh sáng neon, công nghệ tương lai',
+    'oil-painting': 'mỹ thuật sơn dầu, nét cọ rõ, bố cục cổ điển'
   };
 
   const styleDesc = stylePrompts[visualStyle] || visualStyle;
-  const frameLabel = frameType === 'start' ? '起始帧' : '结束帧';
+  const frameLabel = frameType === 'start' ? 'khung hình đầu' : 'khung hình cuối';
 
   const prompt = `
 你是一位资深的电影摄影指导和视觉特效专家。请基于以下基础提示词,生成一个包含详细技术规格和视觉细节的专业级${frameLabel}描述。
@@ -2524,20 +2256,40 @@ ${frameType === 'start' ? '建立清晰的初始状态、起始姿态、为后�
 请开始创作:
 `;
 
+  const localizedPrompt = `
+Bạn là giám đốc hình ảnh và chuyên gia hiệu ứng thị giác. Hãy nâng cấp prompt cơ sở thành mô tả ${frameLabel} chuyên nghiệp bằng tiếng Việt.
+
+Prompt cơ sở:
+${basePrompt}
+
+Phong cách: ${styleDesc}
+Chuyển động máy: ${cameraMovement}
+Mục tiêu khung hình: ${frameType === 'start' ? 'thiết lập trạng thái ban đầu và chừa không gian cho chuyển động tiếp theo' : 'thể hiện kết quả hành động và cao trào cảm xúc'}
+
+Hãy bổ sung có cấu trúc:
+- Thông số hình ảnh: độ phân giải, ngôn ngữ ống kính, chiều sâu trường ảnh và chiến lược lấy nét.
+- Ánh sáng, phân cấp màu, nhiệt độ màu, chất liệu và hiệu ứng khí quyển.
+- Nếu có nhân vật tham chiếu, giữ tuyệt đối khuôn mặt, tóc, vóc dáng và trang phục; chỉ thay đổi biểu cảm/tư thế hợp lý.
+- Lớp tiền cảnh, trung cảnh, hậu cảnh, phối cảnh và chi tiết kể chuyện của môi trường.
+- Sắc thái cảm xúc, nhịp thị giác, độ rõ chủ thể, tính nhất quán ánh sáng và bố cục.
+
+Trả về phần bổ sung rõ ràng, dễ đọc; không nhắc lại yêu cầu.
+`;
+
   try {
-    const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 3072));
+    const result = await retryOperation(() => chatCompletion(localizedPrompt, model, 0.7, 3072));
     const duration = Date.now() - startTime;
     
-    console.log(`✅ AI ${frameLabel}增强成功，耗时:`, duration, 'ms');
+    console.log(`✅ AI đã tăng cường ${frameLabel}, thời gian:`, duration, 'ms');
     
-    // 将基础提示词和增强内容组合
+    // Kết hợp prompt cơ sở và phần tăng cường.
     return `${basePrompt}
 
 ${result.trim()}`;
   } catch (error: any) {
-    console.error(`❌ AI ${frameLabel}增强失败:`, error);
-    // 如果AI增强失败,返回基础提示词
-    console.warn('⚠️ 回退到基础提示词');
+    console.error(`❌ AI tăng cường ${frameLabel} thất bại:`, error);
+    // Trả về prompt cơ sở khi tăng cường thất bại.
+    console.warn('⚠️ Đang quay lại prompt cơ sở');
     return basePrompt;
   }
 };

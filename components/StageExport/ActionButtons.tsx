@@ -31,7 +31,7 @@ const ActionButtons: React.FC<Props> = ({
         className={completedShotsCount > 0 ? STYLES.button.primary : STYLES.button.disabled}
       >
         <Play className="w-4 h-4" />
-        Preview Video ({completedShotsCount}/{totalShots})
+        Xem trước video ({completedShotsCount}/{totalShots})
       </button>
 
       <button 
@@ -50,15 +50,15 @@ const ActionButtons: React.FC<Props> = ({
         ) : (
           <Download className="w-4 h-4" />
         )}
-        {isDownloading ? `${phase} ${downloadProgress}%` : 'Download Master (.mp4)'}
+        {isDownloading ? `${phase} ${downloadProgress}%` : 'Tải bản chính (.mp4)'}
       </button>
       
       <button 
         className={STYLES.button.tertiary}
-        onClick={() => showAlert('暂未开发', { type: 'info', title: '提示' })}
+        onClick={() => showAlert('Tính năng đang được phát triển', { type: 'info', title: 'Thông báo' })}
       >
         <FileVideo className="w-4 h-4" />
-        Export EDL / XML
+        Xuất EDL / XML
       </button>
     </div>
   );

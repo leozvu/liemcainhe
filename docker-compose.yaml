@@ -1,18 +1,18 @@
 services:
-  ai-manga-studio:
+  egoric-studio:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ai-manga-studio:latest
-    container_name: ai-manga-studio-app
+    image: egoric-studio:latest
+    container_name: egoric-studio-app
     ports:
       - "3005:80"
     environment:
       - NODE_ENV=production
     restart: unless-stopped
     networks:
-      - ai-manga-studio-network
+      - egoric-studio-network
 
 networks:
-  ai-manga-studio-network:
+  egoric-studio-network:
     driver: bridge

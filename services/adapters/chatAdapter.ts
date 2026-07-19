@@ -47,12 +47,12 @@ export const callChatApi = async (
 ): Promise<string> => {
   const activeModel = model || getActiveChatModel();
   if (!activeModel) {
-    throw new Error('没有可用的对话模型');
+    throw new Error('Không có mô hình hội thoại khả dụng');
   }
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('API Key 缺失，请在设置中配置 API Key');
+    throw new ApiKeyError('Thiếu API Key. Hãy cấu hình API Key trong phần cài đặt');
   }
   
   const apiBase = getApiBaseUrlForModel(activeModel.id);
@@ -112,7 +112,7 @@ export const callChatApi = async (
       });
       
       if (!res.ok) {
-        let errorMessage = `HTTP 错误: ${res.status}`;
+        let errorMessage = `Lỗi HTTP: ${res.status}`;
         try {
           const errorData = await res.json();
           errorMessage = errorData.error?.message || errorMessage;
@@ -140,7 +140,7 @@ export const callChatApi = async (
     clearTimeout(timeoutId);
     
     if (error.name === 'AbortError') {
-      throw new Error(`请求超时 (${timeout / 1000}秒)`);
+      throw new Error(`Yêu cầu hết thời gian chờ (${timeout / 1000} giây)`);
     }
     
     throw error;
@@ -159,14 +159,14 @@ export const verifyApiKey = async (apiKey: string, baseUrl?: string): Promise<{ 
       },
       body: JSON.stringify({
         model: DEFAULT_CHAT_MODEL_ID,
-        messages: [{ role: 'user', content: '仅返回1' }],
+        messages: [{ role: 'user', content: 'Chỉ trả về số 1' }],
         temperature: 0.1,
         max_tokens: 5,
       }),
     });
 
     if (!response.ok) {
-      let errorMessage = `验证失败: ${response.status}`;
+      let errorMessage = `Xác thực thất bại: ${response.status}`;
       try {
         const errorData = await response.json();
         errorMessage = errorData.error?.message || errorMessage;
@@ -178,11 +178,11 @@ export const verifyApiKey = async (apiKey: string, baseUrl?: string): Promise<{ 
 
     const data = await response.json();
     if (data.choices?.[0]?.message?.content !== undefined) {
-      return { success: true, message: 'API Key 验证成功' };
+      return { success: true, message: 'Xác thực API Key thành công' };
     } else {
-      return { success: false, message: '返回格式异常' };
+      return { success: false, message: 'Định dạng phản hồi không hợp lệ' };
     }
   } catch (error: any) {
-    return { success: false, message: error.message || '网络错误' };
+    return { success: false, message: error.message || 'Lỗi mạng' };
   }
 };

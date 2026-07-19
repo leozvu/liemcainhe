@@ -1,4 +1,4 @@
-// Author: forsearch | Updated: 2026-04-30
+// White-label edition by Egoric Agency
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import StageScript from './components/StageScript';
@@ -14,7 +14,7 @@ import { Save, CheckCircle, X } from 'lucide-react';
 import { saveProjectToDB } from './services/storageService';
 import { setGlobalApiKey } from './services/geminiService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
-const LOGO_URL = 'https://www.gitcc.com/uploads/-/system/appearance/header_logo/1/gitpp.png';
+const LOGO_URL = '/egoric-mark.svg';
 
 function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
@@ -86,7 +86,7 @@ function App() {
       if (event.error?.name === 'ApiKeyError' || 
           event.error?.message?.includes('API Key missing') ||
           event.error?.message?.includes('AntSK API Key')) {
-        console.warn('🔐 检测到 API Key 错误，请配置 API Key...');
+        console.warn('🔐 Phát hiện lỗi API Key. Vui lòng cấu hình lại API Key...');
         setShowModelConfig(true);
         event.preventDefault();
       }
@@ -96,7 +96,7 @@ function App() {
       if (event.reason?.name === 'ApiKeyError' ||
           event.reason?.message?.includes('API Key missing') ||
           event.reason?.message?.includes('AntSK API Key')) {
-        console.warn('🔐 检测到 API Key 错误，请配置 API Key...');
+        console.warn('🔐 Phát hiện lỗi API Key. Vui lòng cấu hình lại API Key...');
         setShowModelConfig(true);
         event.preventDefault();
       }
@@ -208,7 +208,7 @@ function App() {
       case 'prompts':
         return <StagePrompts project={project} updateProject={updateProject} />;
       default:
-        return <div className="text-white">未知阶段</div>;
+        return <div className="text-white">Giai đoạn không xác định</div>;
     }
   };
 
@@ -217,18 +217,18 @@ function App() {
       <div className="h-screen bg-[#050505] flex items-center justify-center p-6">
         <div className="max-w-md text-center space-y-6">
           <img src={LOGO_URL} alt="Logo" className="w-20 h-20 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">AI 漫剧工场</h1>
+          <h1 className="text-2xl font-bold text-white mb-2">Egoric Studio</h1>
           <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-8">
             <p className="text-zinc-400 text-base leading-relaxed mb-4">
-              为了获得最佳体验，请使用 PC 端浏览器访问。
+              Để có trải nghiệm tốt nhất, vui lòng truy cập bằng trình duyệt trên máy tính.
             </p>
             <p className="text-zinc-600 text-sm">
-              本应用需要较大的屏幕空间和桌面级浏览器环境才能正常运行。
+              Ứng dụng cần không gian màn hình lớn và môi trường trình duyệt desktop để hoạt động ổn định.
             </p>
           </div>
           <div className="text-xs text-zinc-700">
-            <a href="https://www.gitcc.com/" target="_blank" rel="noreferrer" className="hover:text-indigo-400 transition-colors">
-              访问产品首页了解更多
+            <a href="https://github.com/leozvu/liemcainhe" target="_blank" rel="noreferrer" className="hover:text-indigo-400 transition-colors">
+              Tìm hiểu thêm về Egoric Studio
             </a>
           </div>
         </div>
@@ -280,12 +280,12 @@ function App() {
              {saveStatus === 'saving' ? (
                <>
                  <Save className="w-3 h-3 animate-pulse" />
-                 保存中...
+                 Đang lưu...
                </>
              ) : (
                <>
                  <CheckCircle className="w-3 h-3 text-emerald-400" />
-                 已保存
+                 Đã lưu
                </>
              )}
           </div>

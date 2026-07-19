@@ -46,28 +46,28 @@ export const buildKeyframePrompt = (
   const cameraGuide = getCameraMovementCompositionGuide(cameraMovement, frameType);
   
   const frameSpecificGuide = frameType === 'start' 
-    ? `【起始帧要求】建立清晰的初始状态和场景氛围,人物/物体的起始位置、姿态和表情要明确,为后续运动预留视觉空间和动势。`
-    : `【结束帧要求】展现动作完成后的最终状态,人物/物体的终点位置、姿态和情绪变化,体现镜头运动带来的视角变化。`;
+    ? `[YÊU CẦU KHUNG HÌNH BẮT ĐẦU] Thiết lập trạng thái ban đầu và không khí bối cảnh rõ ràng. Vị trí, tư thế và biểu cảm ban đầu của nhân vật/vật thể phải cụ thể, chừa không gian thị giác cho chuyển động tiếp theo.`
+    : `[YÊU CẦU KHUNG HÌNH KẾT THÚC] Thể hiện trạng thái cuối sau khi hành động hoàn thành, gồm vị trí, tư thế và thay đổi cảm xúc của nhân vật/vật thể, đồng thời phản ánh góc nhìn mới do chuyển động máy quay.`;
 
-  const characterConsistencyGuide = `【角色一致性要求】CHARACTER CONSISTENCY REQUIREMENTS - CRITICAL
-⚠️ 如果提供了角色参考图,画面中的人物外观必须严格遵循参考图:
-• 面部特征: 五官轮廓、眼睛颜色和形状、鼻子和嘴巴的结构必须完全一致
-• 发型发色: 头发的长度、颜色、质感、发型样式必须保持一致
-• 服装造型: 服装的款式、颜色、材质、配饰必须与参考图匹配
-• 体型特征: 身材比例、身高体型必须保持一致
-⚠️ 这是最高优先级要求,不可妥协!`;
+  const characterConsistencyGuide = `[YÊU CẦU NHẤT QUÁN NHÂN VẬT — TỐI QUAN TRỌNG]
+Nếu có ảnh tham chiếu nhân vật, ngoại hình trong khung hình phải tuân thủ nghiêm ngặt ảnh đó:
+• Khuôn mặt: đường nét, màu và hình dạng mắt, cấu trúc mũi và miệng phải giống hệt
+• Tóc: chiều dài, màu, chất tóc và kiểu tóc phải nhất quán
+• Trang phục: kiểu dáng, màu sắc, chất liệu và phụ kiện phải khớp ảnh tham chiếu
+• Hình thể: tỷ lệ cơ thể, chiều cao và thể trạng phải được giữ nguyên
+Đây là yêu cầu ưu tiên cao nhất, không được thỏa hiệp.`;
 
   return `${basePrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【视觉风格】Visual Style
+[PHONG CÁCH HÌNH ẢNH]
 ${stylePrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【镜头运动】Camera Movement
-${cameraMovement} (${frameType === 'start' ? 'Initial Frame 起始帧' : 'Final Frame 结束帧'})
+[CHUYỂN ĐỘNG MÁY QUAY]
+${cameraMovement} (${frameType === 'start' ? 'Khung hình bắt đầu' : 'Khung hình kết thúc'})
 
-【构图指导】Composition Guide
+[HƯỚNG DẪN BỐ CỤC]
 ${cameraGuide}
 
 ${frameSpecificGuide}
@@ -95,7 +95,7 @@ export const buildKeyframePromptWithAI = async (
     const enhanced = await enhanceKeyframePrompt(basicPrompt, visualStyle, cameraMovement, frameType);
     return enhanced;
   } catch (error) {
-    console.error('AI增强失败,使用基础提示词:', error);
+    console.error('Không thể tăng cường bằng AI, chuyển sang prompt cơ bản:', error);
     return basicPrompt;
   }
 };
@@ -106,14 +106,8 @@ export const buildVideoPrompt = (
   videoModel: 'sora-2' | 'veo' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait' | string,
   language: string
 ): string => {
-  const isChinese = language === '中文' || language === 'Chinese';
-  
   if (videoModel === 'sora-2' || videoModel.startsWith('doubao-seedance')) {
-    const template = isChinese 
-      ? VIDEO_PROMPT_TEMPLATES.sora2.chinese 
-      : VIDEO_PROMPT_TEMPLATES.sora2.english;
-    
-    return template
+    return VIDEO_PROMPT_TEMPLATES.sora2.standard
       .replace('{actionSummary}', actionSummary)
       .replace('{cameraMovement}', cameraMovement)
       .replace('{language}', language);
@@ -121,7 +115,7 @@ export const buildVideoPrompt = (
     return VIDEO_PROMPT_TEMPLATES.veo.simple
       .replace('{actionSummary}', actionSummary)
       .replace('{cameraMovement}', cameraMovement)
-      .replace('{language}', isChinese ? '中文' : language);
+      .replace('{language}', language);
   }
 };
 
@@ -148,7 +142,7 @@ export const convertImageToBase64 = (file: File): Promise<string> => {
       resolve(event.target?.result as string);
     };
     reader.onerror = () => {
-      reject(new Error('读取文件失败'));
+      reject(new Error('Không thể đọc tệp'));
     };
     reader.readAsDataURL(file);
   });
@@ -236,7 +230,7 @@ export const replaceShotWithSubShots = (
   const originalIndex = shots.findIndex(s => s.id === originalShotId);
   
   if (originalIndex === -1) {
-    console.error(`未找到ID为 ${originalShotId} 的镜头`);
+    console.error(`Không tìm thấy cảnh quay có ID ${originalShotId}`);
     return shots;
   }
   

@@ -31,7 +31,7 @@ export const GRID_LAYOUTS = {
 };
 
 export const DEFAULTS = {
-  language: '中文',
+  language: 'Vietnamese',
   visualStyle: 'live-action',
   genre: 'Cinematic',
   modelVersion: 'gpt-5.2',
@@ -50,6 +50,7 @@ export const REGIONAL_FEATURES = {
 };
 
 export const LANGUAGE_MAP: Record<string, keyof typeof REGIONAL_FEATURES> = {
+  'Vietnamese': 'Vietnamese',
   '中文': 'Chinese',
   'Chinese': 'Chinese',
   '日本語': 'Japanese',

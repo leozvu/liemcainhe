@@ -34,16 +34,16 @@ const SecondaryOptions: React.FC<Props> = ({
           isDownloading ? 'text-cyan-300' : 'text-slate-600 group-hover:text-cyan-300'
         }`} />
         <div>
-          <h4 className="text-sm font-bold text-white mb-1">Source Assets</h4>
-          <p className="text-[10px] text-zinc-500">Download all generated images and raw video clips.</p>
+          <h4 className="text-sm font-bold text-white mb-1">Tài nguyên gốc</h4>
+          <p className="text-[10px] text-zinc-500">Tải toàn bộ hình ảnh và video thô đã tạo.</p>
         </div>
       </div>
 
       <div className={STYLES.card.base}>
         <Share2 className="w-5 h-5 text-slate-600 group-hover:text-cyan-300 mb-4 transition-colors" />
         <div>
-          <h4 className="text-sm font-bold text-white mb-1">Share Project</h4>
-          <p className="text-[10px] text-zinc-500">Create a view-only link for client review.</p>
+          <h4 className="text-sm font-bold text-white mb-1">Chia sẻ dự án</h4>
+          <p className="text-[10px] text-zinc-500">Tạo liên kết chỉ xem để khách hàng duyệt.</p>
         </div>
       </div>
 
@@ -53,8 +53,8 @@ const SecondaryOptions: React.FC<Props> = ({
       >
         <Clock className="w-5 h-5 text-slate-600 group-hover:text-cyan-300 mb-4 transition-colors" />
         <div>
-          <h4 className="text-sm font-bold text-white mb-1">Render Logs</h4>
-          <p className="text-[10px] text-zinc-500">View generation history and status.</p>
+          <h4 className="text-sm font-bold text-white mb-1">Nhật ký render</h4>
+          <p className="text-[10px] text-zinc-500">Xem lịch sử tạo nội dung và trạng thái.</p>
         </div>
       </div>
     </div>

@@ -41,7 +41,7 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, title, 
       
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
         <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
-          <p className="text-white/60 text-xs">点击任意位置关闭</p>
+          <p className="text-white/60 text-xs">Nhấn vào bất kỳ đâu để đóng</p>
         </div>
       </div>
     </div>

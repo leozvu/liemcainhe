@@ -20,12 +20,12 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
   const [verifyStatus, setVerifyStatus] = useState<'idle' | 'success' | 'error'>(
     currentApiKey ? 'success' : 'idle'
   );
-  const [verifyMessage, setVerifyMessage] = useState(currentApiKey ? '已配置' : '');
+  const [verifyMessage, setVerifyMessage] = useState(currentApiKey ? 'Đã cấu hình' : '');
 
   const handleVerifyAndContinue = async () => {
     if (!inputKey.trim()) {
       setVerifyStatus('error');
-      setVerifyMessage('请输入 API Key');
+      setVerifyMessage('Vui lòng nhập API Key');
       return;
     }
 
@@ -37,7 +37,7 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
       
       if (result.success) {
         setVerifyStatus('success');
-        setVerifyMessage('验证成功！');
+        setVerifyMessage('Xác thực thành công!');
         onSaveApiKey(inputKey.trim());
         // 短暂延迟后进入下一步
         setTimeout(() => {
@@ -49,7 +49,7 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
       }
     } catch (error: any) {
       setVerifyStatus('error');
-      setVerifyMessage(error.message || '验证出错');
+      setVerifyMessage(error.message || 'Xác thực thất bại');
     } finally {
       setIsVerifying(false);
     }
@@ -71,12 +71,12 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
 
       {/* 标题 */}
       <h2 className="text-2xl font-bold text-white mb-2">
-        配置你的 API Key
+        Cấu hình API Key
       </h2>
 
       {/* 说明 */}
       <p className="text-zinc-500 text-sm mb-6 max-w-xs">
-        需要 API Key 才能使用 AI 生成功能
+        Cần API Key để sử dụng các tính năng tạo nội dung bằng AI
       </p>
 
       {/* 输入框 */}
@@ -89,7 +89,7 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
             setVerifyStatus('idle');
             setVerifyMessage('');
           }}
-          placeholder="输入你的 API Key..."
+          placeholder="Nhập API Key của bạn..."
           className="w-full bg-white/[0.06] border border-white/10 text-white px-4 py-3 text-sm rounded-xl focus:border-cyan-300/40 focus:outline-none focus:ring-2 focus:ring-cyan-300/10 transition-all font-mono placeholder:text-slate-500 text-center"
           disabled={isVerifying}
           onKeyDown={(e) => {
@@ -117,21 +117,21 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
       {/* 获取 Key 链接 */}
       <div className="flex items-center gap-4 mb-8">
         <a 
-          href="https://api.gitcc.com" 
+          href="https://github.com/leozvu/liemcainhe#cau-hinh-api"
           target="_blank" 
           rel="noreferrer" 
           className="text-xs text-cyan-300 hover:underline inline-flex items-center gap-1"
         >
-          立即购买 <ExternalLink className="w-3 h-3" />
+          Hướng dẫn API <ExternalLink className="w-3 h-3" />
         </a>
         <span className="text-zinc-700">|</span>
         <a 
-          href="https://www.gitcc.com" 
+          href="https://github.com/leozvu/liemcainhe/issues"
           target="_blank" 
           rel="noreferrer" 
           className="text-xs text-cyan-300 hover:underline inline-flex items-center gap-1"
         >
-          立即咨询 <ExternalLink className="w-3 h-3" />
+          Nhận hỗ trợ <ExternalLink className="w-3 h-3" />
         </a>
       </div>
 
@@ -144,10 +144,10 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
         {isVerifying ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
-            验证中...
+            Đang xác thực...
           </>
         ) : (
-          '验证并继续'
+          'Xác thực và tiếp tục'
         )}
       </button>
 
@@ -156,7 +156,7 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({
         onClick={onSkip}
         className="mt-4 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
       >
-        稍后在设置中配置
+        Cấu hình sau trong phần cài đặt
       </button>
     </div>
   );

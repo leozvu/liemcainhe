@@ -70,11 +70,11 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
           <Video className="w-3 h-3 text-cyan-300" />
-          视频生成
+          Tạo video
           <button 
             onClick={onEditPrompt}
             className="p-1 text-yellow-400 hover:text-white transition-colors"
-            title="预览/编辑视频提示词"
+            title="Xem trước/chỉnh prompt video"
           >
             <Edit2 className="w-3 h-3" />
           </button>
@@ -88,7 +88,7 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
       
       <div className="space-y-2">
         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">
-          选择视频模型
+          Chọn model video
         </label>
         <select
           value={selectedModelId}
@@ -98,7 +98,7 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
         >
           {videoModels.map((model) => {
             const vm = model as VideoModelDefinition;
-            const modeLabel = vm.params.mode === 'async' ? '异步' : '同步';
+            const modeLabel = vm.params.mode === 'async' ? 'Bất đồng bộ' : 'Đồng bộ';
             return (
               <option key={model.id} value={model.id}>
                 {model.name} ({modeLabel})
@@ -110,8 +110,8 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
           <p className="text-[9px] text-zinc-600 font-mono">
             ✦ {selectedModel.name}: 
             {selectedModel.params.mode === 'async' 
-              ? ` 支持 ${selectedModel.params.supportedAspectRatios.join('/')}，可选 ${selectedModel.params.supportedDurations.join('/')}秒`
-              : ` 高速生成，支持 ${selectedModel.params.supportedAspectRatios.join('/')}`
+              ? ` Hỗ trợ ${selectedModel.params.supportedAspectRatios.join('/')}, thời lượng ${selectedModel.params.supportedDurations.join('/')} giây`
+              : ` Tạo nhanh, hỗ trợ ${selectedModel.params.supportedAspectRatios.join('/')}`
             }
           </p>
         )}
@@ -119,7 +119,7 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
 
       <div className="space-y-2">
         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">
-          视频设置
+          Cài đặt video
         </label>
         <VideoSettingsPanel
           aspectRatio={aspectRatio}
@@ -143,10 +143,10 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
         />
         <span className="flex-1">
           <span className="text-xs text-zinc-300 group-hover:text-white transition-colors">
-            纯文生视频（不使用首帧）
+            Chỉ tạo video từ văn bản (không dùng khung đầu)
           </span>
           <span className="block text-[9px] text-zinc-600 mt-0.5 leading-relaxed">
-            不上传起始关键帧作为参考图，仅根据视频描述生成。适用于首帧含人物被平台审核拦截的情况。
+            Không tải keyframe bắt đầu lên làm ảnh tham chiếu; video chỉ được tạo từ mô tả. Hữu ích khi khung đầu có nhân vật bị bộ lọc nội dung chặn.
           </span>
         </span>
       </label>
@@ -173,17 +173,17 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
         {isGenerating ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
-            生成视频中 ({aspectRatio}, {modelType === 'sora' ? `${duration}秒` : selectedModel?.name}
-            {textToVideoOnly ? ', 纯文生' : ''})...
+            Đang tạo video ({aspectRatio}, {modelType === 'sora' ? `${duration} giây` : selectedModel?.name}
+            {textToVideoOnly ? ', chỉ từ văn bản' : ''})...
           </>
         ) : (
-          <>{hasVideo ? '重新生成视频' : '开始生成视频'}</>
+          <>{hasVideo ? 'Tạo lại video' : 'Bắt đầu tạo video'}</>
         )}
       </button>
 
       {!canGenerate && !textToVideoOnly && (
         <p className="text-[9px] text-amber-500/90 text-center">
-          请先生成起始帧，或勾选「纯文生视频」
+          Hãy tạo khung bắt đầu hoặc chọn chế độ chỉ từ văn bản
         </p>
       )}
 
@@ -197,12 +197,12 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
           {isOptimizingForModeration ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              正在优化描述…
+              Đang tối ưu mô tả…
             </>
           ) : (
             <>
               <Sparkles className="w-3.5 h-3.5" />
-              AI 优化描述（规避审核）
+              AI tối ưu mô tả
             </>
           )}
         </button>
@@ -210,12 +210,12 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
       
       {!textToVideoOnly && !hasEndFrame && (
         <div className="text-[9px] text-zinc-500 text-center font-mono">
-          * 未检测到结束帧，将使用单图生成模式 (Image-to-Video)
+          * Không có khung kết thúc; sẽ dùng chế độ một ảnh (Image-to-Video)
         </div>
       )}
       {textToVideoOnly && (
         <div className="text-[9px] text-cyan-400/80 text-center font-mono">
-          * 纯文生模式：不会上传首帧/尾帧，仅发送视频描述文本
+          * Chế độ văn bản: không tải khung đầu/cuối, chỉ gửi mô tả video
         </div>
       )}
     </div>

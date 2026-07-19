@@ -48,13 +48,13 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
   const [defaultAspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
   const [defaultVideoDuration, setDuration] = useState<VideoDuration>(8);
   
-  // 编辑状态
+  // Trạng thái chỉnh sửa
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', baseUrl: '', apiKey: '' });
   const [isAddingProvider, setIsAddingProvider] = useState(false);
   const [newProviderForm, setNewProviderForm] = useState({ name: '', baseUrl: '', apiKey: '' });
 
-  // 加载配置
+  // Tải cấu hình
   useEffect(() => {
     loadConfig();
   }, []);
@@ -67,7 +67,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
     setDuration(state.defaultVideoDuration);
   };
 
-  // 添加提供商
+  // Thêm nhà cung cấp
   const handleAddProvider = () => {
     if (!newProviderForm.name.trim() || !newProviderForm.baseUrl.trim()) return;
     
@@ -84,7 +84,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
     onConfigChange?.();
   };
 
-  // 开始编辑提供商
+  // Bắt đầu chỉnh sửa nhà cung cấp
   const handleStartEdit = (provider: ModelProvider) => {
     setEditingProviderId(provider.id);
     setEditForm({
@@ -94,7 +94,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
     });
   };
 
-  // 保存编辑
+  // Lưu chỉnh sửa
   const handleSaveEdit = (id: string) => {
     updateProvider(id, {
       name: editForm.name.trim(),
@@ -106,21 +106,21 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
     onConfigChange?.();
   };
 
-  // 删除提供商
+  // Xóa nhà cung cấp
   const handleDeleteProvider = (id: string) => {
-    showAlert('确定要删除这个提供商吗？', {
+    showAlert('Bạn có chắc muốn xóa nhà cung cấp này?', {
       type: 'warning',
       showCancel: true,
       onConfirm: () => {
         deleteProvider(id);
         loadConfig();
         onConfigChange?.();
-        showAlert('提供商已删除', { type: 'success' });
+        showAlert('Đã xóa nhà cung cấp', { type: 'success' });
       }
     });
   };
 
-  // 更新模型配置
+  // Cập nhật cấu hình mô hình
   const handleChatModelChange = (modelName: string) => {
     updateChatModelConfig({ modelName });
     loadConfig();
@@ -149,7 +149,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
 
   return (
     <div className="space-y-6">
-      {/* 折扣广告卡片 */}
+      {/* Thẻ giới thiệu kết nối mô hình */}
       <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/30 rounded-xl p-5">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
@@ -158,34 +158,34 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
           <div className="flex-1">
             <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-yellow-400" />
-              推荐使用 GitCC API
+              Kết nối các mô hình AI
             </h3>
             <p className="text-xs text-zinc-400 mb-3 leading-relaxed">
-              支持 GPT-5.1、Gemini-3、Veo 3.1、Sora-2 等多种模型，稳定快速，价格优惠。
-              本开源项目由 GitCC API 提供支持。
+              Egoric Studio hỗ trợ các mô hình hội thoại, tạo ảnh và tạo video qua API tương thích OpenAI.
+              Xem tài liệu dự án để cấu hình nhà cung cấp phù hợp với quy trình của bạn.
             </p>
             <div className="flex items-center gap-3">
               <a 
-                href="https://api.gitcc.com"
+                href="https://github.com/leozvu/liemcainhe#cấu-hình-mô-hình"
                 target="_blank" 
                 rel="noreferrer"
                 className="px-4 py-2 bg-white text-black text-xs font-bold rounded-lg hover:bg-zinc-200 transition-colors inline-flex items-center gap-1.5"
               >
-                立即购买
+                Xem hướng dẫn
                 <ExternalLink className="w-3 h-3" />
               </a>
-              {/* 使用教程已隐藏 */}
+              {/* Có thể bổ sung liên kết hỗ trợ tại đây. */}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 提供商列表 */}
+      {/* Danh sách nhà cung cấp */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
             <Server className="w-3.5 h-3.5" />
-            API 提供商
+            Nhà cung cấp API
           </label>
           {!isAddingProvider && (
             <button
@@ -193,32 +193,32 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
               className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
             >
               <Plus className="w-3 h-3" />
-              添加提供商
+              Thêm nhà cung cấp
             </button>
           )}
         </div>
 
         <div className="space-y-2">
-          {/* 添加新提供商表单 */}
+          {/* Biểu mẫu thêm nhà cung cấp */}
           {isAddingProvider && (
             <div className="bg-zinc-900/50 border border-zinc-700 rounded-lg p-3 space-y-2">
               <input
                 type="text"
-                placeholder="提供商名称"
+                placeholder="Tên nhà cung cấp"
                 value={newProviderForm.name}
                 onChange={(e) => setNewProviderForm({ ...newProviderForm, name: e.target.value })}
                 className="w-full bg-zinc-800 border border-zinc-700 text-white px-3 py-2 text-xs rounded focus:border-indigo-500 focus:outline-none"
               />
               <input
                 type="text"
-                placeholder="API 基础 URL（如 https://api.example.com）"
+                placeholder="URL API cơ sở (ví dụ: https://api.example.com)"
                 value={newProviderForm.baseUrl}
                 onChange={(e) => setNewProviderForm({ ...newProviderForm, baseUrl: e.target.value })}
                 className="w-full bg-zinc-800 border border-zinc-700 text-white px-3 py-2 text-xs rounded focus:border-indigo-500 focus:outline-none font-mono"
               />
               <input
                 type="password"
-                placeholder="独立 API Key（可选，不填则使用全局 Key）"
+                placeholder="API Key riêng (không bắt buộc; để trống để dùng khóa toàn cục)"
                 value={newProviderForm.apiKey}
                 onChange={(e) => setNewProviderForm({ ...newProviderForm, apiKey: e.target.value })}
                 className="w-full bg-zinc-800 border border-zinc-700 text-white px-3 py-2 text-xs rounded focus:border-indigo-500 focus:outline-none font-mono"
@@ -230,7 +230,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
                   className="flex-1 py-2 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
                 >
                   <Check className="w-3 h-3" />
-                  确认添加
+                  Xác nhận thêm
                 </button>
                 <button
                   onClick={() => {
@@ -245,7 +245,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
             </div>
           )}
 
-          {/* 提供商列表 */}
+          {/* Danh sách nhà cung cấp */}
           {providers.map((provider) => (
             <div 
               key={provider.id}
@@ -254,7 +254,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
               }`}
             >
               {editingProviderId === provider.id ? (
-                // 编辑模式
+                // Chế độ chỉnh sửa
                 <div className="space-y-2">
                   <input
                     type="text"
@@ -272,7 +272,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
                   />
                   <input
                     type="password"
-                    placeholder="独立 API Key（可选）"
+                    placeholder="API Key riêng (không bắt buộc)"
                     value={editForm.apiKey}
                     onChange={(e) => setEditForm({ ...editForm, apiKey: e.target.value })}
                     className="w-full bg-zinc-800 border border-zinc-700 text-white px-3 py-2 text-xs rounded focus:border-indigo-500 focus:outline-none font-mono"
@@ -283,7 +283,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
                       className="flex-1 py-2 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-500 flex items-center justify-center gap-1"
                     >
                       <Check className="w-3 h-3" />
-                      保存
+                      Lưu
                     </button>
                     <button
                       onClick={() => setEditingProviderId(null)}
@@ -294,16 +294,16 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
                   </div>
                 </div>
               ) : (
-                // 显示模式
+                // Chế độ hiển thị
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white">{provider.name}</span>
                       {provider.isDefault && (
-                        <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-400 text-[10px] rounded">默认</span>
+                        <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-400 text-[10px] rounded">Mặc định</span>
                       )}
                       {provider.isBuiltIn && (
-                        <span className="px-1.5 py-0.5 bg-zinc-700 text-zinc-400 text-[10px] rounded">内置</span>
+                        <span className="px-1.5 py-0.5 bg-zinc-700 text-zinc-400 text-[10px] rounded">Tích hợp</span>
                       )}
                     </div>
                     <p className="text-[10px] text-zinc-500 font-mono mt-0.5">{provider.baseUrl}</p>
@@ -331,13 +331,13 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
         </div>
       </div>
 
-      {/* 模型选择 */}
+      {/* Chọn mô hình */}
       <div className="grid grid-cols-1 gap-4">
-        {/* 对话模型 */}
+        {/* Mô hình hội thoại */}
         <div>
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
             <MessageSquare className="w-3.5 h-3.5" />
-            对话模型
+            Mô hình hội thoại
           </label>
           <select
             value={config.chatModel.modelName}
@@ -352,11 +352,11 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
           </select>
         </div>
 
-        {/* 视频模型 */}
+        {/* Mô hình video */}
         <div>
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-2">
             <Video className="w-3.5 h-3.5" />
-            视频模型
+            Mô hình video
           </label>
           <select
             value={`${config.videoModel.type}:${config.videoModel.modelName}`}
@@ -375,16 +375,16 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
         </div>
       </div>
 
-      {/* 默认设置 */}
+      {/* Cài đặt mặc định */}
       <div className="pt-4 border-t border-zinc-900">
         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 block">
-          默认生成设置
+          Cài đặt tạo nội dung mặc định
         </label>
         
         <div className="grid grid-cols-2 gap-4">
-          {/* 默认横竖屏 */}
+          {/* Tỷ lệ khung hình mặc định */}
           <div>
-            <label className="text-[10px] text-zinc-600 mb-1.5 block">默认比例</label>
+            <label className="text-[10px] text-zinc-600 mb-1.5 block">Tỷ lệ mặc định</label>
             <div className="flex gap-1">
               {(['16:9', '9:16', '1:1'] as AspectRatio[]).map((ratio) => (
                 <button
@@ -396,15 +396,15 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
                       : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                   }`}
                 >
-                  {ratio === '16:9' ? '横屏' : ratio === '9:16' ? '竖屏' : '方形'}
+                  {ratio === '16:9' ? 'Ngang' : ratio === '9:16' ? 'Dọc' : 'Vuông'}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 默认时长 */}
+          {/* Thời lượng mặc định */}
           <div>
-            <label className="text-[10px] text-zinc-600 mb-1.5 block">默认时长 (Sora)</label>
+            <label className="text-[10px] text-zinc-600 mb-1.5 block">Thời lượng mặc định (Sora)</label>
             <div className="flex gap-1">
               {([4, 8, 12] as VideoDuration[]).map((d) => (
                 <button
@@ -416,7 +416,7 @@ const ModelManagerTab: React.FC<ModelManagerTabProps> = ({ onConfigChange }) => 
                       : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                   }`}
                 >
-                  {d}秒
+                  {d} giây
                 </button>
               ))}
             </div>

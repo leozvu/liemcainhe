@@ -54,7 +54,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
   const renderChatParams = (params: ChatModelParams) => (
     <div className="grid grid-cols-2 gap-4">
       <div>
-        <label className="text-[10px] text-zinc-500 block mb-1">温度</label>
+        <label className="text-[10px] text-zinc-500 block mb-1">Temperature</label>
         <input
           type="number"
           min="0"
@@ -66,7 +66,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
         />
       </div>
       <div>
-        <label className="text-[10px] text-zinc-500 block mb-1">最大 Token</label>
+        <label className="text-[10px] text-zinc-500 block mb-1">Token tối đa</label>
         <input
           type="number"
           min="1"
@@ -76,17 +76,17 @@ const ModelCard: React.FC<ModelCardProps> = ({
             const value = e.target.value;
             handleParamChange('maxTokens', value === '' ? undefined : parseInt(value));
           }}
-          placeholder="留空不限制"
+          placeholder="Để trống nếu không giới hạn"
           className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white"
         />
-        <p className="text-[9px] text-zinc-600 mt-1">留空则不限制最大 Token</p>
+        <p className="text-[9px] text-zinc-600 mt-1">Để trống nếu không giới hạn số token</p>
       </div>
     </div>
   );
 
   const renderImageParams = (params: ImageModelParams) => (
     <div>
-      <label className="text-[10px] text-zinc-500 block mb-1">默认比例</label>
+      <label className="text-[10px] text-zinc-500 block mb-1">Tỷ lệ mặc định</label>
       <div className="flex gap-2">
         {/* 从模型的 supportedAspectRatios 读取支持的比例 */}
         {(params.supportedAspectRatios || ['16:9', '9:16']).map((ratio) => (
@@ -99,7 +99,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
                 : 'bg-white/[0.06] text-zinc-400 hover:bg-white/10'
             }`}
           >
-            {ratio === '16:9' ? '横屏' : ratio === '9:16' ? '竖屏' : '方形'}
+            {ratio === '16:9' ? 'Ngang' : ratio === '9:16' ? 'Dọc' : 'Vuông'}
           </button>
         ))}
       </div>
@@ -109,7 +109,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
   const renderVideoParams = (params: VideoModelParams) => (
     <div className="space-y-4">
       <div>
-        <label className="text-[10px] text-zinc-500 block mb-1">默认比例</label>
+        <label className="text-[10px] text-zinc-500 block mb-1">Tỷ lệ mặc định</label>
         <div className="flex gap-2">
           {editParams.supportedAspectRatios.map((ratio: AspectRatio) => (
             <button
@@ -121,14 +121,14 @@ const ModelCard: React.FC<ModelCardProps> = ({
                   : 'bg-white/[0.06] text-zinc-400 hover:bg-white/10'
               }`}
             >
-              {ratio === '16:9' ? '横屏' : ratio === '9:16' ? '竖屏' : '方形'}
+              {ratio === '16:9' ? 'Ngang' : ratio === '9:16' ? 'Dọc' : 'Vuông'}
             </button>
           ))}
         </div>
       </div>
       {editParams.supportedDurations.length > 1 && (
         <div>
-          <label className="text-[10px] text-zinc-500 block mb-1">默认时长</label>
+          <label className="text-[10px] text-zinc-500 block mb-1">Thời lượng mặc định</label>
           <div className="flex gap-2">
             {editParams.supportedDurations.map((duration: VideoDuration) => (
               <button
@@ -140,19 +140,19 @@ const ModelCard: React.FC<ModelCardProps> = ({
                     : 'bg-white/[0.06] text-zinc-400 hover:bg-white/10'
                 }`}
               >
-                {duration}秒
+                {duration} giây
               </button>
             ))}
           </div>
         </div>
       )}
       <div className="text-[10px] text-zinc-600">
-        模式：
+        Chế độ:
         {editParams.mode === 'sync'
-          ? '同步（Veo 类）'
+          ? 'Đồng bộ (nhóm Veo)'
           : editParams.mode === 'async'
-          ? '异步（Sora 类）'
-          : 'Doubao Seedance（Ark 任务制）'}
+          ? 'Bất đồng bộ (nhóm Sora)'
+          : 'Doubao Seedance (tác vụ Ark)'}
       </div>
     </div>
   );
@@ -173,12 +173,12 @@ const ModelCard: React.FC<ModelCardProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-white">{model.name}</span>
               {model.isBuiltIn && (
-                <span className="px-1.5 py-0.5 bg-zinc-700 text-zinc-400 text-[9px] rounded">内置</span>
+                <span className="px-1.5 py-0.5 bg-zinc-700 text-zinc-400 text-[9px] rounded">Tích hợp sẵn</span>
               )}
             </div>
             <p className="text-[10px] text-zinc-500 mt-0.5">
-              API 模型名: {apiModel}
-              {model.id !== apiModel && ` · 内部ID: ${model.id}`}
+              Tên model API: {apiModel}
+              {model.id !== apiModel && ` · ID nội bộ: ${model.id}`}
               {model.endpoint && ` · ${model.endpoint}`}
               {model.description && ` · ${model.description}`}
             </p>
@@ -192,10 +192,10 @@ const ModelCard: React.FC<ModelCardProps> = ({
             <button
               onClick={onSetActive}
               className="px-2.5 py-1 bg-cyan-300 text-slate-950 text-[10px] font-bold rounded-xl hover:bg-cyan-200 transition-colors flex items-center gap-1"
-              title="使用此模型"
+              title="Sử dụng model này"
             >
               <Circle className="w-3 h-3" />
-              使用
+              Sử dụng
             </button>
           )}
           
@@ -203,7 +203,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
           {isActive && (
             <span className="px-2.5 py-1 bg-cyan-300/15 text-cyan-200 text-[10px] font-bold rounded-xl flex items-center gap-1 border border-cyan-200/15">
               <CheckCircle className="w-3 h-3" />
-              当前使用
+              Đang dùng
             </span>
           )}
 
@@ -211,7 +211,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
           <button
             onClick={handleToggleEnabled}
             className="text-zinc-500 hover:text-zinc-300 transition-colors"
-            title={model.isEnabled ? '禁用' : '启用'}
+            title={model.isEnabled ? 'Tắt' : 'Bật'}
           >
             {model.isEnabled ? (
               <ToggleRight className="w-5 h-5 text-cyan-300" />
@@ -225,7 +225,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
             <button
               onClick={onDelete}
               className="text-zinc-500 hover:text-red-400 transition-colors"
-              title="删除"
+              title="Xóa"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -252,17 +252,17 @@ const ModelCard: React.FC<ModelCardProps> = ({
             {/* 模型专属 API Key */}
             <div>
               <label className="text-[10px] text-zinc-500 block mb-1">
-                API Key（留空使用全局 Key）
+                API Key (để trống để dùng Key toàn cục)
               </label>
               <input
                 type="password"
                 value={editApiKey}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
-                placeholder="留空则使用全局 API Key"
+                placeholder="Để trống để dùng API Key toàn cục"
                 className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 font-mono"
               />
               {model.apiKey && (
-                <p className="text-[9px] text-green-500 mt-1">✓ 已配置专属 Key</p>
+                <p className="text-[9px] text-green-500 mt-1">✓ Đã cấu hình Key riêng</p>
               )}
             </div>
             

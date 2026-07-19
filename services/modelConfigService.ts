@@ -14,7 +14,7 @@ const LEGACY_STORAGE_KEY = ['big' + 'banana', 'model', 'config'].join('_');
 
 const DEFAULT_PROVIDER: ModelProvider = {
   id: 'antsk',
-  name: 'GitCC API (api.gitcc.com)',
+  name: 'Gateway AI mặc định',
   baseUrl: 'https://api.gitcc.com',
   isDefault: true,
   isBuiltIn: true
@@ -82,7 +82,7 @@ export const loadModelConfig = (): ModelManagerState => {
       return parsed;
     }
   } catch (e) {
-    console.error('加载模型配置失败:', e);
+    console.error('Không thể tải cấu hình model:', e);
   }
 
   runtimeState = { ...DEFAULT_STATE };
@@ -95,7 +95,7 @@ export const saveModelConfig = (state: ModelManagerState): void => {
     localStorage.removeItem(LEGACY_STORAGE_KEY);
     runtimeState = state;
   } catch (e) {
-    console.error('保存模型配置失败:', e);
+    console.error('Không thể lưu cấu hình model:', e);
   }
 };
 
@@ -294,15 +294,15 @@ export const resetToDefault = (): void => {
 };
 
 export const AVAILABLE_CHAT_MODELS = [
-  { name: 'GPT-5.2', value: 'gpt-5.2', description: '默认推荐，结构化输出稳定' },
-  { name: 'GPT-5.4', value: 'gpt-5.4', description: '创意增强，适合改写与多种切分方案' },
+  { name: 'GPT-5.2', value: 'gpt-5.2', description: 'Khuyên dùng, đầu ra có cấu trúc ổn định' },
+  { name: 'GPT-5.4', value: 'gpt-5.4', description: 'Tăng cường sáng tạo, phù hợp viết lại và chia cảnh' },
 ];
 
 export const AVAILABLE_IMAGE_MODELS = [
-  { name: 'Qwen Image 2.0', value: 'qwen-image-2.0', description: '默认推荐，文生图 /v1/images/generations' },
+  { name: 'Qwen Image 2.0', value: 'qwen-image-2.0', description: 'Khuyên dùng, tạo ảnh qua /v1/images/generations' },
 ];
 
 export const AVAILABLE_VIDEO_MODELS = [
-  { name: '豆包 Seedance 2.0 Fast', value: 'doubao-seedance-2-0-fast', type: 'sora' as const, description: '默认推荐，异步 /v1/videos' },
-  { name: 'Sora-2', value: 'sora-2', type: 'sora' as const, description: '异步模式，支持 4/8/12 秒' },
+  { name: 'Doubao Seedance 2.0 Fast', value: 'doubao-seedance-2-0-fast', type: 'sora' as const, description: 'Khuyên dùng, bất đồng bộ qua /v1/videos' },
+  { name: 'Sora-2', value: 'sora-2', type: 'sora' as const, description: 'Bất đồng bộ, hỗ trợ 4/8/12 giây' },
 ];

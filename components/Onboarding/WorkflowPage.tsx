@@ -13,7 +13,7 @@ const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
     <div className="flex flex-col items-center text-center">
       {/* 标题 */}
       <h2 className="text-2xl font-bold text-white mb-8">
-        四步出片，就这么简单
+        Hoàn thiện video chỉ trong 4 bước
       </h2>
 
       {/* 流程图示意 */}
@@ -57,7 +57,7 @@ const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
         onClick={onNext}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"
       >
-        继续了解
+        Tiếp tục khám phá
       </button>
     </div>
   );

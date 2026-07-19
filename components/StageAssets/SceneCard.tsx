@@ -80,20 +80,20 @@ const SceneCard: React.FC<SceneCardProps> = ({
             {isGenerating ? (
               <>
                 <Loader2 className="w-10 h-10 mb-3 animate-spin text-cyan-300" />
-                <span className="text-[10px] text-zinc-500">生成中...</span>
+                <span className="text-[10px] text-zinc-500">Đang tạo...</span>
               </>
             ) : scene.status === 'failed' ? (
               <>
                 <AlertCircle className="w-10 h-10 mb-3 text-red-500" />
-                <span className="text-[10px] text-red-500 mb-2">生成失败</span>
+                <span className="text-[10px] text-red-500 mb-2">Tạo ảnh thất bại</span>
                 <ImageUploadButton
                   variant="inline"
                   size="small"
                   onUpload={onUpload}
                   onGenerate={onGenerate}
                   isGenerating={isGenerating}
-                  uploadLabel="上传"
-                  generateLabel="重试"
+                  uploadLabel="Tải lên"
+                  generateLabel="Thử lại"
                 />
               </>
             ) : (
@@ -105,8 +105,8 @@ const SceneCard: React.FC<SceneCardProps> = ({
                   onUpload={onUpload}
                   onGenerate={onGenerate}
                   isGenerating={isGenerating}
-                  uploadLabel="上传"
-                  generateLabel="生成"
+                  uploadLabel="Tải lên"
+                  generateLabel="Tạo ảnh"
                 />
               </>
             )}
@@ -188,8 +188,8 @@ const SceneCard: React.FC<SceneCardProps> = ({
           <PromptEditor
             prompt={scene.visualPrompt || ''}
             onSave={onPromptSave}
-            label="场景提示词"
-            placeholder="输入场景视觉描述..."
+            label="Prompt bối cảnh"
+            placeholder="Nhập mô tả hình ảnh bối cảnh..."
             maxHeight="max-h-[120px]"
           />
         </div>
@@ -202,7 +202,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
               onUpload={onUpload}
               onGenerate={onGenerate}
               isGenerating={isGenerating}
-              uploadLabel="上传图片"
+              uploadLabel="Tải ảnh lên"
             />
           </div>
         )}
@@ -214,7 +214,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
             className="w-full py-2 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white border border-white/10 hover:border-cyan-300/30 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <FolderPlus className="w-3 h-3" />
-            加入资产库
+            Thêm vào thư viện
           </button>
         </div>
 
@@ -225,7 +225,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
             className="w-full py-2 bg-transparent hover:bg-red-950/10 text-red-400 hover:text-red-300 border border-red-500/50 hover:border-red-400 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Trash2 className="w-3 h-3" />
-            删除场景
+            Xóa bối cảnh
           </button>
         </div>
       </div>

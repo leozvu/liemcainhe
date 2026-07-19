@@ -2,7 +2,7 @@ function asString(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
-/** 可用于 /v1/videos/{id}/content 的资源 ID（排除 task / video_task 占位符） */
+/** Mã tài nguyên dùng được cho /v1/videos/{id}/content (loại trừ mã giữ chỗ task/video_task). */
 export function isSoraVideoAssetId(id: string | null | undefined): boolean {
   if (!id) return false;
   if (id.startsWith('video_task_') || id.startsWith('task_')) return false;
@@ -145,14 +145,14 @@ function walkExtractVideoUrl(root: unknown, depth: number): string | null {
   return null;
 }
 
-/** 深度扫描 + 正则兜底，从任务状态 JSON 提取 https 视频直链 */
+/** Quét sâu và dùng biểu thức chính quy dự phòng để lấy liên kết video HTTPS từ JSON trạng thái. */
 export function extractAnyVideoDownloadUrl(root: unknown): string | null {
   const fromWalk = walkExtractVideoUrl(root, 0);
   if (fromWalk) return fromWalk;
   return extractVideoUrlByRegex(root);
 }
 
-/** @deprecated 使用 extractAnyVideoDownloadUrl */
+/** @deprecated Dùng extractAnyVideoDownloadUrl. */
 export function extractSoraDirectVideoUrl(statusData: Record<string, unknown>): string | null {
   return extractAnyVideoDownloadUrl(statusData);
 }
@@ -168,9 +168,9 @@ export async function fetchVideoUrlAsDataUrl(url: string): Promise<string> {
     reader.onloadend = () => {
       const r = reader.result as string;
       if (r && r.startsWith('data:')) resolve(r);
-      else reject(new Error('视频转 base64 失败'));
+      else reject(new Error('Chuyển video sang base64 thất bại'));
     };
-    reader.onerror = () => reject(new Error('读取视频失败'));
+    reader.onerror = () => reject(new Error('Đọc video thất bại'));
     reader.readAsDataURL(blob);
   });
 }
@@ -180,7 +180,7 @@ async function resolveVideoStorageUrl(directUrl: string): Promise<string> {
     return await fetchVideoUrlAsDataUrl(directUrl);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.warn('视频直链转 base64 失败，将保存远程 URL 供播放:', msg);
+    console.warn('Không thể chuyển liên kết video sang base64; sẽ lưu URL từ xa để phát:', msg);
     return directUrl;
   }
 }
@@ -206,7 +206,7 @@ async function fetchTaskStatus(
   }
 }
 
-/** 完成后直链可能晚几秒写入，轮询任务状态直到解析到 URL 或超时 */
+/** Liên kết trực tiếp có thể xuất hiện muộn vài giây; thăm dò đến khi có URL hoặc hết thời gian chờ. */
 async function pollStatusForVideoUrl(
   apiBase: string,
   taskId: string,
@@ -240,9 +240,9 @@ async function blobResponseToDataUrl(downloadResponse: Response): Promise<string
       reader.onloadend = () => {
         const result = reader.result as string;
         if (result && result.startsWith('data:')) resolve(result);
-        else reject(new Error('视频转换失败'));
+        else reject(new Error('Chuyển đổi video thất bại'));
       };
-      reader.onerror = () => reject(new Error('视频读取失败'));
+      reader.onerror = () => reject(new Error('Đọc video thất bại'));
       reader.readAsDataURL(videoBlob);
     });
   }
@@ -254,13 +254,13 @@ async function blobResponseToDataUrl(downloadResponse: Response): Promise<string
   } catch {
     const fromText = extractAnyVideoDownloadUrl(text);
     if (fromText) return resolveVideoStorageUrl(fromText);
-    throw new Error(text || '未获取到视频下载地址');
+    throw new Error(text || 'Không lấy được địa chỉ tải video');
   }
 
   const nestedUrl = extractAnyVideoDownloadUrl(downloadData);
   if (nestedUrl) return resolveVideoStorageUrl(nestedUrl);
 
-  throw new Error('未获取到视频下载地址');
+  throw new Error('Không lấy được địa chỉ tải video');
 }
 
 async function tryDownloadContentUrl(
@@ -325,7 +325,7 @@ export async function downloadSoraCompletedVideo(options: {
   );
 
   if (directUrl) {
-    console.log('📥 使用任务返回的视频直链');
+    console.log('📥 Đang dùng liên kết video do tác vụ trả về');
     return resolveVideoStorageUrl(directUrl);
   }
 
@@ -339,9 +339,9 @@ export async function downloadSoraCompletedVideo(options: {
   const contentUrls = buildContentDownloadUrls(apiBase, taskId, videoAssetId);
 
   if (contentUrls.length === 0) {
-    console.warn('[video] 任务状态样本:', latestStatus || completedStatus);
+    console.warn('[video] Mẫu trạng thái tác vụ:', latestStatus || completedStatus);
     throw new Error(
-      '任务已完成但未解析到视频地址。请在 Network 中打开该任务的 GET 响应，将 JSON 发给开发者或检查是否含 https 的 mp4 链接。'
+      'Tác vụ đã hoàn tất nhưng không phân tích được địa chỉ video. Hãy mở phản hồi GET của tác vụ trong Network, kiểm tra liên kết MP4 HTTPS hoặc gửi JSON cho đội phát triển.'
     );
   }
 
@@ -364,12 +364,12 @@ export async function downloadSoraCompletedVideo(options: {
 
     const { url: url2 } = await pollStatusForVideoUrl(apiBase, taskId, apiKey, null, 3, 2000);
     if (url2) {
-      console.log('📥 重试阶段解析到直链');
+      console.log('📥 Đã tìm thấy liên kết trực tiếp trong lần thử lại');
       return resolveVideoStorageUrl(url2);
     }
 
     if (attempt < maxDownloadRetries) {
-      console.warn(`content 下载失败，${5 * attempt}秒后重试...`, lastError?.message);
+      console.warn(`Tải nội dung thất bại, thử lại sau ${5 * attempt} giây...`, lastError?.message);
       await new Promise((r) => setTimeout(r, 5000 * attempt));
     }
   }
@@ -377,9 +377,9 @@ export async function downloadSoraCompletedVideo(options: {
   const lastMsg = lastError?.message || '';
   if (/502|404/.test(lastMsg)) {
     throw new Error(
-      `${lastMsg}。平台 /content 下载不可用，且任务响应中未包含可识别的 mp4 直链。请把任务查询接口的 Response JSON 发来以便适配。`
+      `${lastMsg}. Điểm cuối /content không khả dụng và phản hồi tác vụ không chứa liên kết MP4 có thể nhận diện. Hãy gửi JSON phản hồi của API truy vấn tác vụ để đội phát triển bổ sung tương thích.`
     );
   }
 
-  throw lastError || new Error('视频下载失败：已达到最大重试次数');
+  throw lastError || new Error('Tải video thất bại: đã đạt số lần thử lại tối đa');
 }

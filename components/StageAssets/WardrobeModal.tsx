@@ -115,7 +115,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       )}
                       {variation.status === 'failed' && !variation.referenceImage && (
                         <div className="absolute bottom-0 left-0 right-0 bg-red-900/80 text-white text-[8px] text-center py-0.5">
-                          失败
+                          Thất bại
                         </div>
                       )}
                     </div>
@@ -141,7 +141,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
                           }`}
                         >
                           <RefreshCw className={`w-3 h-3 ${variation.status === 'generating' ? 'animate-spin' : ''}`} />
-                          {variation.status === 'failed' ? '重试' : variation.referenceImage ? 'Regenerate' : 'Generate Look'}
+                          {variation.status === 'failed' ? 'Thử lại' : variation.referenceImage ? 'Tạo lại' : 'Tạo trang phục'}
                         </button>
                         <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer">
                           <Upload className="w-3 h-3" />

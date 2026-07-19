@@ -1,5 +1,5 @@
 /**
- * 模型适配器统一导出
+ * Điểm xuất chung cho các bộ điều hợp mô hình
  */
 
 export * from './chatAdapter';

@@ -68,7 +68,7 @@ export function formatVideoTaskErrorForUser(
   const inner =
     extractInnermostErrorMessage(err) ||
     extractInnermostErrorMessage(fallbackMessage);
-  return inner || '未知错误';
+  return inner || 'Lỗi không xác định';
 }
 
 export function throwFromVideoHttpError(status: number, bodyText: string, mode: 'sora' | 'veo' = 'sora'): never {

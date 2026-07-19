@@ -120,7 +120,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
       }, 2000);
     } catch (error) {
       console.error('Download failed:', error);
-      showAlert(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
+      showAlert(`Xuất tệp thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
       setIsDownloading(false);
       setDownloadPhase('');
       setDownloadProgress(0);
@@ -131,7 +131,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
     if (isDownloadingAssets) return;
     
     if (!hasDownloadableAssets(project)) {
-      showAlert('没有可下载的资源。请先生成角色、场景或镜头素材。', { type: 'warning' });
+      showAlert('Chưa có tài nguyên để tải xuống. Hãy tạo nhân vật, bối cảnh hoặc cảnh quay trước.', { type: 'warning' });
       return;
     }
     
@@ -151,7 +151,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
       }, 2000);
     } catch (error) {
       console.error('Assets download failed:', error);
-      showAlert(`下载源资源失败: ${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
+      showAlert(`Tải tài nguyên gốc thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
       setIsDownloadingAssets(false);
       setAssetsPhase('');
       setAssetsProgress(0);
@@ -164,7 +164,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
         <div className="flex items-center gap-4">
           <h2 className={STYLES.header.title}>
             <Film className="w-5 h-5 text-cyan-300" />
-            制片导出
+            Sản xuất & xuất bản
             <span className={STYLES.header.subtitle}>Rendering & Export</span>
           </h2>
         </div>

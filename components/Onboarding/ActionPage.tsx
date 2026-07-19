@@ -17,12 +17,12 @@ const ActionPage: React.FC<ActionPageProps> = ({ onComplete, onQuickStart }) => 
     <div className="flex flex-col items-center text-center">
       {/* 标题 */}
       <h2 className="text-2xl font-bold text-white mb-2">
-        现在就开始创作
+        Bắt đầu sáng tạo ngay
       </h2>
 
       {/* 说明文案 */}
       <p className="text-zinc-500 text-sm mb-8">
-        选一个方式，马上体验
+        Chọn một cách bắt đầu phù hợp với bạn
       </p>
 
       {/* 选项卡片 */}
@@ -40,7 +40,6 @@ const ActionPage: React.FC<ActionPageProps> = ({ onComplete, onQuickStart }) => 
               </div>
               <div>
                 <h3 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                  <span>{option.icon}</span>
                   {option.title}
                 </h3>
                 <p className="text-zinc-500 text-xs">{option.description}</p>
@@ -55,12 +54,12 @@ const ActionPage: React.FC<ActionPageProps> = ({ onComplete, onQuickStart }) => 
         onClick={onComplete}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"
       >
-        创建我的第一部短剧
+        Tạo bộ phim đầu tiên
       </button>
 
       {/* 辅助入口 */}
       <p className="mt-6 text-[10px] text-zinc-600">
-        以后可在侧边栏「帮助」中重新查看引导
+        Bạn có thể xem lại hướng dẫn từ thanh bên bất cứ lúc nào
       </p>
     </div>
   );

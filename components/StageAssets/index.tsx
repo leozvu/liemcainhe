@@ -223,7 +223,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const isRegenerate = itemsToGen.length === 0;
 
     if (isRegenerate) {
-      showAlert(`确定要重新生成所有${type === 'character' ? '角色' : '场景'}图吗？`, {
+      showAlert(`Bạn có chắc muốn tạo lại toàn bộ ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'}?`, {
         type: 'warning',
         showCancel: true,
         onConfirm: async () => {
@@ -288,15 +288,15 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       try {
         const item = createLibraryItemFromCharacter(char);
         await saveAssetToLibrary(item);
-        showAlert(`已加入资产库：${char.name}`, { type: 'success' });
+        showAlert(`Đã thêm vào thư viện: ${char.name}`, { type: 'success' });
         refreshLibrary();
       } catch (e: any) {
-        showAlert(e?.message || '加入资产库失败', { type: 'error' });
+        showAlert(e?.message || 'Không thể thêm vào thư viện', { type: 'error' });
       }
     };
 
     if (!char.referenceImage) {
-      showAlert('该角色暂无参考图，仍要加入资产库吗？', {
+      showAlert('Nhân vật chưa có ảnh tham chiếu. Bạn vẫn muốn thêm vào thư viện?', {
         type: 'warning',
         showCancel: true,
         onConfirm: saveItem
@@ -312,15 +312,15 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       try {
         const item = createLibraryItemFromScene(scene);
         await saveAssetToLibrary(item);
-        showAlert(`已加入资产库：${scene.location}`, { type: 'success' });
+        showAlert(`Đã thêm vào thư viện: ${scene.location}`, { type: 'success' });
         refreshLibrary();
       } catch (e: any) {
-        showAlert(e?.message || '加入资产库失败', { type: 'error' });
+        showAlert(e?.message || 'Không thể thêm vào thư viện', { type: 'error' });
       }
     };
 
     if (!scene.referenceImage) {
-      showAlert('该场景暂无参考图，仍要加入资产库吗？', {
+      showAlert('Bối cảnh chưa có ảnh tham chiếu. Bạn vẫn muốn thêm vào thư viện?', {
         type: 'warning',
         showCancel: true,
         onConfirm: saveItem
@@ -335,15 +335,15 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     try {
       const updated = applyLibraryItemToProject(project, item);
       updateProject(() => updated);
-      showAlert(`已导入：${item.name}`, { type: 'success' });
+      showAlert(`Đã nhập: ${item.name}`, { type: 'success' });
     } catch (e: any) {
-      showAlert(e?.message || '导入失败', { type: 'error' });
+      showAlert(e?.message || 'Nhập tài nguyên thất bại', { type: 'error' });
     }
   };
 
   const handleReplaceCharacterFromLibrary = (item: AssetLibraryItem, targetId: string) => {
     if (item.type !== 'character') {
-      showAlert('请选择角色资产进行替换', { type: 'warning' });
+      showAlert('Hãy chọn tài nguyên nhân vật để thay thế', { type: 'warning' });
       return;
     }
     if (!project.scriptData) return;
@@ -370,7 +370,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     });
 
     updateProject({ scriptData: newData, shots: nextShots });
-    showAlert(`已替换角色：${previous.name} → ${cloned.name}`, { type: 'success' });
+    showAlert(`Đã thay nhân vật: ${previous.name} → ${cloned.name}`, { type: 'success' });
     setShowLibraryModal(false);
     setReplaceTargetCharId(null);
   };
@@ -380,7 +380,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       await deleteAssetFromLibrary(itemId);
       setLibraryItems((prev) => prev.filter((item) => item.id !== itemId));
     } catch (e: any) {
-      showAlert(e?.message || '删除资产失败', { type: 'error' });
+      showAlert(e?.message || 'Không thể xóa tài nguyên', { type: 'error' });
     }
   };
 
@@ -434,10 +434,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     
     const newChar: Character = {
       id: generateId('char'),
-      name: '新角色',
-      gender: '未设定',
-      age: '未设定',
-      personality: '待补充',
+      name: 'Nhân vật mới',
+      gender: 'Chưa xác định',
+      age: 'Chưa xác định',
+      personality: 'Cần bổ sung',
       visualPrompt: '',
       variations: [],
       status: 'pending'
@@ -446,7 +446,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const newData = { ...project.scriptData };
     newData.characters.push(newChar);
     updateProject({ scriptData: newData });
-    showAlert('新角色已创建，请编辑提示词并生成图片', { type: 'success' });
+    showAlert('Đã tạo nhân vật mới. Hãy chỉnh prompt và tạo ảnh.', { type: 'success' });
   };
 
   const handleDeleteCharacter = (charId: string) => {
@@ -455,18 +455,18 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     if (!char) return;
 
     showAlert(
-      `确定要删除角色 "${char.name}" 吗？\n\n注意：这将会影响所有使用该角色的分镜，可能导致分镜关联错误。`,
+      `Bạn có chắc muốn xóa nhân vật "${char.name}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi storyboard có sử dụng nhân vật và có thể làm sai liên kết.`,
       {
         type: 'warning',
-        title: '删除角色',
+        title: 'Xóa nhân vật',
         showCancel: true,
-        confirmText: '删除',
-        cancelText: '取消',
+        confirmText: 'Xóa',
+        cancelText: 'Hủy',
         onConfirm: () => {
           const newData = { ...project.scriptData! };
           newData.characters = newData.characters.filter(c => !compareIds(c.id, charId));
           updateProject({ scriptData: newData });
-          showAlert(`角色 "${char.name}" 已删除`, { type: 'success' });
+          showAlert(`Đã xóa nhân vật "${char.name}"`, { type: 'success' });
         }
       }
     );
@@ -477,9 +477,9 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     
     const newScene: Scene = {
       id: generateId('scene'),
-      location: '新场景',
-      time: '未设定',
-      atmosphere: '待补充',
+      location: 'Bối cảnh mới',
+      time: 'Chưa xác định',
+      atmosphere: 'Cần bổ sung',
       visualPrompt: '',
       status: 'pending'
     };
@@ -487,7 +487,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const newData = { ...project.scriptData };
     newData.scenes.push(newScene);
     updateProject({ scriptData: newData });
-    showAlert('新场景已创建，请编辑提示词并生成图片', { type: 'success' });
+    showAlert('Đã tạo bối cảnh mới. Hãy chỉnh prompt và tạo ảnh.', { type: 'success' });
   };
 
   const handleDeleteScene = (sceneId: string) => {
@@ -496,18 +496,18 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     if (!scene) return;
 
     showAlert(
-      `确定要删除场景 "${scene.location}" 吗？\n\n注意：这将会影响所有使用该场景的分镜，可能导致分镜关联错误。`,
+      `Bạn có chắc muốn xóa bối cảnh "${scene.location}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi storyboard có sử dụng bối cảnh và có thể làm sai liên kết.`,
       {
         type: 'warning',
-        title: '删除场景',
+        title: 'Xóa bối cảnh',
         showCancel: true,
-        confirmText: '删除',
-        cancelText: '取消',
+        confirmText: 'Xóa',
+        cancelText: 'Hủy',
         onConfirm: () => {
           const newData = { ...project.scriptData! };
           newData.scenes = newData.scenes.filter(s => !compareIds(s.id, sceneId));
           updateProject({ scriptData: newData });
-          showAlert(`场景 "${scene.location}" 已删除`, { type: 'success' });
+          showAlert(`Đã xóa bối cảnh "${scene.location}"`, { type: 'success' });
         }
       }
     );
@@ -607,7 +607,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   if (!project.scriptData) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-slate-950/35 text-slate-500 backdrop-blur-sm">
-        <p>请先完成 Phase 01 剧情创作</p>
+        <p>Hãy hoàn thành Giai đoạn 01 — Sáng tạo kịch bản trước.</p>
       </div>
     );
   }
@@ -633,7 +633,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       {batchProgress && (
         <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-md animate-in fade-in">
           <Loader2 className="w-12 h-12 text-cyan-300 animate-spin mb-6" />
-          <h3 className="text-xl font-bold text-white mb-2">正在批量生成资源...</h3>
+          <h3 className="text-xl font-bold text-white mb-2">Đang tạo hàng loạt tài nguyên...</h3>
           <div className="w-64 h-1.5 bg-white/10 rounded-full overflow-hidden mb-2">
             <div 
               className="h-full bg-gradient-to-r from-cyan-300 to-sky-400 transition-all duration-300" 
@@ -641,7 +641,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             />
           </div>
           <p className="text-zinc-400 font-mono text-xs">
-            进度: {batchProgress.current} / {batchProgress.total}
+            Tiến độ: {batchProgress.current} / {batchProgress.total}
           </p>
         </div>
       )}
@@ -668,7 +668,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
               <div className="flex items-center gap-3">
                 <Archive className="w-4 h-4 text-cyan-300" />
                 <div>
-                  <div className="text-sm font-bold text-white">资产库</div>
+                  <div className="text-sm font-bold text-white">Thư viện tài nguyên</div>
                   <div className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">
                     {libraryItems.length} assets
                   </div>
@@ -680,7 +680,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                   setReplaceTargetCharId(null);
                 }}
                 className="p-2 text-slate-500 hover:text-white hover:bg-white/10 rounded-xl"
-                title="关闭"
+                title="Đóng"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -692,7 +692,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                   <input
                     value={libraryQuery}
                     onChange={(e) => setLibraryQuery(e.target.value)}
-                    placeholder="搜索资产名称..."
+                    placeholder="Tìm theo tên tài nguyên..."
                     className="w-full pl-9 pr-3 py-2 bg-white/[0.06] border border-white/10 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-300/40"
                   />
                 </div>
@@ -707,7 +707,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                           : 'bg-white/[0.04] text-slate-400 border-white/10 hover:text-white hover:border-cyan-300/30'
                       }`}
                     >
-                      {type === 'all' ? '全部' : type === 'character' ? '角色' : '场景'}
+                      {type === 'all' ? 'Tất cả' : type === 'character' ? 'Nhân vật' : 'Bối cảnh'}
                     </button>
                   ))}
                 </div>
@@ -719,7 +719,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 </div>
               ) : filteredLibraryItems.length === 0 ? (
                 <div className="border border-dashed border-cyan-200/15 rounded-2xl p-10 text-center text-slate-500 text-sm">
-                  暂无资产。可在角色或场景卡片中选择“加入资产库”。
+                  Chưa có tài nguyên. Chọn “Thêm vào thư viện” trên thẻ nhân vật hoặc bối cảnh.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -750,7 +750,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                           <div>
                             <div className="text-sm text-white font-bold line-clamp-1">{item.name}</div>
                             <div className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest mt-1">
-                              {item.type === 'character' ? '角色' : '场景'}
+                              {item.type === 'character' ? 'Nhân vật' : 'Bối cảnh'}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -762,18 +762,18 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                               }
                               className="flex-1 py-2 bg-cyan-300 text-slate-950 hover:bg-cyan-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors"
                             >
-                              {replaceTargetCharId ? '替换当前角色' : '导入到当前项目'}
+                              {replaceTargetCharId ? 'Thay nhân vật hiện tại' : 'Nhập vào dự án'}
                             </button>
                             <button
                               onClick={() =>
-                                showAlert('确定从资产库删除该资源吗？', {
+                                showAlert('Bạn có chắc muốn xóa tài nguyên này khỏi thư viện?', {
                                   type: 'warning',
                                   showCancel: true,
                                   onConfirm: () => handleDeleteLibraryItem(item.id)
                                 })
                               }
                               className="p-2 border border-white/10 text-slate-500 hover:text-red-300 hover:border-red-400/40 rounded-xl transition-colors"
-                              title="删除"
+                              title="Xóa"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -793,7 +793,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-3">
                   <Users className="w-5 h-5 text-cyan-300" />
-            场景角色
+            Nhân vật & bối cảnh
             <span className="text-xs text-cyan-100/40 font-mono font-normal uppercase tracking-wider bg-white/5 px-2 py-1 rounded-full">
               Assets & Casting
             </span>
@@ -806,10 +806,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             className={STYLES.secondaryButton}
           >
             <Archive className="w-4 h-4" />
-            资产库
+            Thư viện tài nguyên
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500 uppercase">模型</span>
+            <span className="text-[10px] text-zinc-500 uppercase">Model</span>
             <ModelSelector
               type="image"
               value={selectedImageModelId}
@@ -820,7 +820,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           </div>
           <div className="w-px h-6 bg-white/10" />
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500 uppercase">比例</span>
+            <span className="text-[10px] text-zinc-500 uppercase">Tỷ lệ</span>
             <AspectRatioSelector
               value={aspectRatio}
               onChange={setAspectRatio}
@@ -849,9 +849,9 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-cyan-300 rounded-full shadow-lg shadow-cyan-300/40" />
-                角色定妆 (Casting)
+                Concept nhân vật
               </h3>
-              <p className="text-xs text-zinc-500 mt-1 pl-3.5">为剧本中的角色生成一致的参考形象</p>
+              <p className="text-xs text-zinc-500 mt-1 pl-3.5">Tạo hình ảnh tham chiếu nhất quán cho nhân vật trong kịch bản</p>
             </div>
             <div className="flex gap-2">
               <button 
@@ -860,7 +860,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-white/10"
               >
                 <Users className="w-3 h-3" />
-                新建角色
+                Tạo nhân vật
               </button>
               <button 
                 onClick={() => openLibrary('character')}
@@ -868,7 +868,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 className={STYLES.secondaryButton}
               >
                 <Archive className="w-3 h-3" />
-                从资产库选择
+                Chọn từ thư viện
               </button>
               <button 
                 onClick={() => handleBatchGenerate('character')}
@@ -876,7 +876,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 className={allCharactersReady ? STYLES.secondaryButton : STYLES.primaryButton}
               >
                 {allCharactersReady ? <RefreshCw className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-                {allCharactersReady ? '重新生成所有角色' : '一键生成所有角色'}
+                {allCharactersReady ? 'Tạo lại tất cả nhân vật' : 'Tạo tất cả nhân vật'}
               </button>
             </div>
           </div>
@@ -906,9 +906,9 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                场景概念 (Locations)
+                Concept bối cảnh
               </h3>
-              <p className="text-xs text-zinc-500 mt-1 pl-3.5">为剧本场景生成环境参考图</p>
+              <p className="text-xs text-zinc-500 mt-1 pl-3.5">Tạo hình ảnh tham chiếu cho môi trường trong kịch bản</p>
             </div>
             <div className="flex gap-2">
               <button 
@@ -917,7 +917,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-white/10"
               >
                 <MapPin className="w-3 h-3" />
-                新建场景
+                Tạo bối cảnh
               </button>
               <button 
                 onClick={() => openLibrary('scene')}
@@ -925,7 +925,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 className={STYLES.secondaryButton}
               >
                 <Archive className="w-3 h-3" />
-                从资产库选择
+                Chọn từ thư viện
               </button>
               <button 
                 onClick={() => handleBatchGenerate('scene')}
@@ -933,7 +933,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 className={allScenesReady ? STYLES.secondaryButton : STYLES.primaryButton}
               >
                 {allScenesReady ? <RefreshCw className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-                {allScenesReady ? '重新生成所有场景' : '一键生成所有场景'}
+                {allScenesReady ? 'Tạo lại tất cả bối cảnh' : 'Tạo tất cả bối cảnh'}
               </button>
             </div>
           </div>

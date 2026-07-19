@@ -39,10 +39,10 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({ isOpen, onClose }) 
   if (!isOpen) return null;
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'global', label: '全局配置', icon: <Key className="w-4 h-4" /> },
-    { id: 'chat', label: '对话模型', icon: <MessageSquare className="w-4 h-4" /> },
-    { id: 'image', label: '图片模型', icon: <Image className="w-4 h-4" /> },
-    { id: 'video', label: '视频模型', icon: <Video className="w-4 h-4" /> },
+    { id: 'global', label: 'Cấu hình chung', icon: <Key className="w-4 h-4" /> },
+    { id: 'chat', label: 'Mô hình hội thoại', icon: <MessageSquare className="w-4 h-4" /> },
+    { id: 'image', label: 'Mô hình hình ảnh', icon: <Image className="w-4 h-4" /> },
+    { id: 'video', label: 'Mô hình video', icon: <Video className="w-4 h-4" /> },
   ];
 
   return (
@@ -81,7 +81,7 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({ isOpen, onClose }) 
               <Settings className="w-5 h-5 text-cyan-300" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">模型配置</h2>
+              <h2 className="text-lg font-bold text-white">Cấu hình mô hình</h2>
               <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">MODEL CONFIGURATION</p>
             </div>
           </div>
@@ -126,13 +126,13 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({ isOpen, onClose }) 
         {/* 底部 */}
         <div className="px-6 py-4 border-t border-white/10 bg-white/[0.04] rounded-b-[1.75rem] flex-shrink-0 flex items-center justify-between">
           <p className="text-[10px] text-zinc-600 font-mono">
-            配置仅保存在本地浏览器
+            Cấu hình chỉ được lưu trong trình duyệt
           </p>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-cyan-300 text-slate-950 text-xs font-bold rounded-xl hover:bg-cyan-200 transition-colors"
           >
-            完成
+            Hoàn tất
           </button>
         </div>
       </div>

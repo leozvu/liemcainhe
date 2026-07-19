@@ -67,7 +67,7 @@ const ShotCard: React.FC<ShotCardProps> = ({ shot, index, isActive, onClick }) =
 
         {!isActive && !hasImage && (
           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <span className="text-white text-xs font-mono">点击编辑</span>
+            <span className="text-white text-xs font-mono">Nhấn để chỉnh sửa</span>
           </div>
         )}
       </div>
