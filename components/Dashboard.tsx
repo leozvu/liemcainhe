@@ -348,7 +348,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
               <X className="w-4 h-4" />
             </button>
             <div className="space-y-4 text-center">
-              <img src="/egoric-mark.svg" alt="Egoric Agency" className="w-20 h-20 mx-auto" />
+              <img src="/egoric-agency-logo.png" alt="Egoric Agency" className="w-56 max-w-full h-auto mx-auto object-contain" />
               <div className="text-white text-sm font-bold tracking-widest uppercase">Hỗ trợ từ Egoric Agency</div>
               <div className="text-xs text-cyan-100/60">Gửi yêu cầu hỗ trợ hoặc phản hồi trực tiếp cho đội ngũ sản phẩm.</div>
               <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 py-3 text-xs font-bold text-slate-950 transition-colors hover:bg-cyan-200">

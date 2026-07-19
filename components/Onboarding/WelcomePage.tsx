@@ -1,6 +1,6 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
-const LOGO_URL = '/egoric-mark.svg';
+const LOGO_URL = '/egoric-agency-logo.png';
 
 interface WelcomePageProps {
   onNext: () => void;
@@ -11,12 +11,12 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onNext, onSkip }) => {
   return (
     <div className="flex flex-col items-center text-center">
       {/* 大图区域：Logo + 装饰 */}
-      <div className="relative mb-8">
+      <div className="relative mb-8 flex min-h-28 items-center justify-center">
         <div className="absolute -inset-8 bg-gradient-to-r from-cyan-300/20 via-sky-400/20 to-fuchsia-400/20 rounded-full blur-3xl opacity-50"></div>
         <img 
           src={LOGO_URL} 
-          alt="Egoric Studio"
-          className="w-24 h-24 relative z-10"
+          alt="Egoric Agency"
+          className="w-72 max-w-[78vw] h-auto relative z-10 object-contain"
         />
         <Sparkles className="absolute -top-2 -right-2 w-6 h-6 text-yellow-400 animate-pulse" />
       </div>

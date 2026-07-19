@@ -14,7 +14,7 @@ import { Save, CheckCircle, X } from 'lucide-react';
 import { saveProjectToDB } from './services/storageService';
 import { setGlobalApiKey } from './services/geminiService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
-const LOGO_URL = '/egoric-mark.svg';
+const LOGO_URL = '/egoric-agency-logo.png';
 
 function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
@@ -216,7 +216,7 @@ function App() {
     return (
       <div className="h-screen bg-[#050505] flex items-center justify-center p-6">
         <div className="max-w-md text-center space-y-6">
-          <img src={LOGO_URL} alt="Logo" className="w-20 h-20 mx-auto mb-4" />
+          <img src={LOGO_URL} alt="Egoric Agency" className="w-64 max-w-full h-auto mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-white mb-2">Egoric Studio</h1>
           <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-8">
             <p className="text-zinc-400 text-base leading-relaxed mb-4">

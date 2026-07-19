@@ -1,7 +1,7 @@
 // White-label edition by Egoric Agency
 import React from 'react';
 import { LayoutDashboard, FileText, Users, Clapperboard, Film, ChevronLeft, ListTree, HelpCircle, Cpu } from 'lucide-react';
-const LOGO_URL = '/egoric-mark.svg';
+const LOGO_URL = '/egoric-agency-icon.png';
 
 interface SidebarProps {
   currentStage: string;
@@ -32,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentStage, setStage, onExit, proje
           className="flex items-center gap-3 mb-6 group cursor-pointer"
         >
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-300/20 via-fuchsia-400/20 to-emerald-300/20 border border-white/15 flex items-center justify-center shadow-lg shadow-cyan-500/10 transition-transform group-hover:scale-105">
-            <img src={LOGO_URL} alt="Logo" className="w-7 h-7 flex-shrink-0" />
+            <img src={LOGO_URL} alt="Biểu tượng Egoric Agency" className="w-8 h-8 object-contain flex-shrink-0" />
           </div>
           <div className="overflow-hidden">
             <h1 className="text-sm font-bold text-white tracking-wider group-hover:text-cyan-100 transition-colors">Egoric Studio</h1>
