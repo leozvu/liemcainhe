@@ -4,6 +4,7 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
   DEFAULT_PROVIDER_ID,
+  ChatModelDefinition,
   ImageModelDefinition,
   VideoModelDefinition,
 } from '../types/model';
@@ -30,7 +31,10 @@ import {
 } from './modelRegistry';
 import { callImageApi } from './adapters/imageAdapter';
 import { callVideoApi } from './adapters/videoAdapter';
+import { callChatApi } from './adapters/chatAdapter';
 import { verifyProviderApiKey } from './providerService';
+import { parseModelJson } from './jsonResponse';
+import { selectImageModelForGeneration } from './imageModelSelection';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
@@ -184,6 +188,17 @@ const cleanJsonString = (str: string): string => {
 };
 
 const chatCompletion = async (prompt: string, model: string = DEFAULT_CHAT_MODEL_ID, temperature: number = 0.7, maxTokens: number = 8192, responseFormat?: 'json_object', timeout: number = 600000): Promise<string> => {
+  const resolvedModel = resolveModel('chat', model) as ChatModelDefinition | undefined;
+  const provider = resolvedModel ? getProviderById(resolvedModel.providerId) : undefined;
+  if (resolvedModel && provider?.protocol === 'kie') {
+    return callChatApi({
+      prompt,
+      responseFormat: responseFormat === 'json_object' ? 'json' : 'text',
+      timeout,
+      overrideParams: { temperature, maxTokens },
+    }, resolvedModel);
+  }
+
   const apiKey = checkApiKey('chat', model);
   const requestModel = resolveRequestModel('chat', model);
   
@@ -203,7 +218,6 @@ const chatCompletion = async (prompt: string, model: string = DEFAULT_CHAT_MODEL
   
   try {
     const apiBase = getApiBase('chat', model);
-    const resolvedModel = resolveModel('chat', model);
     const endpoint = resolvedModel?.endpoint || '/v1/chat/completions';
     const response = await fetch(`${apiBase}${endpoint}`, {
       method: 'POST',
@@ -407,7 +421,7 @@ Chỉ trả về JSON hợp lệ theo cấu trúc sau, không kèm storyParagrap
     const text = cleanJsonString(responseText);
     let parsed: any = {};
     try {
-      parsed = JSON.parse(text);
+      parsed = parseModelJson(text);
     } catch (e) {
       console.error('Không thể phân tích JSON cấu trúc kịch bản:', e);
       console.error('Phản hồi gốc (500 ký tự đầu):', responseText.slice(0, 500));
@@ -458,7 +472,7 @@ Dùng các đoạn văn ngắn. Ngôn ngữ: ${language}.
         const paraCleaned = cleanJsonString(paraResponse);
         let arr: any[] = [];
         try {
-          const parsedPara = JSON.parse(paraCleaned);
+          const parsedPara = parseModelJson<any>(paraCleaned);
           arr = Array.isArray(parsedPara)
             ? parsedPara
             : Array.isArray(parsedPara.storyParagraphs)
@@ -503,7 +517,7 @@ Chỉ trả về JSON hợp lệ: { "storyParagraphs": [ {"id": number, "text": 
         const fallbackResp = await retryOperation(() =>
           chatCompletion(fallbackPrompt, model, 0.6, LONG_FORM_MAX_TOKENS, 'json_object')
         );
-        const fallbackParsed = JSON.parse(cleanJsonString(fallbackResp));
+        const fallbackParsed = parseModelJson<any>(cleanJsonString(fallbackResp));
         const list = Array.isArray(fallbackParsed.storyParagraphs) ? fallbackParsed.storyParagraphs : [];
         list.forEach((p: any, idx: number) => {
           if (p && (p.text || p.content)) {
@@ -700,7 +714,7 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
     try {
       responseText = await retryOperation(() => chatCompletion(prompt, model, 0.7, LONG_FORM_MAX_TOKENS, 'json_object'));
       const text = cleanJsonString(responseText);
-      const parsed = JSON.parse(text);
+      const parsed = parseModelJson<any>(text);
 
       // Chế độ JSON buộc phản hồi là đối tượng; hỗ trợ cả mảng cũ và cấu trúc cảnh quay mới.
       const shots = Array.isArray(parsed)
@@ -892,12 +906,21 @@ export const generateImage = async (
   prompt: string, 
   referenceImages: string[] = [],
   aspectRatio: AspectRatio = '16:9',
-  isVariation: boolean = false
+  isVariation: boolean = false,
+  modelId?: string,
 ): Promise<string> => {
   const startTime = Date.now();
   
-  // Lấy mô hình ảnh đang hoạt động từ sổ đăng ký mô hình.
-  const activeImageModel = getActiveModel('image') as ImageModelDefinition | undefined;
+  // Tôn trọng model người dùng chọn. Nếu tác vụ không có ảnh tham chiếu nhưng
+  // model chỉ hỗ trợ chỉnh ảnh, tự chuyển sang model text-to-image cùng provider.
+  const requestedImageModel = resolveModel('image', modelId) as ImageModelDefinition | undefined;
+  const imageModels = getModels('image').filter((item): item is ImageModelDefinition => item.type === 'image');
+  const activeImageModel = selectImageModelForGeneration(
+    imageModels,
+    requestedImageModel,
+    referenceImages.length > 0,
+    (candidateId) => Boolean(getApiKeyForModel(candidateId)),
+  );
   const imageModelId = activeImageModel?.apiModel || activeImageModel?.id || DEFAULT_IMAGE_MODEL_ID;
   const imageEndpoint = activeImageModel?.endpoint;
   const apiKey = checkApiKey('image', activeImageModel?.id);
@@ -908,14 +931,14 @@ export const generateImage = async (
     const imageProvider = activeImageModel
       ? getProviderById(activeImageModel.providerId)
       : undefined;
-    if (activeImageModel && imageProvider?.protocol === 'replicate') {
-      const replicatePrompt = referenceImages.length
+    if (activeImageModel && (imageProvider?.protocol === 'replicate' || imageProvider?.protocol === 'kie')) {
+      const providerPrompt = referenceImages.length
         ? isVariation
           ? `${prompt}\n\nYêu cầu bắt buộc: giữ nguyên khuôn mặt, mái tóc, màu tóc, tông da và tỷ lệ cơ thể từ ảnh tham chiếu; thay toàn bộ trang phục theo mô tả mới và thể hiện trang phục rõ ràng.`
           : `${prompt}\n\nYêu cầu bắt buộc: duy trì chính xác khuôn mặt, mái tóc, trang phục, tỷ lệ nhân vật, ánh sáng và bối cảnh từ các ảnh tham chiếu.`
         : prompt;
       const rawResult = await callImageApi(
-        { prompt: replicatePrompt, referenceImages, aspectRatio },
+        { prompt: providerPrompt, referenceImages, aspectRatio },
         activeImageModel
       );
       const result = await normalizeImageResult(rawResult);
@@ -1344,7 +1367,7 @@ export const generateVideo = async (
   const videoProvider = resolvedVideoModel
     ? getProviderById(resolvedVideoModel.providerId)
     : undefined;
-  if (resolvedVideoModel && videoProvider?.protocol === 'replicate') {
+  if (resolvedVideoModel && (videoProvider?.protocol === 'replicate' || videoProvider?.protocol === 'kie')) {
     const outputUrl = await callVideoApi(
       {
         prompt,
@@ -1359,7 +1382,7 @@ export const generateVideo = async (
       try {
         return await convertVideoUrlToBase64(outputUrl);
       } catch (error) {
-        console.warn('Không thể lưu cục bộ video Replicate, sẽ dùng URL kết quả:', error);
+        console.warn(`Không thể lưu cục bộ video ${videoProvider.name}, sẽ dùng URL kết quả:`, error);
       }
     }
     return outputUrl;
@@ -1687,7 +1710,7 @@ Yêu cầu:
 - Khung đầu thiết lập rõ bối cảnh, vị trí, biểu cảm, tư thế, ánh sáng và không gian cho hành động sắp diễn ra.
 - Khung cuối thể hiện kết quả hành động, thay đổi cảm xúc, góc nhìn và bố cục do chuyển động máy tạo ra.
 - Hai khung phải nhất quán về nhân vật, môi trường, phong cách, màu sắc và có quỹ đạo chuyển động hợp lý.
-- Mỗi mô tả là một đoạn tiếng Việt khoảng 100–150 từ, giàu hình ảnh nhưng không gắn nhãn kỹ thuật.
+- Mỗi mô tả là một đoạn tiếng Việt khoảng 80–120 từ, giàu hình ảnh nhưng không gắn nhãn kỹ thuật.
 - Bao gồm bố cục, tiền/trung/hậu cảnh, ánh sáng, màu sắc, chi tiết nhân vật, môi trường, chiều sâu trường ảnh và gợi ý chuyển động.
 
 Chỉ trả về JSON hợp lệ:
@@ -1698,15 +1721,26 @@ Chỉ trả về JSON hợp lệ:
 `;
 
   try {
-    const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 2048, 'json_object'));
+    const result = await retryOperation(() => chatCompletion(prompt, model, 0.7, 4096, 'json_object'));
     const duration = Date.now() - startTime;
-    
-    // Phân tích phản hồi JSON.
-    const cleaned = cleanJsonString(result);
-    const parsed = JSON.parse(cleaned);
-    
-    if (!parsed.startFrame || !parsed.endFrame) {
-      throw new Error('Định dạng JSON do AI trả về không hợp lệ');
+
+    // Nếu phản hồi JSON bị ngắt giữa chuỗi, thử dùng phần đã sửa. Khi vẫn thiếu
+    // một khung, chuyển sang hai yêu cầu văn bản độc lập thay vì chặn quy trình.
+    let parsed: { startFrame?: string; endFrame?: string } = {};
+    try {
+      parsed = parseModelJson(cleanJsonString(result));
+    } catch (parseError) {
+      console.warn('JSON tối ưu hai khung bị hỏng; chuyển sang tạo từng khung:', parseError);
+    }
+
+    if (!parsed.startFrame?.trim() || !parsed.endFrame?.trim()) {
+      const startPrompt = parsed.startFrame?.trim() || await optimizeKeyframePrompt(
+        'start', actionSummary, cameraMovement, sceneInfo, characterInfo, visualStyle, model,
+      );
+      const endPrompt = parsed.endFrame?.trim() || await optimizeKeyframePrompt(
+        'end', actionSummary, cameraMovement, sceneInfo, characterInfo, visualStyle, model,
+      );
+      return { startPrompt, endPrompt };
     }
     
     console.log('✅ AI đã tối ưu khung đầu và khung cuối, thời gian:', duration, 'ms');
@@ -1717,7 +1751,7 @@ Chỉ trả về JSON hợp lệ:
     };
   } catch (error: any) {
     console.error('❌ AI tối ưu khung hình thất bại:', error);
-    throw new Error(`AI tối ưu khung hình thất bại: ${error.message}`);
+    throw error instanceof Error ? error : new Error('Không thể tối ưu khung hình');
   }
 };
 
@@ -1773,7 +1807,7 @@ Mô tả bằng một đoạn tiếng Việt khoảng 100–150 từ. Nêu rõ b
     return result.trim();
   } catch (error: any) {
     console.error(`❌ AI tối ưu ${frameLabel} thất bại:`, error);
-    throw new Error(`AI tối ưu ${frameLabel} thất bại: ${error.message}`);
+    throw error instanceof Error ? error : new Error(`Không thể tối ưu ${frameLabel}`);
   }
 };
 
@@ -1917,7 +1951,7 @@ Chỉ trả về JSON hợp lệ theo cấu trúc:
     
     // Làm sạch và phân tích JSON.
     const cleaned = cleanJsonString(result);
-    const parsed = JSON.parse(cleaned);
+    const parsed = parseModelJson<any>(cleaned);
     
     if (!parsed.subShots || !Array.isArray(parsed.subShots) || parsed.subShots.length === 0) {
       throw new Error('JSON do AI trả về không hợp lệ hoặc mảng cảnh quay con đang trống');

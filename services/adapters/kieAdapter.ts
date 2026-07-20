@@ -13,8 +13,40 @@ const MARKET_CREATE_ENDPOINT = '/api/v1/jobs/createTask';
 const MARKET_STATUS_ENDPOINT = '/api/v1/jobs/recordInfo';
 const VEO_CREATE_ENDPOINT = '/api/v1/veo/generate';
 const VEO_STATUS_ENDPOINT = '/api/v1/veo/record-info';
+const MIN_CREATE_INTERVAL_MS = 1800;
+const MAX_RATE_LIMIT_RETRIES = 3;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+class KieRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = 'KieRequestError';
+  }
+}
+
+let createQueue: Promise<void> = Promise.resolve();
+let lastCreateStartedAt = 0;
+
+/** Xếp hàng riêng thao tác tạo tác vụ; việc thăm dò kết quả vẫn chạy song song. */
+const enqueueCreateRequest = async <T>(operation: () => Promise<T>): Promise<T> => {
+  let release!: () => void;
+  const previous = createQueue;
+  createQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous.catch(() => undefined);
+  try {
+    const remaining = MIN_CREATE_INTERVAL_MS - (Date.now() - lastCreateStartedAt);
+    if (remaining > 0) await wait(remaining);
+    lastCreateStartedAt = Date.now();
+    return await operation();
+  } finally {
+    release();
+  }
+};
 
 const readError = async (response: Response): Promise<string> => {
   const raw = await response.text().catch(() => '');
@@ -37,13 +69,37 @@ const requestJson = async <T>(url: string, apiKey: string, init?: RequestInit): 
     },
   });
   if (!response.ok) {
-    throw new Error(localizeApiErrorMessage(await readError(response), response.status));
+    const retryAfter = Number(response.headers.get('retry-after'));
+    throw new KieRequestError(
+      localizeApiErrorMessage(await readError(response), response.status),
+      response.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : undefined,
+    );
   }
   const payload = await response.json().catch(() => ({}));
   if (typeof payload?.code === 'number' && payload.code !== 200) {
-    throw new Error(localizeApiErrorMessage(payload?.msg || `KIE trả về mã ${payload.code}`, payload.code));
+    throw new KieRequestError(
+      localizeApiErrorMessage(payload?.msg || `KIE trả về mã ${payload.code}`, payload.code),
+      payload.code,
+    );
   }
   return payload as T;
+};
+
+const createPaidTaskSafely = async <T>(operation: () => Promise<T>): Promise<T> => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+    try {
+      return await enqueueCreateRequest(operation);
+    } catch (error) {
+      lastError = error;
+      const rateLimited = error instanceof KieRequestError && error.status === 429;
+      if (!rateLimited || attempt === MAX_RATE_LIMIT_RETRIES - 1) throw error;
+      const retryAfter = error.retryAfterMs || 3000 * (attempt + 1);
+      await wait(retryAfter);
+    }
+  }
+  throw lastError;
 };
 
 const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
@@ -93,7 +149,11 @@ export const ensureKieFileUrl = async (source: string, apiKey: string, index = 0
 
 const uploadReferences = async (sources: Array<string | undefined>, apiKey: string): Promise<string[]> => {
   const valid = sources.filter((source): source is string => Boolean(source?.trim()));
-  return Promise.all(valid.map((source, index) => ensureKieFileUrl(source, apiKey, index)));
+  const urls: string[] = [];
+  for (let index = 0; index < valid.length; index += 1) {
+    urls.push(await ensureKieFileUrl(valid[index], apiKey, index));
+  }
+  return urls;
 };
 
 const applyReferences = (
@@ -171,7 +231,8 @@ const pollMarketTask = async (apiBase: string, apiKey: string, taskId: string): 
     try {
       payload = await requestJson<any>(`${apiBase}${MARKET_STATUS_ENDPOINT}?taskId=${encodeURIComponent(taskId)}`, apiKey);
     } catch (error) {
-      if (Date.now() - startedAt > 60_000) throw error;
+      const status = error instanceof KieRequestError ? error.status : undefined;
+      if ((status && [401, 402, 403].includes(status)) || Date.now() - startedAt > 60_000) throw error;
       continue;
     }
     const data = payload?.data || {};
@@ -182,7 +243,8 @@ const pollMarketTask = async (apiBase: string, apiKey: string, taskId: string): 
       throw new Error('Tác vụ KIE hoàn tất nhưng không trả về tệp kết quả');
     }
     if (state === 'fail' || state === 'failed' || state === 'error') {
-      throw new Error(data.failMsg || data.errorMessage || data.error || 'Tác vụ KIE thất bại');
+      const rawError = data.failMsg || data.errorMessage || data.error || 'Tác vụ KIE thất bại';
+      throw new Error(localizeApiErrorMessage(rawError));
     }
   }
   throw new Error('Tác vụ KIE hết thời gian chờ sau 20 phút');
@@ -194,11 +256,12 @@ const createMarketTask = async (
   model: string,
   input: Record<string, unknown>,
 ): Promise<string> => {
-  // Không retry lệnh tạo: mỗi lần gọi có thể phát sinh phí.
-  const payload = await requestJson<any>(`${apiBase}${MARKET_CREATE_ENDPOINT}`, apiKey, {
-    method: 'POST',
-    body: JSON.stringify({ model, input }),
-  });
+  // Chỉ thử lại khi KIE xác nhận HTTP 429 (yêu cầu đã bị từ chối, chưa tạo tác vụ).
+  // Không thử lại lỗi mạng/5xx vì yêu cầu trước có thể đã được nhận và tính phí.
+  const payload = await createPaidTaskSafely(() => requestJson<any>(`${apiBase}${MARKET_CREATE_ENDPOINT}`, apiKey, {
+      method: 'POST',
+      body: JSON.stringify({ model, input }),
+    }));
   const taskId = payload?.data?.taskId || payload?.data?.task_id || payload?.taskId;
   if (!taskId) throw new Error('KIE không trả về mã tác vụ');
   return pollMarketTask(apiBase, apiKey, taskId);
@@ -215,25 +278,32 @@ const callKieVeo = async (
   const generationType = imageUrls.length > 1
     ? 'FIRST_AND_LAST_FRAMES_2_VIDEO'
     : imageUrls.length === 1 ? 'REFERENCE_2_VIDEO' : 'TEXT_2_VIDEO';
-  const payload = await requestJson<any>(`${apiBase}${VEO_CREATE_ENDPOINT}`, apiKey, {
-    method: 'POST',
-    body: JSON.stringify({
-      prompt: options.prompt,
-      imageUrls,
-      model: model.apiModel || model.id,
-      aspect_ratio: options.aspectRatio || model.params.defaultAspectRatio,
-      enableFallback: false,
-      enableTranslation: true,
-      generationType,
-    }),
-  });
+  const payload = await createPaidTaskSafely(() => requestJson<any>(`${apiBase}${VEO_CREATE_ENDPOINT}`, apiKey, {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt: options.prompt,
+        imageUrls,
+        model: model.apiModel || model.id,
+        aspect_ratio: options.aspectRatio || model.params.defaultAspectRatio,
+        enableFallback: false,
+        enableTranslation: true,
+        generationType,
+      }),
+    }));
   const taskId = payload?.data?.taskId || payload?.data?.task_id || payload?.taskId;
   if (!taskId) throw new Error('KIE Veo không trả về mã tác vụ');
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < 20 * 60 * 1000) {
     await wait(6000);
-    const status = await requestJson<any>(`${apiBase}${VEO_STATUS_ENDPOINT}?taskId=${encodeURIComponent(taskId)}`, apiKey);
+    let status: any;
+    try {
+      status = await requestJson<any>(`${apiBase}${VEO_STATUS_ENDPOINT}?taskId=${encodeURIComponent(taskId)}`, apiKey);
+    } catch (error) {
+      const errorStatus = error instanceof KieRequestError ? error.status : undefined;
+      if ((errorStatus && [401, 402, 403].includes(errorStatus)) || Date.now() - startedAt > 60_000) throw error;
+      continue;
+    }
     const data = status?.data || {};
     const successFlag = Number(data.successFlag ?? data.success_flag ?? 0);
     const urls = extractUrls(data.response || data.result || data);
@@ -241,7 +311,7 @@ const callKieVeo = async (
       if (urls[0]) return urls[0];
     }
     if (successFlag === 2 || successFlag === 3 || data.errorCode || data.errorMessage) {
-      throw new Error(data.errorMessage || data.error || 'Tác vụ KIE Veo thất bại');
+      throw new Error(localizeApiErrorMessage(data.errorMessage || data.error || 'Tác vụ KIE Veo thất bại'));
     }
   }
   throw new Error('Tác vụ KIE Veo hết thời gian chờ sau 20 phút');
@@ -293,6 +363,7 @@ export const callKieChatApi = async (
   apiBase: string,
 ): Promise<string> => {
   const config = model.kie || {};
+  const params = { ...model.params, ...options.overrideParams };
   const endpoint = model.endpoint || '/v1/chat/completions';
   const messages = [
     ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
@@ -303,6 +374,7 @@ export const callKieChatApi = async (
     body = {
       model: model.apiModel || model.id,
       stream: false,
+      ...(params.maxTokens ? { max_output_tokens: params.maxTokens } : {}),
       input: messages.map((message) => ({
         role: message.role,
         content: [{ type: 'input_text', text: message.content }],
@@ -311,7 +383,7 @@ export const callKieChatApi = async (
   } else if (config.chatApi === 'claude') {
     body = {
       model: model.apiModel || model.id,
-      max_tokens: model.params.maxTokens || 4096,
+      max_tokens: params.maxTokens || 4096,
       stream: false,
       ...(options.systemPrompt ? { system: options.systemPrompt } : {}),
       messages: [{ role: 'user', content: options.prompt }],
@@ -321,8 +393,8 @@ export const callKieChatApi = async (
       ...(config.omitModel ? {} : { model: model.apiModel || model.id }),
       stream: false,
       messages,
-      temperature: options.overrideParams?.temperature ?? model.params.temperature,
-      ...(model.params.maxTokens ? { max_tokens: model.params.maxTokens } : {}),
+      temperature: params.temperature,
+      ...(params.maxTokens ? { max_tokens: params.maxTokens } : {}),
       ...(options.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
     };
   }

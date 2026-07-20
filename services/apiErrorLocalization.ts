@@ -12,14 +12,25 @@ export const localizeApiErrorMessage = (input: unknown, status?: number): string
   const raw = String(input ?? '').trim();
   const normalized = raw.toLowerCase();
 
-  const isQuotaError =
-    status === 429 ||
-    /quota|insufficient\s*(balance|credit|funds)|balance\s*(is\s*)?(zero|insufficient)|resource_exhausted/.test(normalized) ||
+  const isBalanceError =
+    status === 402 ||
+    /insufficient\s*(balance|credit|credits|funds)|balance\s*(is\s*)?(zero|insufficient)|credit\s*balance\s*(is\s*)?(zero|insufficient)/.test(normalized) ||
     /\u989d\u5ea6\u4e0d\u8db3|\u5269\u4f59\u989d\u5ea6/.test(raw);
 
-  if (isQuotaError) {
+  if (isBalanceError) {
     return withRequestId(
-      'Tài khoản API đã hết hạn mức hoặc không đủ số dư. Vui lòng nạp thêm tiền hoặc dùng khóa API khác.',
+      'Tài khoản API không đủ credit để thực hiện yêu cầu này. Vui lòng kiểm tra số dư hoặc chọn mô hình tiết kiệm hơn.',
+      raw
+    );
+  }
+
+  const isRateLimitError =
+    status === 429 ||
+    /too\s*many\s*requests|rate[\s_-]*limit|concurren(t|cy)|task\s*limit|queue\s*(is\s*)?full|quota|resource_exhausted/.test(normalized);
+
+  if (isRateLimitError) {
+    return withRequestId(
+      'Nhà cung cấp đang giới hạn tốc độ hoặc số tác vụ đồng thời; đây không phải lỗi khóa API hay hết tiền. Ứng dụng sẽ giãn các yêu cầu, hãy chạy lại mục bị lỗi sau ít phút.',
       raw
     );
   }

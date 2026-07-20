@@ -191,7 +191,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       const regionalPrefix = getRegionalPrefix(language, type);
       const enhancedPrompt = regionalPrefix + prompt;
 
-      const imageUrl = await generateImage(enhancedPrompt, [], aspectRatio);
+      const imageUrl = await generateImage(enhancedPrompt, [], aspectRatio, false, selectedImageModelId);
 
       updateProject((previous) => markDependentShotsStale(
         patchAssetInProject(previous, type, id, { referenceImage: imageUrl, status: 'completed' }),
@@ -583,7 +583,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       const regionalPrefix = getRegionalPrefix(language, 'character');
       const enhancedPrompt = `${regionalPrefix}Nhân vật "${char.name}" mặc TRANG PHỤC MỚI: ${variation.visualPrompt}. Đây chỉ là thay đổi trang phục; khuôn mặt và danh tính nhân vật phải giống hệt ảnh tham chiếu, đồng thời mặc đúng bộ đồ được mô tả.`;
       
-      const imageUrl = await generateImage(enhancedPrompt, refImages, aspectRatio, true);
+      const imageUrl = await generateImage(enhancedPrompt, refImages, aspectRatio, true, selectedImageModelId);
 
       const newData = { ...project.scriptData! };
       const c = newData.characters.find(c => compareIds(c.id, charId));

@@ -14,6 +14,7 @@ import {
   getActiveVideoModel,
 } from './modelRegistry';
 import { setGlobalApiKey as setGeminiApiKey } from './geminiService';
+import { parseModelJson } from './jsonResponse';
 
 export { ApiKeyError };
 
@@ -40,7 +41,7 @@ export const parseScript = async (options: {
 }): Promise<any> => {
   const prompt = buildScriptParsePrompt(options.rawText, options.language, options.visualStyle);
   const result = await chatJson({ prompt, timeout: 600000 });
-  return JSON.parse(result);
+  return parseModelJson(result);
 };
 
 export const generateShots = async (options: {
@@ -48,7 +49,7 @@ export const generateShots = async (options: {
 }): Promise<any[]> => {
   const prompt = buildShotGenerationPrompt(options.scriptData);
   const result = await chatJson({ prompt, timeout: 600000 });
-  const parsed = JSON.parse(result);
+  const parsed = parseModelJson<any>(result);
   return parsed.shots || [];
 };
 
@@ -61,7 +62,7 @@ export const generateVisualPrompts = async (options: {
 }): Promise<{ visualPrompt: string; negativePrompt: string }> => {
   const prompt = buildVisualPromptGenerationPrompt(options);
   const result = await chatJson({ prompt });
-  return JSON.parse(result);
+  return parseModelJson(result);
 };
 
 export const optimizeKeyframePrompt = async (options: {
@@ -93,7 +94,7 @@ export const splitShot = async (options: {
 }): Promise<{ subShots: any[] }> => {
   const prompt = buildShotSplitPrompt(options);
   const result = await chatJson({ prompt });
-  return JSON.parse(result);
+  return parseModelJson(result);
 };
 
 export const verifyApiKey = async (apiKey: string): Promise<{ success: boolean; message: string }> => {
