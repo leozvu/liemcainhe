@@ -1,4 +1,5 @@
 import { VoiceProviderId, VoiceRegion } from '../types';
+import { clearVoiceSecret, getVoiceSecret, setVoiceSecret } from './credentialVault';
 
 export interface VoiceOption {
   id: string;
@@ -99,35 +100,40 @@ export const VOICE_PROVIDERS: VoiceProviderDefinition[] = [
 export const getVoiceProvider = (id: VoiceProviderId): VoiceProviderDefinition =>
   VOICE_PROVIDERS.find((provider) => provider.id === id) || VOICE_PROVIDERS[0];
 
-const readCredentials = (): Partial<Record<VoiceProviderId, VoiceProviderCredentials>> => {
+let legacyCredentialsMigrated = false;
+
+const migrateLegacyCredentials = (): void => {
+  if (legacyCredentialsMigrated || typeof localStorage === 'undefined') return;
+  legacyCredentialsMigrated = true;
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const legacy = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Partial<Record<VoiceProviderId, VoiceProviderCredentials>>;
+    Object.entries(legacy).forEach(([providerId, credentials]) => {
+      if (credentials && typeof credentials === 'object') setVoiceSecret(providerId, credentials);
+    });
   } catch {
-    return {};
+    // Bản lưu cũ hỏng không được phép chặn Xưởng giọng Việt.
+  } finally {
+    localStorage.removeItem(STORAGE_KEY);
   }
 };
 
 export const getVoiceCredentials = (providerId: VoiceProviderId): VoiceProviderCredentials =>
-  readCredentials()[providerId] || {};
+  (migrateLegacyCredentials(), getVoiceSecret(providerId));
 
 export const setVoiceCredentials = (
   providerId: VoiceProviderId,
   credentials: VoiceProviderCredentials,
 ): void => {
-  const current = readCredentials();
   const normalized = {
     apiKey: credentials.apiKey?.trim() || undefined,
     appId: credentials.appId?.trim() || undefined,
     callbackUrl: credentials.callbackUrl?.trim() || undefined,
   };
-  current[providerId] = normalized;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+  setVoiceSecret(providerId, normalized);
 };
 
 export const clearVoiceCredentials = (providerId: VoiceProviderId): void => {
-  const current = readCredentials();
-  delete current[providerId];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+  clearVoiceSecret(providerId);
 };
 
 export const isVoiceProviderConfigured = (providerId: VoiceProviderId): boolean => {
@@ -139,4 +145,3 @@ export const isVoiceProviderConfigured = (providerId: VoiceProviderId): boolean 
   if (provider.requiresCallback && !credentials.callbackUrl) return false;
   return true;
 };
-

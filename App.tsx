@@ -12,6 +12,7 @@ import { getWorkflowReadiness, normalizeWorkflowState } from './services/workflo
 import { recordSystemEvent } from './services/accountService';
 import { setUsageProjectContext } from './services/usageService';
 import { createProductionDemoProject } from './services/demoProjectService';
+import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobService';
 
 const StageScript = React.lazy(() => import('./components/StageScript'));
 const StageAssets = React.lazy(() => import('./components/StageAssets'));
@@ -40,6 +41,7 @@ function App() {
   
   const saveTimeoutRef = useRef<any>(null);
   const hideStatusTimeoutRef = useRef<any>(null);
+  const jobSyncTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
     if (shouldShowOnboarding()) {
@@ -147,6 +149,19 @@ function App() {
   }, [project]);
 
   useEffect(() => {
+    if (!project) return;
+    if (jobSyncTimeoutRef.current) clearTimeout(jobSyncTimeoutRef.current);
+    jobSyncTimeoutRef.current = setTimeout(() => {
+      void syncDurableJobs(project.id, project.workflow?.jobs || []).catch((error) => {
+        console.warn('Không thể đồng bộ hàng đợi bền vững', error);
+      });
+    }, 900);
+    return () => {
+      if (jobSyncTimeoutRef.current) clearTimeout(jobSyncTimeoutRef.current);
+    };
+  }, [project?.id, project?.workflow?.jobs]);
+
+  useEffect(() => {
     if (saveStatus === 'saved') {
       if (hideStatusTimeoutRef.current) clearTimeout(hideStatusTimeoutRef.current);
       hideStatusTimeoutRef.current = setTimeout(() => {
@@ -179,7 +194,11 @@ function App() {
   };
 
   const handleOpenProject = (proj: ProjectState) => {
-    setProject(normalizeWorkflowState(proj));
+    const normalized = normalizeWorkflowState(proj);
+    setProject(normalized);
+    void hydrateDurableJobs(normalized).then((hydrated) => {
+      setProject((current) => current?.id === normalized.id ? hydrated : current);
+    });
   };
 
   const handleCreateDemo = async () => {

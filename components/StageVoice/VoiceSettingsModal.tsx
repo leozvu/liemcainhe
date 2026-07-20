@@ -132,7 +132,7 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, initialProviderI
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-cyan-200" />
                 <p className="text-xs leading-5 text-zinc-400">
-                  Khóa được lưu cục bộ trên thiết bị này và chỉ gửi qua proxy cùng miền đến đúng nhà cung cấp. Với bản triển khai nhiều người dùng, nên thay bằng kho bí mật phía máy chủ.
+                  Khóa chỉ được giữ trong phiên trình duyệt hiện tại, không ghi vào dự án, localStorage hay cloud. Khi đóng phiên, bạn cần nhập lại khóa; proxy cùng miền chỉ chuyển khóa đến đúng nhà cung cấp.
                 </p>
               </div>
             </div>
@@ -192,7 +192,7 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, initialProviderI
             <p className="text-[11px] text-zinc-600">Không chia sẻ khóa API trong ảnh chụp màn hình hoặc tệp dự án.</p>
             <button type="button" onClick={save} disabled={!draft.apiKey?.trim()} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold">
               {savedProvider === provider.id ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-              {savedProvider === provider.id ? 'Đã lưu trên thiết bị' : 'Lưu kết nối'}
+              {savedProvider === provider.id ? 'Đã giữ trong phiên' : 'Dùng trong phiên này'}
             </button>
           </footer>
         </div>

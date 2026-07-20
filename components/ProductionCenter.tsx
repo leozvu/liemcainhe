@@ -35,6 +35,7 @@ import {
   setProductionJobStatus,
 } from '../services/workflowService';
 import { syncProjectToCloud } from '../services/cloudSyncService';
+import { clearFinishedDurableJobs } from '../services/durableJobService';
 import { useAlert } from './GlobalAlert';
 
 interface Props {
@@ -188,6 +189,11 @@ const ProductionCenter: React.FC<Props> = ({
     if (action === 'cloud') void syncCloud();
   };
 
+  const clearFinished = () => {
+    updateProject(clearFinishedJobs);
+    void clearFinishedDurableJobs(project.id);
+  };
+
   return (
     <div className="fixed inset-0 z-[120] flex bg-black/80 backdrop-blur-xl" role="dialog" aria-modal="true" aria-labelledby="production-center-title">
       <div className="flex h-full w-full flex-col bg-[var(--eg-canvas)] text-[var(--eg-text)]">
@@ -315,7 +321,7 @@ const ProductionCenter: React.FC<Props> = ({
               <section>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div><div className="eg-kicker">Hàng đợi sản xuất</div><h2 className="mt-1 text-2xl font-semibold text-white">Lịch sử tác vụ</h2><p className="mt-2 text-xs text-zinc-500">Mọi tác vụ hàng loạt sẽ được ghi lại, kể cả lỗi hoặc phiên làm việc bị gián đoạn.</p></div>
-                  <button type="button" onClick={() => updateProject(clearFinishedJobs)} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-4 text-xs font-semibold"><Trash2 className="h-4 w-4" /> Dọn tác vụ hoàn tất</button>
+                  <button type="button" onClick={clearFinished} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-4 text-xs font-semibold"><Trash2 className="h-4 w-4" /> Dọn tác vụ hoàn tất</button>
                 </div>
                 <div className="mt-6 space-y-3">
                   {workflow.jobs.length === 0 ? (

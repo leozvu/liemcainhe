@@ -33,3 +33,30 @@ export const systemEventsSchema = {
   indexes: [['owner_email', 'created_at']],
   columns: ['id', 'owner_email', 'project_id', 'severity', 'source', 'message', 'detail_json', 'created_at'],
 } as const;
+
+export const productionJobsSchema = {
+  table: 'egoric_jobs',
+  primaryKey: ['id'],
+  indexes: [['owner_email', 'project_id', 'updated_at']],
+} as const;
+
+export const mediaMetadataSchema = {
+  table: 'egoric_media',
+  primaryKey: ['owner_email', 'project_id', 'path'],
+} as const;
+
+export const reviewNotesSchema = {
+  table: 'egoric_review_notes',
+  primaryKey: ['id'],
+  indexes: [['owner_email', 'project_id', 'updated_at']],
+} as const;
+
+export const stageApprovalsSchema = {
+  table: 'egoric_stage_approvals',
+  primaryKey: ['owner_email', 'project_id', 'stage'],
+} as const;
+
+export const rateLimitsSchema = {
+  table: 'egoric_rate_limits',
+  primaryKey: ['owner_email', 'bucket'],
+} as const;

@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/build-sites.mjs",
+    "test": "vitest",
+    "test:run": "vitest run",
     "preview": "vite preview",
     "electron:dev": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder",
@@ -14,8 +16,8 @@
     "electron:build:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
-    "express": "^4.21.0",
-    "http-proxy-middleware": "^3.0.0",
+    "express": "^4.22.2",
+    "http-proxy-middleware": "^3.0.7",
     "jszip": "^3.10.1",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",
@@ -24,10 +26,11 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.4.3",
+    "vitest": "^4.1.10"
   },
   "build": {
     "appId": "agency.egoric.studio",

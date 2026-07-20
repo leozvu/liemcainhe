@@ -227,6 +227,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         emotion: selectedProfile.emotion,
         pronunciationDictionary: studio.pronunciationDictionary,
         outputFormat: studio.outputFormat,
+        masterAudio: studio.normalizeLoudness,
       });
       setPreviewAudio(result);
     } catch (error) {
@@ -287,12 +288,17 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         emotion: profile.emotion,
         pronunciationDictionary: studio.pronunciationDictionary,
         outputFormat: studio.outputFormat,
+        masterAudio: studio.normalizeLoudness,
       });
       patchTake(takeId, {
         status: 'ready',
         audioUrl: result.audioUrl,
         duration: result.duration,
         fileName: result.fileName,
+        mastered: Boolean(result.mastering),
+        masteringGainDb: result.mastering?.gainDb,
+        trimmedSeconds: result.mastering?.trimmedSeconds,
+        masteringSkippedReason: result.masteringSkippedReason,
         error: undefined,
       });
       return true;
@@ -305,7 +311,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const handleUpload = async (shot: Shot, file?: File) => {
     if (!file) return;
     try {
-      const result = await audioFileToDataUrl(file);
+      const result = await audioFileToDataUrl(file, studio.normalizeLoudness);
       const characterId = getSpeakerId(shot);
       const take: VoiceTake = {
         id: `voice_take_human_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -318,7 +324,10 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         status: 'ready',
         audioUrl: result.audioUrl,
         duration: result.duration,
-        fileName: file.name,
+        fileName: result.fileName || file.name,
+        mastered: Boolean(result.mastering),
+        masteringGainDb: result.mastering?.gainDb,
+        trimmedSeconds: result.mastering?.trimmedSeconds,
         sourceHash: getShotSourceHash(shot),
         createdAt: Date.now(),
       };
@@ -473,6 +482,21 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                 </div>
               </div>
             ))}
+          </section>
+
+          <section className="eg-panel flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-200/15 bg-cyan-200/[.06] text-cyan-200"><Headphones className="h-4 w-4" /></span>
+              <div><h2 className="text-sm font-semibold text-white">Master thoại tự động</h2><p className="mt-1 max-w-2xl text-[11px] leading-5 text-zinc-500">Cắt khoảng lặng thừa, cân RMS, giữ peak dưới −1 dB và tạo fade ngắn để ghép timeline sạch hơn.</p></div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="flex min-h-11 items-center gap-3 rounded-xl border border-white/[.08] px-4 text-xs text-zinc-300">
+                <input type="checkbox" checked={studio.normalizeLoudness} onChange={(event) => updateStudio((current) => ({ ...current, normalizeLoudness: event.target.checked }))} className="accent-cyan-200" /> Chuẩn hóa bản mới
+              </label>
+              <select value={studio.outputFormat} onChange={(event) => updateStudio((current) => ({ ...current, outputFormat: event.target.value as 'mp3' | 'wav' }))} className="eg-input min-h-11 px-3 text-xs" aria-label="Định dạng nguồn giọng">
+                <option value="mp3">Nguồn MP3</option><option value="wav">Nguồn WAV</option>
+              </select>
+            </div>
           </section>
 
           <div className="grid min-w-0 gap-6 lg:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -700,6 +724,8 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                               </select>
                               <span className="eg-chip">{provider.shortName} · {profile.voiceName}</span>
                               {selectedTake?.source === 'human' && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><UsersRound className="h-3 w-3" /> Người thật</span>}
+                            {selectedTake?.mastered && <span className="eg-chip border-cyan-200/20 bg-cyan-200/[.07] text-cyan-100"><Headphones className="h-3 w-3" /> Đã master</span>}
+                            {selectedTake?.masteringSkippedReason && <span title={selectedTake.masteringSkippedReason} className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><AlertCircle className="h-3 w-3" /> Giữ bản gốc</span>}
                             {selectedTake?.status === 'ready' && <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100"><Check className="h-3 w-3" /> Đã chọn</span>}
                             {!isVoiceCurrent(shot) && selectedTake?.status === 'ready' && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><AlertCircle className="h-3 w-3" /> Nội dung hoặc preset đã đổi · chỉ tạo lại câu này</span>}
                             </div>

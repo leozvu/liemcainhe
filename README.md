@@ -33,6 +33,13 @@ Kho sáng tạo là khu vực nâng cao để tìm kiếm và chỉnh câu lện
 - **Chẩn đoán workflow** kiểm tra API, giọng nói, hạn mức, checkpoint, cloud và độ hoàn thiện trước khi chạy hàng loạt.
 - **Dự án demo Mưa Neon** cho phép kiểm tra luồng từ kịch bản đến xuất dựng mà không phải chuẩn bị dữ liệu ban đầu.
 - **Workspace theo tài khoản** lưu hồ sơ, hạn mức mềm/cứng, usage và nhật ký lỗi trên D1 của bản Sites.
+- **Kho khóa theo phiên** tách toàn bộ khóa BYOK khỏi localStorage, IndexedDB, project payload và cloud.
+- **Media pipeline production** upload trực tiếp vào R2, chia phần cho tệp lớn, retry, checksum chống tải trùng và dọn media mồ côi.
+- **Hàng đợi bền vững** đồng bộ trạng thái tác vụ vào D1 để lịch sử không mất khi đổi phiên hoặc thiết bị.
+- **Master thoại tự động** cắt im lặng, cân RMS, chặn peak và thêm fade ngắn cho bản thoại mới.
+- **Sổ duyệt & bàn giao** quản lý phê duyệt năm công đoạn, phản hồi theo cảnh và trạng thái đã xử lý.
+- **Quyền dữ liệu** hỗ trợ xuất JSON, xóa dữ liệu cloud, chính sách riêng tư và điều khoản sử dụng.
+- **Test tự động** bao phủ fallback, kho khóa, checksum media, mastering audio và vòng đời tác vụ.
 
 ## Công nghệ
 
@@ -87,13 +94,11 @@ docker compose down
 
 Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; FPT.AI, Viettel AI và ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Xưởng giọng Việt](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
 
-Khóa API chỉ được lưu trong bộ nhớ cục bộ của trình duyệt. Không đưa khóa API vào lịch sử Git.
+Khóa API chỉ được giữ trong `sessionStorage` của phiên trình duyệt hiện tại. Khóa không được ghi vào dự án, localStorage, IndexedDB, D1, R2 hoặc lịch sử Git; đóng phiên sẽ yêu cầu nhập lại.
 
 ## Thương hiệu và nguồn mở
 
-Phiên bản này được Việt hóa và mang thương hiệu **Egoric Film Studio**, một sản phẩm của **Egoric Agency**.
-
-Dự án được phát triển từ mã nguồn mở [yuanzhongqiao/printfilm](https://github.com/yuanzhongqiao/printfilm), phân phối theo giấy phép MIT. Mọi thương hiệu và dịch vụ mô hình của bên thứ ba thuộc về chủ sở hữu tương ứng.
+**Egoric Film Studio** là sản phẩm của **Egoric Agency**, phân phối theo giấy phép MIT. Mọi thương hiệu và dịch vụ mô hình của bên thứ ba thuộc về chủ sở hữu tương ứng.
 
 ## Hỗ trợ
 

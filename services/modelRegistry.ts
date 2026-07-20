@@ -24,6 +24,13 @@ import {
   GOOGLE_PROVIDER_ID,
   REPLICATE_PROVIDER_ID,
 } from '../types/model';
+import {
+  clearModelCredentials,
+  getModelSecret,
+  getProviderSecret,
+  setModelSecret,
+  setProviderSecret,
+} from './credentialVault';
 
 const STORAGE_KEY = 'egoric_studio_model_registry';
 const LEGACY_STORAGE_KEYS = [atob('YWlfbWFuZ2Ffc3R1ZGlvX21vZGVsX3JlZ2lzdHJ5')];
@@ -58,10 +65,10 @@ const isLegacyProvider = (provider: Partial<ModelProvider>): boolean => {
 };
 
 const cloneBuiltInProviders = (): ModelProvider[] =>
-  BUILTIN_PROVIDERS.map((provider) => ({ ...provider }));
+  BUILTIN_PROVIDERS.map((provider) => ({ ...provider, apiKey: getProviderSecret(provider.id) }));
 
 const cloneBuiltInModels = (): ModelDefinition[] =>
-  ALL_BUILTIN_MODELS.map((model) => ({ ...model, params: { ...model.params } } as ModelDefinition));
+  ALL_BUILTIN_MODELS.map((model) => ({ ...model, apiKey: getModelSecret(model.id), params: { ...model.params } } as ModelDefinition));
 
 const getDefaultState = (): ModelRegistryState => ({
   providers: cloneBuiltInProviders(),
@@ -86,13 +93,17 @@ export const loadRegistry = (): ModelRegistryState => {
 
       parsed.providers = (parsed.providers || [])
         .filter((provider) => !isLegacyProvider(provider))
-        .map((provider) => ({
-          ...provider,
-          protocol: provider.protocol || 'openai-compatible',
-          supportedModelTypes:
-            provider.supportedModelTypes ||
-            (['chat', 'image', 'video'] as ModelType[]),
-        }));
+        .map((provider) => {
+          if (provider.apiKey) setProviderSecret(provider.id, provider.apiKey);
+          return {
+            ...provider,
+            apiKey: provider.apiKey || getProviderSecret(provider.id),
+            protocol: provider.protocol || 'openai-compatible',
+            supportedModelTypes:
+              provider.supportedModelTypes ||
+              (['chat', 'image', 'video'] as ModelType[]),
+          };
+        });
       parsed.models = (parsed.models || []).filter(
         (model) => !legacyProviderIds.has(model.providerId)
       );
@@ -103,7 +114,7 @@ export const loadRegistry = (): ModelRegistryState => {
         if (idx === -1) {
           parsed.providers.unshift({ ...bp });
         } else {
-          const apiKey = parsed.providers[idx].apiKey;
+          const apiKey = parsed.providers[idx].apiKey || getProviderSecret(bp.id);
           parsed.providers[idx] = { ...bp, apiKey };
         }
       });
@@ -135,11 +146,13 @@ export const loadRegistry = (): ModelRegistryState => {
 
       // Di chuyển apiModel còn thiếu, ưu tiên suy ra từ id hoặc tiền tố providerId.
       parsed.models = parsed.models.map(m => {
-        if (m.apiModel) return m;
+        if (m.apiKey) setModelSecret(m.id, m.apiKey);
+        const apiKey = m.apiKey || getModelSecret(m.id);
+        if (m.apiModel) return { ...m, apiKey };
         if (m.providerId && m.id.startsWith(`${m.providerId}:`)) {
-          return { ...m, apiModel: m.id.slice(m.providerId.length + 1) };
+          return { ...m, apiKey, apiModel: m.id.slice(m.providerId.length + 1) };
         }
-        return { ...m, apiModel: m.id };
+        return { ...m, apiKey, apiModel: m.id };
       });
 
       parsed.models = parsed.models.filter(
@@ -219,7 +232,14 @@ export const loadRegistry = (): ModelRegistryState => {
  */
 export const saveRegistry = (state: ModelRegistryState): void => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    state.providers.forEach((provider) => setProviderSecret(provider.id, provider.apiKey));
+    state.models.forEach((model) => setModelSecret(model.id, model.apiKey));
+    const persistedState: ModelRegistryState = {
+      ...state,
+      providers: state.providers.map(({ apiKey: _apiKey, ...provider }) => provider),
+      models: state.models.map(({ apiKey: _apiKey, ...model }) => model as ModelDefinition),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
     clearStoredValues(LEGACY_STORAGE_KEYS);
     registryState = state;
   } catch (e) {
@@ -243,6 +263,7 @@ export const resetRegistry = (): void => {
   clearStoredValues(LEGACY_STORAGE_KEYS);
   localStorage.removeItem(API_KEY_STORAGE_KEY);
   clearStoredValues(LEGACY_API_KEY_STORAGE_KEYS);
+  clearModelCredentials();
   loadRegistry();
 };
 
@@ -319,6 +340,7 @@ export const removeProvider = (id: string): boolean => {
   
   state.models = state.models.filter(m => m.providerId !== id);
   state.providers = state.providers.filter(p => p.id !== id);
+  setProviderSecret(id, undefined);
   
   saveRegistry(state);
   return true;
@@ -487,6 +509,7 @@ export const removeModel = (id: string): boolean => {
   }
   
   state.models = state.models.filter(m => m.id !== id);
+  setModelSecret(id, undefined);
   saveRegistry(state);
   return true;
 };
@@ -517,7 +540,7 @@ export const setGlobalApiKey = (apiKey: string): void => {
 
 /** Lấy khóa đã lưu cho đúng nhà cung cấp. */
 export const getProviderApiKey = (providerId: string): string | undefined =>
-  getProviderById(providerId)?.apiKey;
+  getProviderById(providerId)?.apiKey || getProviderSecret(providerId);
 
 /** Lưu hoặc xóa khóa cho một nhà cung cấp. */
 export const setProviderApiKey = (providerId: string, apiKey: string): boolean => {
@@ -534,14 +557,14 @@ export const getApiKeyForModel = (modelId: string): string | undefined => {
   if (!model) return undefined;
   
   // 1. Ưu tiên API Key riêng của mô hình.
-  if (model.apiKey) {
-    return model.apiKey;
+  if (model.apiKey || getModelSecret(model.id)) {
+    return model.apiKey || getModelSecret(model.id);
   }
   
   // 2. Tiếp theo dùng API Key của nhà cung cấp.
   const provider = getProviderById(model.providerId);
-  if (provider?.apiKey) {
-    return provider.apiKey;
+  if (provider?.apiKey || getProviderSecret(model.providerId)) {
+    return provider?.apiKey || getProviderSecret(model.providerId);
   }
   
   return undefined;

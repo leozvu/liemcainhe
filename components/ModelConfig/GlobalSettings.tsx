@@ -64,7 +64,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
           provider.id,
           {
             state: provider.apiKey ? 'success' : 'idle',
-            message: provider.apiKey ? 'Đã lưu khóa trên thiết bị này' : '',
+            message: provider.apiKey ? 'Khóa đang được giữ an toàn trong phiên này' : '',
           },
         ])
       )
@@ -108,7 +108,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
       setDiscoveredCounts((current) => ({ ...current, [provider.id]: 0 }));
     }
     setProviders(getProviders());
-    setStatus(provider.id, { state: 'success', message: `${result.message} · Đã lưu` });
+    setStatus(provider.id, { state: 'success', message: `${result.message} · Đang dùng trong phiên` });
     onRefresh();
   };
 
@@ -141,7 +141,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
     setDraftKeys((current) => ({ ...current, [provider.id]: '' }));
     setVisibleKeys((current) => ({ ...current, [provider.id]: false }));
     setProviders(getProviders());
-    setStatus(provider.id, { state: 'idle', message: 'Đã xóa khóa khỏi thiết bị' });
+    setStatus(provider.id, { state: 'idle', message: 'Đã xóa khóa khỏi phiên này' });
     onRefresh();
   };
 
@@ -155,8 +155,8 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
           <div>
             <h3 className="text-base font-bold text-white">Kết nối nhà cung cấp AI</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
-              Mỗi nhà cung cấp dùng khóa riêng. Egoric Film Studio chỉ gửi khóa đến đúng dịch vụ bạn chọn
-              và lưu cấu hình trong trình duyệt trên thiết bị này.
+          Mỗi nhà cung cấp dùng khóa riêng. Egoric Film Studio chỉ giữ khóa trong phiên trình duyệt
+          hiện tại và gửi đến đúng dịch vụ bạn chọn; khóa không đi vào dự án hoặc cloud.
             </p>
           </div>
         </div>
@@ -302,7 +302,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                     className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-xs font-bold text-slate-950 transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-cyan-100/50"
                   >
                     {isChecking && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                    {isChecking ? 'Đang kiểm tra…' : 'Kiểm tra và lưu'}
+                    {isChecking ? 'Đang kiểm tra…' : 'Kiểm tra và dùng trong phiên'}
                   </button>
                 </div>
 

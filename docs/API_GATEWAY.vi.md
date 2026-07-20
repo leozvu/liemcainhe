@@ -18,12 +18,13 @@ Trình duyệt gửi yêu cầu đến một tiền tố cùng miền nằm tron
 - `/api-proxy/viettel`
 - `/api-proxy/elevenlabs`
 
-Vite, Electron, Cloudflare Worker hoặc Nginx chuyển tiếp yêu cầu đến đúng tên miền đã được khai báo cứng. Proxy không nhận URL đích từ người dùng, tránh biến máy chủ thành cổng chuyển tiếp tùy ý.
+Vite, Electron, Cloudflare Worker hoặc Nginx chuyển tiếp yêu cầu đến đúng tên miền đã được khai báo cứng. Proxy không nhận URL đích từ người dùng. Bản Sites còn yêu cầu danh tính đã đăng nhập, lọc danh sách header, giới hạn kích thước, rate-limit theo nhà cung cấp và đặt phản hồi ở chế độ `no-store`.
 
 ## Các vị trí cấu hình
 
 - `types/model.ts`: metadata nhà cung cấp và mô hình tích hợp.
-- `services/modelRegistry.ts`: lưu khóa theo nhà cung cấp và ánh xạ proxy.
+- `services/credentialVault.ts`: giữ khóa BYOK trong `sessionStorage`, tách khỏi dữ liệu lâu dài.
+- `services/modelRegistry.ts`: quản lý danh mục, lấy khóa từ vault và ánh xạ proxy.
 - `services/providerService.ts`: kiểm tra khóa bằng điểm cuối miễn phí.
 - `services/adapters/`: bộ điều hợp hội thoại, hình ảnh, video và Replicate.
 - `services/voiceRegistry.ts`: metadata giọng, khóa và cấu hình nhà cung cấp âm thanh.

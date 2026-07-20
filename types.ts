@@ -131,6 +131,10 @@ export interface VoiceTake {
   sourceHash?: string;
   emotion?: VoiceEmotion;
   pitch?: number;
+  mastered?: boolean;
+  masteringGainDb?: number;
+  trimmedSeconds?: number;
+  masteringSkippedReason?: string;
   createdAt: number;
 }
 

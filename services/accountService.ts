@@ -89,3 +89,25 @@ export const recordSystemEvent = (input: {
     keepalive: true,
   }).catch(() => undefined);
 };
+
+export const exportAccountData = async (): Promise<void> => {
+  const response = await fetch('/api/account/export');
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Không thể xuất dữ liệu tài khoản');
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `egoric-account-export-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+export const deleteAccountData = async (): Promise<void> => {
+  const response = await fetch('/api/account/data', {
+    method: 'DELETE',
+    headers: { 'x-egoric-confirm': 'DELETE_ACCOUNT_DATA' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Không thể xóa dữ liệu tài khoản');
+};

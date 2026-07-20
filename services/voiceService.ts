@@ -1,6 +1,7 @@
 import { PronunciationEntry, VoiceEmotion, VoiceProviderId } from '../types';
 import { getVoiceCredentials, getVoiceProvider } from './voiceRegistry';
 import { assertUsageAllowed, recordUsage } from './usageService';
+import { AudioMasteringReport, masterAudioBlob } from './audioMasteringService';
 
 export interface GenerateVoiceInput {
   providerId: VoiceProviderId;
@@ -11,6 +12,7 @@ export interface GenerateVoiceInput {
   emotion?: VoiceEmotion;
   pronunciationDictionary?: PronunciationEntry[];
   outputFormat: 'mp3' | 'wav';
+  masterAudio?: boolean;
 }
 
 export interface GenerateVoiceResult {
@@ -18,6 +20,8 @@ export interface GenerateVoiceResult {
   fileName: string;
   duration?: number;
   remote?: boolean;
+  mastering?: AudioMasteringReport;
+  masteringSkippedReason?: string;
 }
 
 const parseErrorMessage = async (response: Response): Promise<string> => {
@@ -42,6 +46,25 @@ const blobToDataUrl = (blob: Blob): Promise<string> =>
     reader.onerror = () => reject(new Error('Không thể đọc dữ liệu âm thanh'));
     reader.readAsDataURL(blob);
   });
+
+const masterGeneratedAudio = async (result: GenerateVoiceResult): Promise<GenerateVoiceResult> => {
+  if (result.remote) return { ...result, masteringSkippedReason: 'Nguồn âm thanh bất đồng bộ chưa cho phép trình duyệt xử lý trực tiếp.' };
+  try {
+    const source = await fetch(result.audioUrl).then((response) => response.blob());
+    const mastered = await masterAudioBlob(source);
+    const baseName = result.fileName.replace(/\.[a-z0-9]{2,5}$/i, '');
+    return {
+      ...result,
+      audioUrl: await blobToDataUrl(mastered.blob),
+      fileName: `${baseName}-master.wav`,
+      duration: mastered.report.duration,
+      mastering: mastered.report,
+    };
+  } catch (error) {
+    console.warn('Mastering tự động không khả dụng; giữ nguyên bản giọng gốc.', error);
+    return { ...result, masteringSkippedReason: error instanceof Error ? error.message : 'Không thể giải mã âm thanh nguồn.' };
+  }
+};
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -186,17 +209,27 @@ export const generateVoice = async (input: GenerateVoiceInput): Promise<Generate
     else if (input.providerId === 'vbee') {
       throw new Error('Vbee yêu cầu máy chủ callback công khai. Hãy dùng FPT.AI/Viettel AI trong bản web hoặc nhập bản thu đã tạo từ Vbee.');
     } else throw new Error('Giọng người thật cần được tải lên từ tệp âm thanh');
+    const finalResult = input.masterAudio ? await masterGeneratedAudio(result) : result;
     recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, inputSize: text.length, durationMs: Date.now() - startedAt, status: 'success' });
-    return result;
+    return finalResult;
   } catch (error) {
     recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 };
 
-export const audioFileToDataUrl = async (file: File): Promise<{ audioUrl: string; duration?: number }> => {
+export const audioFileToDataUrl = async (file: File, masterAudio = false): Promise<{ audioUrl: string; duration?: number; fileName?: string; mastering?: AudioMasteringReport }> => {
   if (!file.type.startsWith('audio/')) throw new Error('Vui lòng chọn tệp âm thanh');
   if (file.size > 25 * 1024 * 1024) throw new Error('Tệp âm thanh không được vượt quá 25 MB');
+  if (masterAudio) {
+    const mastered = await masterAudioBlob(file);
+    return {
+      audioUrl: await blobToDataUrl(mastered.blob),
+      duration: mastered.report.duration,
+      fileName: `${file.name.replace(/\.[a-z0-9]{2,5}$/i, '')}-master.wav`,
+      mastering: mastered.report,
+    };
+  }
   const audioUrl = await blobToDataUrl(file);
-  return { audioUrl, duration: await getAudioDuration(audioUrl) };
+  return { audioUrl, duration: await getAudioDuration(audioUrl), fileName: file.name };
 };

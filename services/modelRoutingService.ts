@@ -50,7 +50,7 @@ export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition
   return (configured.length ? configured : ordered).slice(0, Math.max(1, policy.maxAttempts));
 };
 
-const canFallback = (error: unknown): boolean => {
+export const canFallbackFromModelError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   if (/an toàn nội dung|content policy|tham số không hợp lệ|lời thoại phải|400/.test(message)) return false;
   return /hạn mức|quota|balance|429|401|403|500|502|503|504|hết thời gian|timeout|mạng|network|failed to fetch|không thể kết nối|gián đoạn|service unavailable/.test(message);
@@ -92,7 +92,7 @@ export const executeWithModelFallback = async <T>(input: {
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
       });
-      if (index === candidates.length - 1 || !canFallback(error)) throw error;
+      if (index === candidates.length - 1 || !canFallbackFromModelError(error)) throw error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Không có tuyến mô hình khả dụng');

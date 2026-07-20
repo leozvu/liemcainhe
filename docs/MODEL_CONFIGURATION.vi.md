@@ -33,4 +33,4 @@ Với Replicate, dùng tên dạng `chủ-sở-hữu/tên-mô-hình`; Egoric Fil
 
 ## Dữ liệu và quyền riêng tư
 
-Cấu hình mô hình và khóa API được lưu trong trình duyệt. Xóa dữ liệu trang web sẽ xóa cả cấu hình và dự án cục bộ; hãy xuất bản sao trước khi dọn bộ nhớ.
+Cấu hình danh mục mô hình được lưu trong trình duyệt, nhưng khóa API chỉ nằm trong phiên hiện tại và tự mất khi đóng phiên. Xóa dữ liệu trang web sẽ xóa cấu hình cùng dự án cục bộ; hãy xuất bản sao trước khi dọn bộ nhớ.

@@ -44,7 +44,6 @@ Vbee AIVoice API trả kết quả qua callback URL công khai. Bản web tĩnh 
 ## Bảo mật và chi phí
 
 - Khóa giọng nói tách biệt với khóa hội thoại, hình ảnh và video.
-- Khóa được lưu cục bộ trên thiết bị, không đưa vào tệp dự án hoặc Git.
+- Khóa chỉ được giữ trong phiên trình duyệt hiện tại, không đưa vào localStorage, tệp dự án, cloud hoặc Git. Đóng phiên sẽ yêu cầu nhập lại.
 - Nút tạo hàng loạt hiển thị xác nhận vì mỗi câu có thể tiêu hao hạn mức API.
 - Chỉ nhân bản giọng khi có sự đồng ý rõ ràng của chủ giọng và quyền sử dụng thương mại phù hợp.
-
