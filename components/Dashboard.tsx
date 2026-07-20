@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Film,
   FolderOpen,
+  Gauge,
   HelpCircle,
   Image as ImageIcon,
   Loader2,
@@ -42,6 +43,7 @@ interface Props {
   onOpenProject: (project: ProjectState) => void;
   onShowOnboarding?: () => void;
   onShowModelConfig?: () => void;
+  onShowOperations?: () => void;
 }
 
 const STAGE_META: Record<ProjectState['stage'], { label: string; step: number }> = {
@@ -64,7 +66,7 @@ const getProjectPreview = (project: ProjectState) => {
   return keyframe || scene || character;
 };
 
-const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowModelConfig }) => {
+const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowModelConfig, onShowOperations }) => {
   const { showAlert } = useAlert();
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -216,6 +218,9 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
             </div>
           </div>
           <nav className="flex items-center gap-2" aria-label="Công cụ ứng dụng">
+            {onShowOperations && (
+              <button type="button" onClick={onShowOperations} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Trung tâm vận hành" title="Trung tâm vận hành"><Gauge className="h-4 w-4" /></button>
+            )}
             {onShowOnboarding && (
               <button type="button" onClick={onShowOnboarding} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Hướng dẫn sử dụng" title="Hướng dẫn"><HelpCircle className="h-4 w-4" /></button>
             )}
@@ -330,6 +335,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
         </section>
 
         <section className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {onShowOperations && <button type="button" onClick={onShowOperations} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Gauge className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Trung tâm vận hành</span><span className="mt-1 block text-xs text-zinc-600">API, Voice, kiểm thử và hạn mức workspace.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
           <button type="button" onClick={() => setShowLibrary(true)} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Archive className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Thư viện tài nguyên</span><span className="mt-1 block text-xs text-zinc-600">Tái sử dụng nhân vật và bối cảnh giữa dự án.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
           <button type="button" onClick={() => void openCloudProjects()} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-sky-200"><CloudDownload className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Dự án cloud</span><span className="mt-1 block text-xs text-zinc-600">Khôi phục dự án trên thiết bị khác.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
           {onShowModelConfig && <button type="button" onClick={onShowModelConfig} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-amber-200"><Cpu className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Mô hình và API</span><span className="mt-1 block text-xs text-zinc-600">Kết nối model hội thoại, hình ảnh và video.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
@@ -341,7 +347,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
         <div className="fixed inset-0 z-[185] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setShowCloud(false)}>
           <div className="eg-panel flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b eg-divider p-5 md:p-7">
-              <div><div className="eg-kicker">Egoric Cloud</div><h2 className="mt-1 text-xl font-semibold text-white">Dự án đã sao lưu</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Dữ liệu tách theo tài khoản ChatGPT đang đăng nhập. Khôi phục sẽ tạo hoặc cập nhật bản local.</p></div>
+              <div><div className="eg-kicker">Đám mây Egoric</div><h2 className="mt-1 text-xl font-semibold text-white">Dự án đã sao lưu</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Dữ liệu tách theo tài khoản ChatGPT đang đăng nhập. Khôi phục sẽ tạo hoặc cập nhật bản trên thiết bị.</p></div>
               <button type="button" onClick={() => setShowCloud(false)} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng dự án cloud"><X className="h-4 w-4" /></button>
             </header>
             <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">

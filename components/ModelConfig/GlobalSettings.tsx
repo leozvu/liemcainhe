@@ -13,12 +13,14 @@ import {
   Trash2,
   Video,
 } from 'lucide-react';
-import { ModelProvider, ModelType } from '../../types/model';
+import { DEFAULT_CHAT_PARAMS, DEFAULT_IMAGE_PARAMS, DEFAULT_VIDEO_PARAMS_SORA, ModelProvider, ModelType } from '../../types/model';
 import {
   getProviders,
+  getModels,
+  registerModel,
   setProviderApiKey,
 } from '../../services/modelRegistry';
-import { verifyProviderApiKey } from '../../services/providerService';
+import { DiscoveredProviderModel, discoverProviderModels, verifyProviderApiKey } from '../../services/providerService';
 
 interface GlobalSettingsProps {
   onRefresh: () => void;
@@ -46,6 +48,9 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
   const [draftKeys, setDraftKeys] = useState<Record<string, string>>({});
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [statuses, setStatuses] = useState<Record<string, VerificationState>>({});
+  const [discoveredCounts, setDiscoveredCounts] = useState<Record<string, number>>({});
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredProviderModel[]>>({});
+  const [selectedDiscovered, setSelectedDiscovered] = useState<Record<string, string>>({});
 
   const refreshProviders = () => {
     const nextProviders = getProviders();
@@ -94,8 +99,40 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
     }
 
     setProviderApiKey(provider.id, key);
+    try {
+      const discovered = await discoverProviderModels(provider.id, key);
+      setDiscoveredCounts((current) => ({ ...current, [provider.id]: discovered.length }));
+      setDiscoveredModels((current) => ({ ...current, [provider.id]: discovered }));
+      setSelectedDiscovered((current) => ({ ...current, [provider.id]: discovered[0]?.id || '' }));
+    } catch {
+      setDiscoveredCounts((current) => ({ ...current, [provider.id]: 0 }));
+    }
     setProviders(getProviders());
     setStatus(provider.id, { state: 'success', message: `${result.message} · Đã lưu` });
+    onRefresh();
+  };
+
+  const importDiscoveredModel = (provider: ModelProvider) => {
+    const item = discoveredModels[provider.id]?.find((model) => model.id === selectedDiscovered[provider.id]);
+    if (!item) return;
+    const params = item.type === 'chat' ? { ...DEFAULT_CHAT_PARAMS } : item.type === 'image' ? { ...DEFAULT_IMAGE_PARAMS } : { ...DEFAULT_VIDEO_PARAMS_SORA };
+    const modelId = `${provider.id}:${item.id}`;
+    if (getModels().some((model) => model.id === modelId)) {
+      setStatus(provider.id, { state: 'success', message: `${item.name} đã có trong danh mục.` });
+      return;
+    }
+    registerModel({
+      id: modelId,
+      apiModel: item.id,
+      name: item.name,
+      type: item.type,
+      providerId: provider.id,
+      endpoint: item.type === 'chat' ? (provider.id === 'google-ai-studio' ? '/chat/completions' : '/v1/chat/completions') : undefined,
+      description: `Mô hình được phát hiện trực tiếp từ ${provider.name}.`,
+      isEnabled: true,
+      params,
+    } as any);
+    setStatus(provider.id, { state: 'success', message: `Đã thêm ${item.name} vào danh mục mô hình.` });
     onRefresh();
   };
 
@@ -164,6 +201,11 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                         </span>
                       );
                     })}
+                    {typeof discoveredCounts[provider.id] === 'number' && (
+                      <span className="inline-flex items-center rounded-lg border border-cyan-200/15 bg-cyan-200/[.05] px-2.5 py-1.5 font-mono text-[10px] text-cyan-100/70">
+                        {discoveredCounts[provider.id]} mô hình đã phát hiện
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -263,6 +305,19 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                     {isChecking ? 'Đang kiểm tra…' : 'Kiểm tra và lưu'}
                   </button>
                 </div>
+
+                {(discoveredModels[provider.id]?.length || 0) > 0 && (
+                  <div className="mt-4 rounded-xl border border-cyan-200/15 bg-cyan-200/[.035] p-3">
+                    <label htmlFor={`discovered-${provider.id}`} className="text-[10px] font-semibold uppercase tracking-wider text-cyan-100/70">Mô hình phát hiện trực tiếp</label>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <select id={`discovered-${provider.id}`} value={selectedDiscovered[provider.id] || ''} onChange={(event) => setSelectedDiscovered((current) => ({ ...current, [provider.id]: event.target.value }))} className="eg-input min-w-0 flex-1 px-3 text-xs">
+                        {discoveredModels[provider.id].slice(0, 500).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                      </select>
+                      <button type="button" onClick={() => importDiscoveredModel(provider)} className="eg-button-secondary inline-flex items-center justify-center px-4 text-xs font-semibold">Thêm vào danh mục</button>
+                    </div>
+                    {discoveredModels[provider.id].length > 500 && <p className="mt-2 text-[10px] text-zinc-600">Đang hiển thị 500 mô hình đầu tiên. Có thể tìm thêm bằng mã model tùy chỉnh.</p>}
+                  </div>
+                )}
               </div>
             </section>
           );

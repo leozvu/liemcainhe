@@ -91,6 +91,14 @@ export interface ShotWorkflowState {
 export type VoiceProviderId = 'fpt' | 'viettel' | 'elevenlabs' | 'vbee' | 'human';
 export type VoiceRegion = 'north' | 'central' | 'south' | 'international';
 export type VoiceTakeStatus = 'draft' | 'generating' | 'processing' | 'ready' | 'error';
+export type VoiceEmotion = 'neutral' | 'warm' | 'confident' | 'dramatic' | 'energetic' | 'intimate';
+
+export interface PronunciationEntry {
+  id: string;
+  source: string;
+  replacement: string;
+  note?: string;
+}
 
 export interface VoiceProfile {
   id: string;
@@ -100,6 +108,8 @@ export interface VoiceProfile {
   voiceName: string;
   region: VoiceRegion;
   speed: number;
+  pitch: number;
+  emotion: VoiceEmotion;
   style?: string;
 }
 
@@ -118,6 +128,9 @@ export interface VoiceTake {
   fileName?: string;
   notes?: string;
   error?: string;
+  sourceHash?: string;
+  emotion?: VoiceEmotion;
+  pitch?: number;
   createdAt: number;
 }
 
@@ -128,6 +141,8 @@ export interface VoiceStudioState {
   selectedTakeByShot: Record<string, string>;
   outputFormat: 'mp3' | 'wav';
   normalizeLoudness: boolean;
+  pronunciationDictionary: PronunciationEntry[];
+  previewText: string;
 }
 
 export interface ScriptData {

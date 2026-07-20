@@ -72,6 +72,20 @@ export const normalizeWorkflowState = (project: ProjectState): ProjectState => {
 
   return {
     ...project,
+    voiceStudio: project.voiceStudio ? {
+      defaultProviderId: project.voiceStudio.defaultProviderId || 'fpt',
+      profiles: (project.voiceStudio.profiles || []).map((profile) => ({
+        ...profile,
+        pitch: profile.pitch ?? 0,
+        emotion: profile.emotion || 'neutral',
+      })),
+      takes: project.voiceStudio.takes || [],
+      selectedTakeByShot: project.voiceStudio.selectedTakeByShot || {},
+      outputFormat: project.voiceStudio.outputFormat || 'mp3',
+      normalizeLoudness: project.voiceStudio.normalizeLoudness ?? true,
+      pronunciationDictionary: project.voiceStudio.pronunciationDictionary || [],
+      previewText: project.voiceStudio.previewText || 'Xin chào, đây là bản thử giọng của Egoric Film Studio.',
+    } : project.voiceStudio,
     workflow: {
       ...createDefaultWorkflowState(),
       ...current,

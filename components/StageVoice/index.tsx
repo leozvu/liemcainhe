@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertCircle,
+  BookOpenText,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -9,6 +10,8 @@ import {
   Headphones,
   Loader2,
   Mic2,
+  Play,
+  Plus,
   Radio,
   Search,
   Settings2,
@@ -24,6 +27,7 @@ import {
   ProjectState,
   Shot,
   VoiceProfile,
+  VoiceEmotion,
   VoiceProviderId,
   VoiceStudioState,
   VoiceTake,
@@ -34,7 +38,7 @@ import {
   getVoiceProvider,
   isVoiceProviderConfigured,
 } from '../../services/voiceRegistry';
-import { audioFileToDataUrl, generateVoice } from '../../services/voiceService';
+import { audioFileToDataUrl, createVoiceSourceHash, generateVoice } from '../../services/voiceService';
 import { useAlert } from '../GlobalAlert';
 import VoicePlayer from './VoicePlayer';
 import VoiceSettingsModal from './VoiceSettingsModal';
@@ -61,6 +65,15 @@ const REGION_LABELS = {
   international: 'Quốc tế',
 };
 
+const EMOTION_LABELS: Record<VoiceEmotion, string> = {
+  neutral: 'Tự nhiên',
+  warm: 'Ấm áp',
+  confident: 'Tự tin',
+  dramatic: 'Kịch tính',
+  energetic: 'Năng lượng',
+  intimate: 'Thân mật',
+};
+
 const getDefaultProfile = (
   characterId: string,
   providerId: VoiceProviderId = 'fpt',
@@ -75,6 +88,8 @@ const getDefaultProfile = (
     voiceName: voice?.name || 'Chưa chọn giọng',
     region: voice?.region || 'international',
     speed: 1,
+    pitch: 0,
+    emotion: 'neutral',
     style: 'Tự nhiên',
   };
 };
@@ -110,6 +125,8 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsProvider, setSettingsProvider] = useState<VoiceProviderId>(studio.defaultProviderId || 'fpt');
   const [batchRendering, setBatchRendering] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewAudio, setPreviewAudio] = useState<{ audioUrl: string; fileName: string; duration?: number } | null>(null);
 
   const updateStudio = (mutator: (current: VoiceStudioState) => VoiceStudioState) => {
     updateProject((previous) => ({
@@ -143,6 +160,23 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
     return takes.find((take) => take.id === selectedId) || takes.find((take) => take.status === 'ready') || takes[0];
   };
 
+  const getShotSourceHash = (shot: Shot) => {
+    const profile = getProfile(getSpeakerId(shot));
+    return createVoiceSourceHash(
+      shot.dialogue?.trim() || '',
+      profile.voiceId,
+      profile.speed,
+      profile.emotion || 'neutral',
+      profile.pitch ?? 0,
+    );
+  };
+
+  const isVoiceCurrent = (shot: Shot) => {
+    const take = getSelectedTake(shot.id);
+    if (!take?.audioUrl || shot.workflow?.voiceStale) return false;
+    return take.source === 'human' || take.sourceHash === getShotSourceHash(shot);
+  };
+
   const patchTake = (takeId: string, updates: Partial<VoiceTake>) => {
     updateProject((previous) => {
       const current = previous.voiceStudio || createDefaultVoiceStudioState();
@@ -166,6 +200,40 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const openSettings = (providerId: VoiceProviderId) => {
     setSettingsProvider(providerId);
     setSettingsOpen(true);
+  };
+
+  const previewSelectedVoice = async () => {
+    if (selectedProfile.providerId === 'human') {
+      showAlert('Giọng người thật được nghe thử từ các take đã tải lên bên phải.', { type: 'info' });
+      return;
+    }
+    if (!isVoiceProviderConfigured(selectedProfile.providerId)) {
+      openSettings(selectedProfile.providerId);
+      return;
+    }
+    if (!selectedProfile.voiceId.trim()) {
+      showAlert('Hãy chọn giọng hoặc nhập Voice ID trước khi nghe thử.', { type: 'warning' });
+      return;
+    }
+    setPreviewing(true);
+    setPreviewAudio(null);
+    try {
+      const result = await generateVoice({
+        providerId: selectedProfile.providerId,
+        text: studio.previewText || 'Xin chào, đây là bản thử giọng của Egoric Film Studio.',
+        voiceId: selectedProfile.voiceId,
+        speed: selectedProfile.speed,
+        pitch: selectedProfile.pitch,
+        emotion: selectedProfile.emotion,
+        pronunciationDictionary: studio.pronunciationDictionary,
+        outputFormat: studio.outputFormat,
+      });
+      setPreviewAudio(result);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể tạo bản nghe thử', { type: 'error' });
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const handleGenerate = async (shot: Shot): Promise<boolean> => {
@@ -202,6 +270,9 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       voiceId: profile.voiceId,
       voiceName: profile.voiceName,
       status: 'generating',
+      sourceHash: getShotSourceHash(shot),
+      emotion: profile.emotion || 'neutral',
+      pitch: profile.pitch ?? 0,
       createdAt: Date.now(),
     };
     updateStudio((current) => ({ ...current, takes: [take, ...current.takes] }));
@@ -212,6 +283,9 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         text: take.text,
         voiceId: profile.voiceId,
         speed: profile.speed,
+        pitch: profile.pitch,
+        emotion: profile.emotion,
+        pronunciationDictionary: studio.pronunciationDictionary,
         outputFormat: studio.outputFormat,
       });
       patchTake(takeId, {
@@ -245,6 +319,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         audioUrl: result.audioUrl,
         duration: result.duration,
         fileName: file.name,
+        sourceHash: getShotSourceHash(shot),
         createdAt: Date.now(),
       };
       updateStudio((current) => ({
@@ -296,7 +371,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   };
 
   const renderAll = () => {
-    const pending = dialogueShots.filter((shot) => !getSelectedTake(shot.id)?.audioUrl || shot.workflow?.voiceStale);
+    const pending = dialogueShots.filter((shot) => !isVoiceCurrent(shot));
     if (!pending.length) {
       showAlert('Tất cả câu thoại đã có bản được chọn.', { type: 'success' });
       return;
@@ -338,14 +413,14 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const selectedCharacter = getCharacter(selectedCharacterId) || characters[0];
   const selectedProfile = getProfile(selectedCharacter?.id || 'narrator');
   const selectedProvider = getVoiceProvider(selectedProfile.providerId);
-  const totalReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.status === 'ready' && !shot.workflow?.voiceStale).length;
+  const totalReady = dialogueShots.filter(isVoiceCurrent).length;
   const humanReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.source === 'human').length;
   const totalDuration = dialogueShots.reduce((sum, shot) => sum + (getSelectedTake(shot.id)?.duration || 0), 0);
 
   const filteredShots = dialogueShots.filter((shot) => {
     const take = getSelectedTake(shot.id);
-    if (lineFilter === 'pending' && take?.status === 'ready' && !shot.workflow?.voiceStale) return false;
-    if (lineFilter === 'ready' && (take?.status !== 'ready' || shot.workflow?.voiceStale)) return false;
+    if (lineFilter === 'pending' && isVoiceCurrent(shot)) return false;
+    if (lineFilter === 'ready' && !isVoiceCurrent(shot)) return false;
     if (lineFilter === 'human' && take?.source !== 'human') return false;
     if (query.trim()) {
       const speaker = getCharacter(getSpeakerId(shot))?.name || '';
@@ -363,7 +438,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
             <Headphones className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <div className="eg-kicker">Giai đoạn 03 · Voice Studio</div>
+            <div className="eg-kicker">Giai đoạn 03 · Xưởng giọng Việt</div>
             <h1 className="mt-1 text-xl font-semibold tracking-tight text-white md:text-2xl">Casting và dựng giọng thoại</h1>
             <p className="mt-1 text-xs text-zinc-500">Tạo bản nháp bằng AI hoặc duyệt bản thu thật theo từng câu thoại.</p>
           </div>
@@ -482,11 +557,37 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                     )}
 
                     {selectedProfile.providerId !== 'human' && (
-                      <div>
-                        <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                          <label htmlFor="voice-speed">Tốc độ đọc</label><span className="font-mono text-zinc-300">{selectedProfile.speed.toFixed(2)}×</span>
+                      <div className="space-y-4">
+                        <div>
+                          <label htmlFor="voice-emotion" className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Sắc thái</label>
+                          <select id="voice-emotion" value={selectedProfile.emotion || 'neutral'} onChange={(event) => saveProfile({ ...selectedProfile, emotion: event.target.value as VoiceEmotion })} className="eg-input px-3 text-xs">
+                            {(Object.entries(EMOTION_LABELS) as [VoiceEmotion, string][]).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                          </select>
                         </div>
-                        <input id="voice-speed" type="range" min="0.8" max="1.2" step="0.05" value={selectedProfile.speed} onChange={(event) => saveProfile({ ...selectedProfile, speed: Number(event.target.value) })} className="w-full accent-cyan-200" />
+                        <div>
+                          <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                            <label htmlFor="voice-speed">Tốc độ đọc</label><span className="font-mono text-zinc-300">{selectedProfile.speed.toFixed(2)}×</span>
+                          </div>
+                          <input id="voice-speed" type="range" min="0.8" max="1.2" step="0.05" value={selectedProfile.speed} onChange={(event) => saveProfile({ ...selectedProfile, speed: Number(event.target.value) })} className="w-full accent-cyan-200" />
+                        </div>
+                        <div>
+                          <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                            <label htmlFor="voice-pitch">Cao độ hậu kỳ</label><span className="font-mono text-zinc-300">{(selectedProfile.pitch ?? 0) > 0 ? '+' : ''}{selectedProfile.pitch ?? 0}</span>
+                          </div>
+                          <input id="voice-pitch" type="range" min="-4" max="4" step="1" value={selectedProfile.pitch ?? 0} onChange={(event) => saveProfile({ ...selectedProfile, pitch: Number(event.target.value) })} className="w-full accent-cyan-200" />
+                          <p className="mt-1 text-[10px] leading-4 text-zinc-600">Được lưu cùng take để giữ preset nhất quán; mức hỗ trợ phụ thuộc nhà cung cấp.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedProfile.providerId !== 'human' && (
+                      <div className="rounded-xl border border-white/[.08] bg-black/15 p-3">
+                        <label htmlFor="voice-preview-text" className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Câu nghe thử</label>
+                        <textarea id="voice-preview-text" value={studio.previewText} onChange={(event) => updateStudio((current) => ({ ...current, previewText: event.target.value }))} rows={3} className="eg-input mt-2 min-h-20 resize-y px-3 py-2 text-xs leading-5" />
+                        <button type="button" onClick={() => void previewSelectedVoice()} disabled={previewing || !studio.previewText.trim()} className="eg-button-secondary mt-3 inline-flex w-full items-center justify-center gap-2 px-3 text-xs font-semibold">
+                          {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{previewing ? 'Đang tạo bản thử…' : 'Nghe thử preset này'}
+                        </button>
+                        {previewAudio && <div className="mt-3"><VoicePlayer src={previewAudio.audioUrl} fileName={previewAudio.fileName} duration={previewAudio.duration} compact /></div>}
                       </div>
                     )}
 
@@ -497,6 +598,52 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                     )}
                   </div>
                 )}
+              </section>
+
+              <section className="eg-panel overflow-hidden">
+                <div className="flex items-start justify-between gap-3 border-b eg-divider px-5 py-4">
+                  <div>
+                    <div className="eg-kicker">Phát âm tiếng Việt</div>
+                    <h2 className="mt-1 text-sm font-semibold text-white">Từ điển tên riêng</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateStudio((current) => ({
+                      ...current,
+                      pronunciationDictionary: [...current.pronunciationDictionary, { id: `pron_${Date.now().toString(36)}`, source: '', replacement: '' }],
+                    }))}
+                    className="eg-icon-button flex h-11 w-11 items-center justify-center"
+                    aria-label="Thêm cách phát âm"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-3 p-4">
+                  {!studio.pronunciationDictionary.length ? (
+                    <div className="rounded-xl border border-dashed border-white/[.08] p-4 text-center">
+                      <BookOpenText className="mx-auto h-5 w-5 text-zinc-700" />
+                      <p className="mt-2 text-[11px] leading-5 text-zinc-600">Thêm tên thương hiệu, tên người hoặc từ viết tắt để mọi câu đọc giống nhau.</p>
+                    </div>
+                  ) : studio.pronunciationDictionary.map((entry) => (
+                    <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
+                      <input
+                        value={entry.source}
+                        onChange={(event) => updateStudio((current) => ({ ...current, pronunciationDictionary: current.pronunciationDictionary.map((item) => item.id === entry.id ? { ...item, source: event.target.value } : item) }))}
+                        className="eg-input px-3 text-xs"
+                        placeholder="Từ gốc"
+                        aria-label="Từ gốc"
+                      />
+                      <input
+                        value={entry.replacement}
+                        onChange={(event) => updateStudio((current) => ({ ...current, pronunciationDictionary: current.pronunciationDictionary.map((item) => item.id === entry.id ? { ...item, replacement: event.target.value } : item) }))}
+                        className="eg-input px-3 text-xs"
+                        placeholder="Cách đọc"
+                        aria-label="Cách đọc thay thế"
+                      />
+                      <button type="button" onClick={() => updateStudio((current) => ({ ...current, pronunciationDictionary: current.pronunciationDictionary.filter((item) => item.id !== entry.id) }))} className="eg-icon-button flex h-11 w-11 items-center justify-center text-zinc-600 hover:text-rose-200" aria-label="Xóa cách phát âm"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  ))}
+                </div>
               </section>
             </aside>
 
@@ -524,7 +671,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                 <section className="eg-panel flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[.08] bg-white/[.035] text-zinc-500"><Mic2 className="h-6 w-6" /></div>
                   <h2 className="mt-5 text-lg font-semibold text-white">Chưa có câu thoại để dựng</h2>
-                  <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">Hoàn tất phân tích kịch bản và thêm lời thoại cho các cảnh quay. Voice Studio sẽ tự động gom chúng thành danh sách casting.</p>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">Hoàn tất phân tích kịch bản và thêm lời thoại cho các cảnh quay. Xưởng giọng Việt sẽ tự động gom chúng thành danh sách casting.</p>
                 </section>
               ) : filteredShots.length === 0 ? (
                 <section className="eg-panel flex min-h-60 flex-col items-center justify-center p-8 text-center">
@@ -554,7 +701,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                               <span className="eg-chip">{provider.shortName} · {profile.voiceName}</span>
                               {selectedTake?.source === 'human' && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><UsersRound className="h-3 w-3" /> Người thật</span>}
                             {selectedTake?.status === 'ready' && <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100"><Check className="h-3 w-3" /> Đã chọn</span>}
-                            {shot.workflow?.voiceStale && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><AlertCircle className="h-3 w-3" /> Thoại đã thay đổi · cần tạo lại</span>}
+                            {!isVoiceCurrent(shot) && selectedTake?.status === 'ready' && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><AlertCircle className="h-3 w-3" /> Nội dung hoặc preset đã đổi · chỉ tạo lại câu này</span>}
                             </div>
                             <p className="mt-1 truncate text-[10px] text-zinc-600">{scene?.location || shot.actionSummary || 'Cảnh chưa đặt tên'}</p>
                           </div>

@@ -1,4 +1,5 @@
 import { ProjectState } from '../types';
+import { recordUsage } from './usageService';
 
 export interface CloudProjectMetadata {
   id: string;
@@ -125,6 +126,7 @@ export const syncProjectToCloud = async (
     throw new Error(payload.error || `Không thể đồng bộ dự án (${response.status})`);
   }
   onProgress?.(100, 'Đã sao lưu dự án và media.');
+  recordUsage({ kind: 'cloud', modelId: 'Egoric Cloud', inputSize: tasks.length, status: 'success' });
   return clone;
 };
 

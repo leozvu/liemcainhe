@@ -270,4 +270,6 @@ export const createDefaultVoiceStudioState = () => ({
   selectedTakeByShot: {},
   outputFormat: 'mp3' as const,
   normalizeLoudness: true,
+  pronunciationDictionary: [],
+  previewText: 'Xin chào, đây là bản thử giọng của Egoric Film Studio.',
 });

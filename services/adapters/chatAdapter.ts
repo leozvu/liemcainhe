@@ -2,6 +2,7 @@ import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_PROVIDER_ID 
 import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel } from '../modelRegistry';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import { verifyProviderApiKey } from '../providerService';
+import { executeWithModelFallback } from '../modelRoutingService';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
@@ -43,7 +44,7 @@ const cleanJsonResponse = (response: string): string => {
   return cleaned.trim();
 };
 
-export const callChatApi = async (
+const callChatApiOnce = async (
   options: ChatOptions,
   model?: ChatModelDefinition
 ): Promise<string> => {
@@ -147,6 +148,20 @@ export const callChatApi = async (
     
     throw error;
   }
+};
+
+export const callChatApi = async (
+  options: ChatOptions,
+  model?: ChatModelDefinition,
+): Promise<string> => {
+  const preferred = model || getActiveChatModel();
+  if (!preferred) throw new Error('Không có mô hình hội thoại khả dụng');
+  return executeWithModelFallback({
+    type: 'chat',
+    preferred,
+    inputSize: options.prompt.length + (options.systemPrompt?.length || 0),
+    operation: (candidate) => callChatApiOnce(options, candidate as ChatModelDefinition),
+  });
 };
 
 export const verifyApiKey = async (apiKey: string, baseUrl?: string): Promise<{ success: boolean; message: string }> => {

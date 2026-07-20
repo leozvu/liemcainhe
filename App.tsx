@@ -6,9 +6,12 @@ import Onboarding, { shouldShowOnboarding, resetOnboarding } from './components/
 import ModelConfigModal from './components/ModelConfig';
 import { CoreStage, ProjectStage, ProjectState } from './types';
 import { Save, CheckCircle, Gauge } from 'lucide-react';
-import { saveProjectToDB } from './services/storageService';
+import { createNewProjectState, saveProjectToDB } from './services/storageService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
 import { getWorkflowReadiness, normalizeWorkflowState } from './services/workflowService';
+import { recordSystemEvent } from './services/accountService';
+import { setUsageProjectContext } from './services/usageService';
+import { createProductionDemoProject } from './services/demoProjectService';
 
 const StageScript = React.lazy(() => import('./components/StageScript'));
 const StageAssets = React.lazy(() => import('./components/StageAssets'));
@@ -17,6 +20,7 @@ const StageDirector = React.lazy(() => import('./components/StageDirector'));
 const StageExport = React.lazy(() => import('./components/StageExport'));
 const StagePrompts = React.lazy(() => import('./components/StagePrompts'));
 const ProductionCenter = React.lazy(() => import('./components/ProductionCenter'));
+const OperationsHub = React.lazy(() => import('./components/OperationsHub'));
 
 const WorkspaceLoader = () => (
   <div className="flex h-full items-center justify-center text-xs text-zinc-600">
@@ -32,6 +36,7 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showModelConfig, setShowModelConfig] = useState(false);
   const [showProductionCenter, setShowProductionCenter] = useState(false);
+  const [showOperations, setShowOperations] = useState(false);
   
   const saveTimeoutRef = useRef<any>(null);
   const hideStatusTimeoutRef = useRef<any>(null);
@@ -46,8 +51,13 @@ function App() {
     setShowOnboarding(false);
   };
 
-  const handleOnboardingQuickStart = (_option: 'script' | 'example') => {
+  const handleOnboardingQuickStart = (option: 'script' | 'example') => {
     setShowOnboarding(false);
+    if (option === 'example') {
+      void handleCreateDemo();
+      return;
+    }
+    handleOpenProject(createNewProjectState());
   };
 
   const handleShowOnboarding = () => {
@@ -60,7 +70,13 @@ function App() {
   };
 
   useEffect(() => {
+    setUsageProjectContext(project?.id);
+    return () => setUsageProjectContext(undefined);
+  }, [project?.id]);
+
+  useEffect(() => {
     const handleError = (event: ErrorEvent) => {
+      recordSystemEvent({ projectId: project?.id, severity: 'error', source: 'window', message: event.message || 'Lỗi ứng dụng', detail: { filename: event.filename, line: event.lineno, column: event.colno } });
       if (event.error?.name === 'ApiKeyError' || 
           event.error?.message?.includes('API Key missing') ||
           event.error?.message?.includes('Thiếu khóa API')) {
@@ -71,6 +87,7 @@ function App() {
     };
 
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      recordSystemEvent({ projectId: project?.id, severity: 'error', source: 'promise', message: event.reason?.message || String(event.reason || 'Promise rejection') });
       if (event.reason?.name === 'ApiKeyError' ||
           event.reason?.message?.includes('API Key missing') ||
           event.reason?.message?.includes('Thiếu khóa API')) {
@@ -87,7 +104,7 @@ function App() {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
-  }, []);
+  }, [project?.id]);
 
   useEffect(() => {
     if (project) {
@@ -165,6 +182,13 @@ function App() {
     setProject(normalizeWorkflowState(proj));
   };
 
+  const handleCreateDemo = async () => {
+    const demo = createProductionDemoProject();
+    await saveProjectToDB(demo);
+    setShowOperations(false);
+    handleOpenProject(demo);
+  };
+
   const handleExitProject = async () => {
     if (project) {
         await saveProjectToDB(project);
@@ -200,6 +224,7 @@ function App() {
            onOpenProject={handleOpenProject} 
            onShowOnboarding={handleShowOnboarding}
            onShowModelConfig={handleShowModelConfig}
+           onShowOperations={() => setShowOperations(true)}
          />
          {showOnboarding && (
            <Onboarding 
@@ -211,6 +236,16 @@ function App() {
            isOpen={showModelConfig}
            onClose={() => setShowModelConfig(false)}
          />
+         {showOperations && (
+           <React.Suspense fallback={<div className="fixed inset-0 z-[260] bg-[var(--eg-canvas)]"><WorkspaceLoader /></div>}>
+             <OperationsHub
+               isOpen={showOperations}
+               onClose={() => setShowOperations(false)}
+               onOpenModelCatalog={() => { setShowOperations(false); setShowModelConfig(true); }}
+               onCreateDemo={() => void handleCreateDemo()}
+             />
+           </React.Suspense>
+         )}
        </>
     );
   }
@@ -234,6 +269,7 @@ function App() {
         stageStatuses={stageStatuses}
         activeJobCount={activeJobCount}
         onOpenProductionCenter={() => setShowProductionCenter(true)}
+        onOpenOperations={() => setShowOperations(true)}
       />
       
       <main className="eg-stage-main flex-1">
@@ -290,6 +326,20 @@ function App() {
               setShowProductionCenter(false);
               setShowModelConfig(true);
             }}
+          />
+        </React.Suspense>
+      )}
+
+      {showOperations && (
+        <React.Suspense fallback={<div className="fixed inset-0 z-[260] bg-[var(--eg-canvas)]"><WorkspaceLoader /></div>}>
+          <OperationsHub
+            isOpen={showOperations}
+            onClose={() => setShowOperations(false)}
+            project={project}
+            updateProject={updateProject}
+            onOpenModelCatalog={() => { setShowOperations(false); setShowModelConfig(true); }}
+            onOpenVoiceStudio={() => { setShowOperations(false); setStage('voice'); }}
+            onCreateDemo={() => void handleCreateDemo()}
           />
         </React.Suspense>
       )}

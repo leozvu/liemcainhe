@@ -5,6 +5,7 @@ import { throwFromVideoHttpError, formatVideoTaskErrorForUser } from '../videoHt
 import { resolveSoraVideoDownloadId, downloadSoraCompletedVideo, encodeVideoPathId } from '../soraVideoResolve';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import { callReplicateVideoApi } from './replicateAdapter';
+import { executeWithModelFallback } from '../modelRoutingService';
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
@@ -287,7 +288,7 @@ const callSoraApi = async (
   });
 };
 
-export const callVideoApi = async (
+const callVideoApiOnce = async (
   options: VideoGenerateOptions,
   model?: VideoModelDefinition
 ): Promise<string> => {
@@ -318,6 +319,21 @@ export const callVideoApi = async (
   } else {
     return callVeoApi(options, activeModel, apiKey, apiBase);
   }
+};
+
+export const callVideoApi = async (
+  options: VideoGenerateOptions,
+  model?: VideoModelDefinition,
+): Promise<string> => {
+  const preferred = model || getActiveVideoModel();
+  if (!preferred) throw new Error('Không có mô hình video khả dụng');
+  return executeWithModelFallback({
+    type: 'video',
+    preferred,
+    inputSize: options.prompt.length,
+    durationSeconds: options.duration || preferred.params.defaultDuration,
+    operation: (candidate) => callVideoApiOnce(options, candidate as VideoModelDefinition),
+  });
 };
 
 export const isAspectRatioSupported = (

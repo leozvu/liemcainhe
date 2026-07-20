@@ -8,7 +8,7 @@ Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trìn
 
 1. **Sáng tạo kịch bản** — phân tích cốt truyện, nhân vật, bối cảnh và bảng phân cảnh.
 2. **Nhân vật & bối cảnh** — tạo concept, biến thể trang phục và ảnh tham chiếu.
-3. **Voice Studio** — casting giọng Việt, tổng hợp bản nháp hoặc duyệt nhiều take của diễn viên thật.
+3. **Xưởng giọng Việt** — casting giọng ba miền, tổng hợp bản nháp hoặc duyệt nhiều bản thu của diễn viên thật.
 4. **Xưởng dựng** — sản xuất khung hình chính đầu/cuối và video cho từng cảnh quay.
 5. **Xuất bản** — xem timeline, tải gói dựng, CMX 3600 EDL, FCPXML, phụ đề SRT và toàn bộ tài nguyên gốc.
 
@@ -21,7 +21,18 @@ Kho sáng tạo là khu vực nâng cao để tìm kiếm và chỉnh câu lện
 - **Hàng đợi sản xuất** ghi tiến độ, lỗi và tác vụ bị gián đoạn cho các đợt tạo ảnh, thoại, video và cloud.
 - **Dependency tracking** đánh dấu cảnh cần tạo lại khi kịch bản, casting, tài nguyên hoặc keyframe thay đổi.
 - **Điểm khôi phục** giữ tối đa ba phiên bản gần nhất trước các thao tác ghi đè quan trọng.
-- **Egoric Cloud** dùng D1 cho trạng thái dự án và R2 cho media; dữ liệu được tách theo email tài khoản đã xác thực.
+- **Đám mây Egoric** dùng D1 cho trạng thái dự án và R2 cho media; dữ liệu được tách theo email tài khoản đã xác thực.
+
+## Vận hành production
+
+- **Trung tâm API** kiểm tra khóa, đọc hạn mức, phát hiện model trực tiếp và nhập model vào danh mục.
+- **Định tuyến dự phòng** tự chuyển model khi tuyến chính lỗi mạng, hết hạn mức hoặc nhà cung cấp gián đoạn.
+- **Theo dõi sử dụng** ghi đơn vị sản xuất, thời gian xử lý, lỗi và chi phí vận hành ước tính theo tháng.
+- **Xưởng giọng Việt nâng cao** có preset cảm xúc, tốc độ, cao độ, câu nghe thử và từ điển phát âm tên riêng.
+- **Tạo lại thông minh** dùng dấu vân tay nội dung/preset để chỉ tạo lại câu thoại thực sự đã thay đổi.
+- **Chẩn đoán workflow** kiểm tra API, giọng nói, hạn mức, checkpoint, cloud và độ hoàn thiện trước khi chạy hàng loạt.
+- **Dự án demo Mưa Neon** cho phép kiểm tra luồng từ kịch bản đến xuất dựng mà không phải chuẩn bị dữ liệu ban đầu.
+- **Workspace theo tài khoản** lưu hồ sơ, hạn mức mềm/cứng, usage và nhật ký lỗi trên D1 của bản Sites.
 
 ## Công nghệ
 
@@ -74,7 +85,7 @@ docker compose down
 
 ## Cấu hình API
 
-Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; FPT.AI, Viettel AI và ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Voice Studio](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
+Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; FPT.AI, Viettel AI và ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Xưởng giọng Việt](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
 
 Khóa API chỉ được lưu trong bộ nhớ cục bộ của trình duyệt. Không đưa khóa API vào lịch sử Git.
 

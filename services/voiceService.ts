@@ -1,11 +1,15 @@
-import { VoiceProviderId } from '../types';
-import { getVoiceCredentials } from './voiceRegistry';
+import { PronunciationEntry, VoiceEmotion, VoiceProviderId } from '../types';
+import { getVoiceCredentials, getVoiceProvider } from './voiceRegistry';
+import { assertUsageAllowed, recordUsage } from './usageService';
 
 export interface GenerateVoiceInput {
   providerId: VoiceProviderId;
   text: string;
   voiceId: string;
   speed: number;
+  pitch?: number;
+  emotion?: VoiceEmotion;
+  pronunciationDictionary?: PronunciationEntry[];
   outputFormat: 'mp3' | 'wav';
 }
 
@@ -38,6 +42,26 @@ const blobToDataUrl = (blob: Blob): Promise<string> =>
     reader.onerror = () => reject(new Error('Không thể đọc dữ liệu âm thanh'));
     reader.readAsDataURL(blob);
   });
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export const applyPronunciationDictionary = (text: string, entries: PronunciationEntry[] = []): string =>
+  entries.reduce((current, entry) => {
+    const source = entry.source.trim();
+    const replacement = entry.replacement.trim();
+    if (!source || !replacement) return current;
+    return current.replace(new RegExp(escapeRegex(source), 'giu'), replacement);
+  }, text);
+
+export const createVoiceSourceHash = (text: string, voiceId: string, speed: number, emotion: VoiceEmotion, pitch: number): string => {
+  const value = `${text}|${voiceId}|${speed}|${emotion}|${pitch}`;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
 
 export const getAudioDuration = (audioUrl: string): Promise<number | undefined> =>
   new Promise((resolve) => {
@@ -124,9 +148,9 @@ const generateWithElevenLabs = async (input: GenerateVoiceInput, apiKey: string)
         model_id: 'eleven_v3',
         language_code: 'vi',
         voice_settings: {
-          stability: 0.48,
+          stability: input.emotion === 'dramatic' ? 0.34 : input.emotion === 'intimate' ? 0.62 : 0.48,
           similarity_boost: 0.78,
-          style: 0.32,
+          style: input.emotion === 'neutral' || !input.emotion ? 0.2 : input.emotion === 'energetic' || input.emotion === 'dramatic' ? 0.58 : 0.36,
           speed: Math.max(0.7, Math.min(1.2, input.speed)),
         },
       }),
@@ -142,20 +166,32 @@ const generateWithElevenLabs = async (input: GenerateVoiceInput, apiKey: string)
 };
 
 export const generateVoice = async (input: GenerateVoiceInput): Promise<GenerateVoiceResult> => {
-  const text = input.text.trim();
+  const text = applyPronunciationDictionary(input.text.trim(), input.pronunciationDictionary);
   if (text.length < 3) throw new Error('Lời thoại phải có ít nhất 3 ký tự');
   if (text.length > 5000) throw new Error('Mỗi lượt tạo giọng chỉ hỗ trợ tối đa 5.000 ký tự');
+
+  assertUsageAllowed();
 
   const credentials = getVoiceCredentials(input.providerId);
   if (!credentials.apiKey) throw new Error('Chưa cấu hình khóa API cho nhà cung cấp giọng nói');
 
-  if (input.providerId === 'fpt') return generateWithFpt(input, credentials.apiKey);
-  if (input.providerId === 'viettel') return generateWithViettel(input, credentials.apiKey);
-  if (input.providerId === 'elevenlabs') return generateWithElevenLabs(input, credentials.apiKey);
-  if (input.providerId === 'vbee') {
-    throw new Error('Vbee yêu cầu máy chủ callback công khai. Hãy dùng FPT.AI/Viettel AI trong bản web hoặc nhập bản thu đã tạo từ Vbee.');
+  const preparedInput = { ...input, text };
+  const startedAt = Date.now();
+  const provider = getVoiceProvider(input.providerId);
+  try {
+    let result: GenerateVoiceResult;
+    if (input.providerId === 'fpt') result = await generateWithFpt(preparedInput, credentials.apiKey);
+    else if (input.providerId === 'viettel') result = await generateWithViettel(preparedInput, credentials.apiKey);
+    else if (input.providerId === 'elevenlabs') result = await generateWithElevenLabs(preparedInput, credentials.apiKey);
+    else if (input.providerId === 'vbee') {
+      throw new Error('Vbee yêu cầu máy chủ callback công khai. Hãy dùng FPT.AI/Viettel AI trong bản web hoặc nhập bản thu đã tạo từ Vbee.');
+    } else throw new Error('Giọng người thật cần được tải lên từ tệp âm thanh');
+    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, inputSize: text.length, durationMs: Date.now() - startedAt, status: 'success' });
+    return result;
+  } catch (error) {
+    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
+    throw error;
   }
-  throw new Error('Giọng người thật cần được tải lên từ tệp âm thanh');
 };
 
 export const audioFileToDataUrl = async (file: File): Promise<{ audioUrl: string; duration?: number }> => {

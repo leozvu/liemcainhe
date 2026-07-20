@@ -56,7 +56,7 @@ export const HIGHLIGHTS = [
     description: 'Chọn phim người đóng, hoạt hình hoặc 3D và duy trì nhất quán toàn phim',
   },
   {
-    title: 'Voice Studio tiếng Việt',
+    title: 'Xưởng giọng Việt',
     description: 'Casting ba miền, nhiều take và luồng duyệt bản thu người thật',
   },
 ] as const;

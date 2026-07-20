@@ -8,6 +8,7 @@ import {
   Clapperboard,
   Cpu,
   Film,
+  Gauge,
   HelpCircle,
   LibraryBig,
   ListTodo,
@@ -28,6 +29,7 @@ interface SidebarProps {
   stageStatuses?: Partial<Record<CoreStage, 'ready' | 'attention' | 'blocked'>>;
   activeJobCount?: number;
   onOpenProductionCenter?: () => void;
+  onOpenOperations?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -50,6 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   stageStatuses = {},
   activeJobCount = 0,
   onOpenProductionCenter,
+  onOpenOperations,
 }) => {
   return (
     <aside className="eg-sidebar select-none" aria-label="Quy trình sản xuất">
@@ -60,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div className="eg-sidebar-copy min-w-0">
             <div className="truncate text-sm font-semibold tracking-tight text-white">Egoric Film Studio</div>
-            <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[.18em] text-cyan-200/50">A creative system by Egoric</div>
+            <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[.18em] text-cyan-200/50">Hệ thống sáng tạo của Egoric</div>
           </div>
         </div>
         <button type="button" onClick={onExit} className="eg-sidebar-back eg-icon-button mt-5 flex w-full items-center gap-2 px-3 text-[11px] font-medium" title="Về danh sách dự án">
@@ -119,6 +122,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="eg-sidebar-tools border-t eg-divider p-3">
+        {onOpenOperations && (
+          <button type="button" onClick={onOpenOperations} className="eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-zinc-500 hover:bg-white/[.035] hover:text-white" title="Trung tâm vận hành">
+            <Gauge className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">Trung tâm vận hành</span>
+          </button>
+        )}
         {onShowModelConfig && (
           <button type="button" onClick={onShowModelConfig} className="eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-zinc-500 hover:bg-white/[.035] hover:text-white" title="Cấu hình mô hình">
             <Cpu className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">Mô hình và API</span>

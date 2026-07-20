@@ -9,6 +9,7 @@ import {
   normalizeImageResult,
 } from '../imageGenerationHelpers';
 import { callReplicateImageApi } from './replicateAdapter';
+import { executeWithModelFallback } from '../modelRoutingService';
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
@@ -36,7 +37,7 @@ const retryOperation = async <T>(
   throw lastError;
 };
 
-export const callImageApi = async (
+const callImageApiOnce = async (
   options: ImageGenerateOptions,
   model?: ImageModelDefinition
 ): Promise<string> => {
@@ -158,6 +159,20 @@ export const callImageApi = async (
     return normalizeImageResult(extracted);
   }
   throw new Error(`Tạo ảnh thất bại: mô hình ${apiModel} không trả về dữ liệu ảnh`);
+};
+
+export const callImageApi = async (
+  options: ImageGenerateOptions,
+  model?: ImageModelDefinition,
+): Promise<string> => {
+  const preferred = model || getActiveImageModel();
+  if (!preferred) throw new Error('Không có mô hình tạo ảnh khả dụng');
+  return executeWithModelFallback({
+    type: 'image',
+    preferred,
+    inputSize: options.prompt.length,
+    operation: (candidate) => callImageApiOnce(options, candidate as ImageModelDefinition),
+  });
 };
 
 export const isAspectRatioSupported = (

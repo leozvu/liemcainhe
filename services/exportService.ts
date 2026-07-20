@@ -1,4 +1,5 @@
 import { ProjectState, VoiceTake } from '../types';
+import { recordUsage } from './usageService';
 
 const safeName = (value: string) => value.replace(/[\/\\?%*:|"<>]/g, '_').trim() || 'untitled';
 
@@ -85,6 +86,7 @@ export async function downloadEditorialPackage(project: ProjectState): Promise<v
   zip.file('timeline.fcpxml', buildFcpxmlFile(project));
   zip.file('README.txt', 'Gói timeline Egoric Film Studio\n\n- timeline_25fps.edl: CMX 3600, 25fps.\n- timeline.fcpxml: Final Cut Pro XML; khi nhập hãy relink tới thư mục video.\n- subtitles_vi.srt: phụ đề tiếng Việt theo thời lượng từng cảnh.');
   triggerBlobDownload(await zip.generateAsync({ type: 'blob' }), `${safeName(project.scriptData?.title || project.title)}_egoric_timeline.zip`);
+  recordUsage({ kind: 'export', modelId: 'Editorial Package', inputSize: project.shots.length, status: 'success' });
 }
 
 const getSelectedVoiceTakes = (project: ProjectState): VoiceTake[] => {

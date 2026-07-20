@@ -14,6 +14,13 @@ const json = (payload, status = 200) => new Response(JSON.stringify(payload), {
 
 const getAuthenticatedEmail = (request) => request.headers.get('oai-authenticated-user-email')?.trim().toLowerCase() || null;
 
+const getAuthenticatedName = (request) => {
+  const value = request.headers.get('oai-authenticated-user-full-name');
+  const encoding = request.headers.get('oai-authenticated-user-full-name-encoding');
+  if (!value || encoding !== 'percent-encoded-utf-8') return null;
+  try { return decodeURIComponent(value); } catch { return null; }
+};
+
 const hashOwner = async (email) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email));
   return Array.from(new Uint8Array(digest)).slice(0, 12).map((value) => value.toString(16).padStart(2, '0')).join('');
@@ -113,6 +120,111 @@ async function handleCloudApi(request, env, url) {
   return json({ error: 'Cloud route không tồn tại.' }, 404);
 }
 
+async function ensureAccountProfile(request, env, email) {
+  const now = Date.now();
+  const defaultName = getAuthenticatedName(request) || email.split('@')[0] || 'Nhà sản xuất Egoric';
+  await env.DB.prepare(
+    `INSERT INTO egoric_profiles (owner_email, display_name, studio_name, plan, monthly_unit_limit, created_at, updated_at)
+     VALUES (?, ?, 'Egoric Agency', 'Bản thử Studio', 1000, ?, ?)
+     ON CONFLICT(owner_email) DO NOTHING`
+  ).bind(email, defaultName.slice(0, 120), now, now).run();
+  return env.DB.prepare(
+    `SELECT owner_email AS email, display_name AS displayName, studio_name AS studioName,
+            plan, monthly_unit_limit AS monthlyUnitLimit, created_at AS createdAt, updated_at AS updatedAt
+     FROM egoric_profiles WHERE owner_email = ?`
+  ).bind(email).first();
+}
+
+async function handleAccountApi(request, env, url) {
+  if (!env.DB) return json({ error: 'Workspace chưa được cấp cơ sở dữ liệu.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để mở workspace.' }, 401);
+
+  if (url.pathname === '/api/account' && request.method === 'GET') {
+    const profile = await ensureAccountProfile(request, env, email);
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    const summary = await env.DB.prepare(
+      `SELECT COALESCE(SUM(units), 0) AS monthlyUnits,
+              COALESCE(SUM(estimated_cost_usd), 0) AS estimatedCostUsd
+       FROM egoric_usage_events WHERE owner_email = ? AND created_at >= ?`
+    ).bind(email, monthStart.getTime()).first();
+    const events = await env.DB.prepare(
+      `SELECT id, project_id AS projectId, kind, provider_id AS providerId, model_id AS modelId,
+              units, estimated_cost_usd AS estimatedCostUsd, duration_ms AS durationMs,
+              status, error, created_at AS timestamp
+       FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 20`
+    ).bind(email).all();
+    const systemEvents = await env.DB.prepare(
+      `SELECT id, project_id AS projectId, severity, source, message, created_at AS createdAt
+       FROM egoric_system_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 20`
+    ).bind(email).all();
+    return json({ profile, monthlyUnits: summary?.monthlyUnits || 0, estimatedCostUsd: summary?.estimatedCostUsd || 0, recentEvents: events.results || [], systemEvents: systemEvents.results || [] });
+  }
+
+  if (url.pathname === '/api/account' && request.method === 'PUT') {
+    const payload = await request.json();
+    const displayName = String(payload?.displayName || '').trim().slice(0, 120);
+    const studioName = String(payload?.studioName || '').trim().slice(0, 160);
+    const monthlyUnitLimit = Math.max(10, Math.min(1_000_000, Number(payload?.monthlyUnitLimit) || 1000));
+    if (!displayName || !studioName) return json({ error: 'Tên hiển thị và tên studio không được để trống.' }, 400);
+    await ensureAccountProfile(request, env, email);
+    await env.DB.prepare(
+      `UPDATE egoric_profiles SET display_name = ?, studio_name = ?, monthly_unit_limit = ?, updated_at = ? WHERE owner_email = ?`
+    ).bind(displayName, studioName, monthlyUnitLimit, Date.now(), email).run();
+    return json({ profile: await ensureAccountProfile(request, env, email) });
+  }
+
+  if (url.pathname === '/api/account/usage' && request.method === 'POST') {
+    const payload = await request.json();
+    const id = /^[a-zA-Z0-9_-]{6,160}$/.test(payload?.id || '') ? payload.id : `usage_${crypto.randomUUID()}`;
+    const kind = ['chat', 'image', 'video', 'voice', 'cloud', 'export'].includes(payload?.kind) ? payload.kind : null;
+    const status = ['success', 'failed'].includes(payload?.status) ? payload.status : null;
+    if (!kind || !status) return json({ error: 'Sự kiện sử dụng không hợp lệ.' }, 400);
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO egoric_usage_events
+       (id, owner_email, project_id, kind, provider_id, model_id, units, estimated_cost_usd, duration_ms, status, error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id, email, safeProjectId(payload.projectId), kind,
+      String(payload.providerId || '').slice(0, 120) || null,
+      String(payload.modelId || '').slice(0, 200) || null,
+      Math.max(0, Number(payload.units) || 0), Math.max(0, Number(payload.estimatedCostUsd) || 0),
+      Math.max(0, Number(payload.durationMs) || 0) || null, status,
+      String(payload.error || '').slice(0, 800) || null,
+      Math.min(Date.now(), Math.max(0, Number(payload.timestamp) || Date.now())),
+    ).run();
+    return json({ saved: true }, 201);
+  }
+
+  if (url.pathname === '/api/account/events' && request.method === 'POST') {
+    const payload = await request.json();
+    const severity = ['info', 'warning', 'error'].includes(payload?.severity) ? payload.severity : 'info';
+    const message = String(payload?.message || '').trim().slice(0, 1000);
+    if (!message) return json({ error: 'Nội dung sự kiện không hợp lệ.' }, 400);
+    await env.DB.prepare(
+      `INSERT INTO egoric_system_events (id, owner_email, project_id, severity, source, message, detail_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      `event_${crypto.randomUUID()}`, email, safeProjectId(payload.projectId), severity,
+      String(payload.source || 'app').slice(0, 100), message,
+      payload.detail ? JSON.stringify(payload.detail).slice(0, 4000) : null, Date.now(),
+    ).run();
+    return json({ saved: true }, 201);
+  }
+
+  if (url.pathname === '/api/account/events' && request.method === 'GET') {
+    const result = await env.DB.prepare(
+      `SELECT id, project_id AS projectId, severity, source, message, detail_json AS detailJson, created_at AS createdAt
+       FROM egoric_system_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 100`
+    ).bind(email).all();
+    return json({ events: result.results || [] });
+  }
+
+  return json({ error: 'Account route không tồn tại.' }, 404);
+}
+
 function createUpstreamRequest(request, url, prefix, origin) {
   const upstreamUrl = new URL(url.pathname.slice(prefix.length) || '/', origin);
   upstreamUrl.search = url.search;
@@ -165,6 +277,15 @@ export default {
       } catch (error) {
         console.error('Cloud API error', error);
         return json({ error: error instanceof Error ? error.message : 'Cloud API thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/account' || url.pathname.startsWith('/api/account/')) {
+      try {
+        return await handleAccountApi(request, env, url);
+      } catch (error) {
+        console.error('Account API error', error);
+        return json({ error: error instanceof Error ? error.message : 'Account API thất bại.' }, 500);
       }
     }
 

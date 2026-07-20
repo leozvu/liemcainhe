@@ -176,7 +176,7 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, initialProviderI
                 <div>
                   <label htmlFor={`voice-callback-${provider.id}`} className="mb-2 block text-xs font-semibold text-zinc-300">Callback URL công khai</label>
                   <input id={`voice-callback-${provider.id}`} type="url" value={draft.callbackUrl || ''} onChange={(event) => setDraft({ callbackUrl: event.target.value })} className="eg-input px-4 text-sm" placeholder="https://api.tenmien.vn/hooks/vbee" />
-                  <p className="mt-2 text-[11px] leading-5 text-amber-200/70">Vbee xử lý bất đồng bộ. Bản web tĩnh chưa thể nhận callback; hiện có thể dùng Vbee bên ngoài rồi nhập bản âm thanh vào Voice Studio.</p>
+                  <p className="mt-2 text-[11px] leading-5 text-amber-200/70">Vbee xử lý bất đồng bộ. Bản web tĩnh chưa thể nhận callback; hiện có thể dùng Vbee bên ngoài rồi nhập bản âm thanh vào Xưởng giọng Việt.</p>
                 </div>
               )}
 
@@ -202,4 +202,3 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, initialProviderI
 };
 
 export default VoiceSettingsModal;
-

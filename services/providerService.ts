@@ -5,13 +5,23 @@ import {
 } from '../types/model';
 import {
   getApiBaseUrlForProvider,
+  getModels,
   getProviderById,
 } from './modelRegistry';
+import { ModelType } from '../types/model';
 import { localizeApiErrorMessage } from './apiErrorLocalization';
 
 export interface ProviderVerificationResult {
   success: boolean;
   message: string;
+  remaining?: number;
+  discoveredModels?: number;
+}
+
+export interface DiscoveredProviderModel {
+  id: string;
+  name: string;
+  type: ModelType;
 }
 
 const readErrorMessage = async (response: Response): Promise<string> => {
@@ -65,6 +75,7 @@ export const verifyProviderApiKey = async (
           typeof remaining === 'number'
             ? `Khóa hợp lệ · hạn mức còn lại ${remaining.toLocaleString('vi-VN')}`
             : 'Khóa OpenRouter hợp lệ',
+        remaining: typeof remaining === 'number' ? remaining : undefined,
       };
     }
     if (providerId === REPLICATE_PROVIDER_ID && payload?.username) {
@@ -77,4 +88,35 @@ export const verifyProviderApiKey = async (
       message: localizeApiErrorMessage(error?.message || 'Không thể kết nối nhà cung cấp'),
     };
   }
+};
+
+export const discoverProviderModels = async (
+  providerId: string,
+  apiKey: string,
+): Promise<DiscoveredProviderModel[]> => {
+  const provider = getProviderById(providerId);
+  if (!provider || !apiKey.trim()) return [];
+  if (providerId === REPLICATE_PROVIDER_ID) {
+    return getModels().filter((model) => model.providerId === providerId).map((model) => ({ id: model.apiModel || model.id, name: model.name, type: model.type }));
+  }
+
+  const baseUrl = getApiBaseUrlForProvider(providerId);
+  const headers: Record<string, string> = { Authorization: `Bearer ${apiKey.trim()}` };
+  let url = `${baseUrl}/v1/models`;
+  if (providerId === OPENROUTER_PROVIDER_ID) url = `${baseUrl}/v1/models`;
+  if (providerId === GOOGLE_PROVIDER_ID) {
+    url = `${baseUrl.replace(/\/openai$/, '')}/models?pageSize=1000`;
+    delete headers.Authorization;
+    headers['x-goog-api-key'] = apiKey.trim();
+  }
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(localizeApiErrorMessage(await readErrorMessage(response), response.status));
+  const payload = await response.json();
+  if (providerId === GOOGLE_PROVIDER_ID) {
+    return (payload.models || [])
+      .filter((model: any) => (model.supportedGenerationMethods || []).includes('generateContent'))
+      .map((model: any) => ({ id: String(model.name || '').replace(/^models\//, ''), name: model.displayName || model.name, type: 'chat' as const }));
+  }
+  return (payload.data || []).map((model: any) => ({ id: model.id, name: model.name || model.id, type: 'chat' as const }));
 };
