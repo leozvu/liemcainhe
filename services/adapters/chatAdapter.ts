@@ -1,8 +1,9 @@
 import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_PROVIDER_ID } from '../../types/model';
-import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel } from '../modelRegistry';
+import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel, getProviderById } from '../modelRegistry';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import { verifyProviderApiKey } from '../providerService';
 import { executeWithModelFallback } from '../modelRoutingService';
+import { callKieChatApi } from './kieAdapter';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
@@ -59,6 +60,10 @@ const callChatApiOnce = async (
   }
   
   const apiBase = getApiBaseUrlForModel(activeModel.id);
+  const provider = getProviderById(activeModel.providerId);
+  if (provider?.protocol === 'kie') {
+    return callKieChatApi(options, activeModel, apiKey, apiBase);
+  }
   const endpoint = activeModel.endpoint || '/v1/chat/completions';
   const apiModel = activeModel.apiModel || activeModel.id;
   

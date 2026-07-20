@@ -14,9 +14,9 @@ const providers = [
     icon: MessageSquareText,
   },
   {
-    name: 'Replicate',
-    description: 'Tạo hình ảnh và video với Nano Banana, FLUX, Seedance và Veo.',
-    href: 'https://replicate.com/account/api-tokens',
+    name: 'KIE AI',
+    description: 'Một khóa cho toàn bộ catalog ảnh, video và các mô hình cao cấp trong ứng dụng.',
+    href: 'https://kie.ai/api-key',
     icon: Video,
   },
   {

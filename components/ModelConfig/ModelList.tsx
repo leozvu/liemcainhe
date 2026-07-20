@@ -3,10 +3,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Info, CheckCircle } from 'lucide-react';
+import { Plus, Info, CheckCircle, Search } from 'lucide-react';
 import { 
   ModelType, 
   ModelDefinition, 
+  ModelProvider,
 } from '../../types/model';
 import {
   getModels,
@@ -37,11 +38,27 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
   const [isAddingModel, setIsAddingModel] = useState(false);
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
   const [activeModelId, setActiveModelId] = useState<string>('');
+  const [query, setQuery] = useState('');
+  const [providerFilter, setProviderFilter] = useState('all');
   const { showAlert } = useAlert();
 
   useEffect(() => {
     loadModels();
+    setQuery('');
+    setProviderFilter(type === 'chat' ? 'all' : 'kie-ai');
   }, [type]);
+
+  const providerOptions = Array.from(new Set<string>(models.map((model) => model.providerId)))
+    .map((providerId) => getProviderById(providerId))
+    .filter((provider): provider is ModelProvider => Boolean(provider));
+  const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
+  const visibleModels = models.filter((model) => {
+    if (providerFilter !== 'all' && model.providerId !== providerFilter) return false;
+    if (!normalizedQuery) return true;
+    return [model.name, model.apiModel, model.description]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase('vi-VN').includes(normalizedQuery));
+  });
 
   const loadModels = () => {
     const allModels = getModels(type);
@@ -141,9 +158,39 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
         </p>
       </div>
 
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
+        <label className="relative block">
+          <span className="sr-only">Tìm mô hình</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Tìm theo tên hoặc mã model…"
+            className="eg-input w-full pl-9 pr-3 text-xs"
+          />
+        </label>
+        <label>
+          <span className="sr-only">Lọc theo nhà cung cấp</span>
+          <select
+            value={providerFilter}
+            onChange={(event) => setProviderFilter(event.target.value)}
+            className="eg-input w-full px-3 text-xs"
+          >
+            <option value="all">Tất cả nhà cung cấp</option>
+            {providerOptions.map((provider) => (
+              <option key={provider.id} value={provider.id}>{provider.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="text-[10px] text-zinc-600">
+        Hiển thị {visibleModels.length}/{models.length} mô hình
+      </p>
+
       {/* Danh sách mô hình */}
       <div className="space-y-2">
-        {models.map((model) => (
+        {visibleModels.map((model) => (
           <ModelCard
             key={model.id}
             model={model}
@@ -155,6 +202,11 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
             onSetActive={() => handleSetActiveModel(model.id)}
           />
         ))}
+        {visibleModels.length === 0 && (
+          <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-xs text-zinc-600">
+            Không tìm thấy mô hình phù hợp.
+          </div>
+        )}
       </div>
 
       {/* Thêm mô hình */}

@@ -23,6 +23,7 @@ import {
   OPENROUTER_PROVIDER_ID,
   GOOGLE_PROVIDER_ID,
   REPLICATE_PROVIDER_ID,
+  KIE_PROVIDER_ID,
 } from '../types/model';
 import {
   clearModelCredentials,
@@ -154,6 +155,19 @@ export const loadRegistry = (): ModelRegistryState => {
         }
         return { ...m, apiKey, apiModel: m.id };
       });
+
+      // KIE đang là tuyến media chính; vô hiệu hóa catalog Replicate cũ để tránh chọn nhầm và phát sinh phí.
+      parsed.models = parsed.models.map((model) =>
+        model.isBuiltIn && model.providerId === REPLICATE_PROVIDER_ID
+          ? { ...model, isEnabled: false }
+          : model
+      );
+      if (parsed.activeModels.image?.startsWith('replicate-')) {
+        parsed.activeModels.image = DEFAULT_IMAGE_MODEL_ID;
+      }
+      if (parsed.activeModels.video?.startsWith('replicate-')) {
+        parsed.activeModels.video = DEFAULT_VIDEO_MODEL_ID;
+      }
 
       parsed.models = parsed.models.filter(
         (m) =>
@@ -574,6 +588,7 @@ const BUILTIN_PROVIDER_PROXY_BASES: Record<string, string> = {
   [OPENROUTER_PROVIDER_ID]: '/api-proxy/openrouter/api',
   [GOOGLE_PROVIDER_ID]: '/api-proxy/google/v1beta/openai',
   [REPLICATE_PROVIDER_ID]: '/api-proxy/replicate',
+  [KIE_PROVIDER_ID]: '/api-proxy/kie',
 };
 
 /**

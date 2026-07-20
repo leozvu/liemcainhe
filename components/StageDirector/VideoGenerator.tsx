@@ -98,7 +98,7 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
         >
           {videoModels.map((model) => {
             const vm = model as VideoModelDefinition;
-            const modeLabel = vm.params.mode === 'async' ? 'Bất đồng bộ' : 'Đồng bộ';
+            const modeLabel = vm.params.mode === 'async' ? 'Tác vụ nền' : 'Trực tiếp';
             return (
               <option key={model.id} value={model.id}>
                 {model.name} ({modeLabel})

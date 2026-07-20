@@ -15,8 +15,8 @@ const DEFAULT_POLICY: ModelRoutingPolicy = {
   maxAttempts: 3,
   fallbackModelIds: {
     chat: ['openrouter-auto', 'openrouter-gpt-5.2', 'google-gemini-flash'],
-    image: ['replicate-nano-banana', 'replicate-flux-kontext-pro'],
-    video: ['replicate-seedance-1-pro', 'replicate-veo-3'],
+    image: [],
+    video: [],
   },
 };
 
@@ -40,7 +40,10 @@ export const saveModelRoutingPolicy = (policy: ModelRoutingPolicy): void => {
 export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition): ModelDefinition[] => {
   const policy = getModelRoutingPolicy();
   const models = getModels(type).filter((model) => model.isEnabled);
-  const orderedIds = [preferred.id, ...(policy.enabled ? policy.fallbackModelIds[type] : [])];
+  // Một lần tạo media có thể bị tính phí ngay cả khi kết quả không dùng được.
+  // Với KIE, tuyệt đối không tự gọi model thứ hai nếu người dùng chưa chủ động chọn.
+  const allowFallback = preferred.providerId !== 'kie-ai';
+  const orderedIds = [preferred.id, ...(policy.enabled && allowFallback ? policy.fallbackModelIds[type] : [])];
   const seen = new Set<string>();
   const ordered = orderedIds
     .map((id) => models.find((model) => model.id === id))

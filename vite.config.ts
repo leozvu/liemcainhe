@@ -23,6 +23,16 @@ export default defineConfig(() => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/replicate/, ''),
           },
+          '/api-proxy/kie-files': {
+            target: 'https://kieai.redpandaai.co',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/kie-files/, ''),
+          },
+          '/api-proxy/kie': {
+            target: 'https://api.kie.ai',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/kie/, ''),
+          },
           '/api-proxy/fpt': {
             target: 'https://api.fpt.ai',
             changeOrigin: true,
@@ -58,6 +68,16 @@ export default defineConfig(() => {
             target: 'https://api.replicate.com',
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/replicate/, ''),
+          },
+          '/api-proxy/kie-files': {
+            target: 'https://kieai.redpandaai.co',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/kie-files/, ''),
+          },
+          '/api-proxy/kie': {
+            target: 'https://api.kie.ai',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/kie/, ''),
           },
           '/api-proxy/fpt': {
             target: 'https://api.fpt.ai',

@@ -2,11 +2,21 @@ export type ModelType = 'chat' | 'image' | 'video';
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';
 
-export type VideoDuration = 4 | 8 | 12;
+export type VideoDuration = number;
 
 export type VideoMode = 'sync' | 'async';
 
-export type ProviderProtocol = 'openai-compatible' | 'google-openai' | 'replicate';
+export type ProviderProtocol = 'openai-compatible' | 'google-openai' | 'replicate' | 'kie';
+
+import {
+  KIE_BUILTIN_CHAT_MODELS,
+  KIE_BUILTIN_IMAGE_MODELS,
+  KIE_BUILTIN_VIDEO_MODELS,
+  KIE_PROVIDER_ID,
+} from './kieCatalog';
+import type { KieModelConfig } from './kieCatalog';
+
+export { KIE_PROVIDER_ID } from './kieCatalog';
 
 export const OPENROUTER_PROVIDER_ID = 'openrouter';
 export const GOOGLE_PROVIDER_ID = 'google-ai-studio';
@@ -48,6 +58,8 @@ export interface ModelDefinitionBase {
   isBuiltIn: boolean;
   isEnabled: boolean;
   apiKey?: string;
+  /** Ánh xạ payload riêng cho model trong KIE Market. */
+  kie?: KieModelConfig;
 }
 
 export interface ChatModelDefinition extends ModelDefinitionBase {
@@ -203,7 +215,7 @@ export const BUILTIN_CHAT_MODELS: ChatModelDefinition[] = [
 ];
 
 /** Mã mô hình hình ảnh mặc định. */
-export const DEFAULT_IMAGE_MODEL_ID = 'replicate-nano-banana';
+export const DEFAULT_IMAGE_MODEL_ID = 'kie-nano-banana-2-lite';
 
 export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
   {
@@ -214,7 +226,7 @@ export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
     providerId: REPLICATE_PROVIDER_ID,
     description: 'Tạo và chỉnh sửa ảnh với nhiều ảnh tham chiếu qua Replicate',
     isBuiltIn: true,
-    isEnabled: true,
+    isEnabled: false,
     params: { ...DEFAULT_IMAGE_PARAMS, supportedAspectRatios: ['16:9', '9:16', '1:1'] },
   },
   {
@@ -225,7 +237,7 @@ export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
     providerId: REPLICATE_PROVIDER_ID,
     description: 'Chỉnh sửa ảnh và duy trì tạo hình từ một ảnh tham chiếu',
     isBuiltIn: true,
-    isEnabled: true,
+    isEnabled: false,
     params: { ...DEFAULT_IMAGE_PARAMS },
   },
 ];
@@ -234,7 +246,7 @@ export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
 export const DEPRECATED_BUILTIN_IMAGE_MODEL_IDS = ['gemini-3-pro-image-preview', 'qwen-image-2.0'] as const;
 
 /** Mã mô hình video mặc định. */
-export const DEFAULT_VIDEO_MODEL_ID = 'replicate-seedance-1-pro';
+export const DEFAULT_VIDEO_MODEL_ID = 'kie-bytedance-seedance-2-fast';
 
 /** Mô hình video tích hợp đã ngừng dùng; cấu hình cũ sẽ chuyển sang mặc định. */
 export const DEPRECATED_BUILTIN_VIDEO_MODEL_IDS = [
@@ -270,7 +282,7 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     apiModel: 'bytedance/seedance-1-pro',
     description: 'Tạo video từ văn bản, khung đầu và khung cuối qua Replicate',
     isBuiltIn: true,
-    isEnabled: true,
+    isEnabled: false,
     params: { ...DEFAULT_VIDEO_PARAMS_SORA },
   },
   {
@@ -281,12 +293,23 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     apiModel: 'google/veo-3',
     description: 'Tạo video điện ảnh kèm âm thanh qua Replicate',
     isBuiltIn: true,
-    isEnabled: true,
+    isEnabled: false,
     params: { ...DEFAULT_VIDEO_PARAMS_VEO },
   },
 ];
 
 export const BUILTIN_PROVIDERS: ModelProvider[] = [
+  {
+    id: KIE_PROVIDER_ID,
+    name: 'KIE AI',
+    baseUrl: 'https://api.kie.ai',
+    protocol: 'kie',
+    supportedModelTypes: ['chat', 'image', 'video'],
+    description: 'Một khóa cho catalog mô hình hội thoại, hình ảnh và video của KIE.',
+    keyUrl: 'https://kie.ai/api-key',
+    isBuiltIn: true,
+    isDefault: false,
+  },
   {
     id: OPENROUTER_PROVIDER_ID,
     name: 'OpenRouter',
@@ -324,8 +347,11 @@ export const BUILTIN_PROVIDERS: ModelProvider[] = [
 
 export const ALL_BUILTIN_MODELS: ModelDefinition[] = [
   ...BUILTIN_CHAT_MODELS,
+  ...KIE_BUILTIN_CHAT_MODELS,
   ...BUILTIN_IMAGE_MODELS,
+  ...KIE_BUILTIN_IMAGE_MODELS,
   ...BUILTIN_VIDEO_MODELS,
+  ...KIE_BUILTIN_VIDEO_MODELS,
 ];
 
 export const DEFAULT_ACTIVE_MODELS: ActiveModels = {

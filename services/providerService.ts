@@ -2,6 +2,7 @@ import {
   GOOGLE_PROVIDER_ID,
   OPENROUTER_PROVIDER_ID,
   REPLICATE_PROVIDER_ID,
+  KIE_PROVIDER_ID,
 } from '../types/model';
 import {
   getApiBaseUrlForProvider,
@@ -54,6 +55,8 @@ export const verifyProviderApiKey = async (
     headers['x-goog-api-key'] = apiKey.trim();
   } else if (providerId === REPLICATE_PROVIDER_ID) {
     url = `${baseUrl}/v1/account`;
+  } else if (providerId === KIE_PROVIDER_ID) {
+    url = `${baseUrl}/api/v1/chat/credit`;
   }
 
   try {
@@ -81,6 +84,15 @@ export const verifyProviderApiKey = async (
     if (providerId === REPLICATE_PROVIDER_ID && payload?.username) {
       return { success: true, message: `Đã kết nối tài khoản ${payload.username}` };
     }
+    if (providerId === KIE_PROVIDER_ID && typeof payload?.data === 'number') {
+      const catalogSize = getModels().filter((model) => model.providerId === KIE_PROVIDER_ID).length;
+      return {
+        success: true,
+        message: `Khóa KIE hợp lệ · còn ${payload.data.toLocaleString('vi-VN')} credit · ${catalogSize} model đã nhập sẵn`,
+        remaining: payload.data,
+        discoveredModels: catalogSize,
+      };
+    }
     return { success: true, message: `Khóa ${provider.name} hợp lệ` };
   } catch (error: any) {
     return {
@@ -96,6 +108,7 @@ export const discoverProviderModels = async (
 ): Promise<DiscoveredProviderModel[]> => {
   const provider = getProviderById(providerId);
   if (!provider || !apiKey.trim()) return [];
+  if (providerId === KIE_PROVIDER_ID) return [];
   if (providerId === REPLICATE_PROVIDER_ID) {
     return getModels().filter((model) => model.providerId === providerId).map((model) => ({ id: model.apiModel || model.id, name: model.name, type: model.type }));
   }

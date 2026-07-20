@@ -9,6 +9,7 @@ import {
   normalizeImageResult,
 } from '../imageGenerationHelpers';
 import { callReplicateImageApi } from './replicateAdapter';
+import { callKieImageApi } from './kieAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
 
 const retryOperation = async <T>(
@@ -55,6 +56,9 @@ const callImageApiOnce = async (
   const provider = getProviderById(activeModel.providerId);
   if (provider?.protocol === 'replicate') {
     return callReplicateImageApi(options, activeModel, apiKey, apiBase);
+  }
+  if (provider?.protocol === 'kie') {
+    return callKieImageApi(options, activeModel, apiKey, apiBase);
   }
   const apiModel = activeModel.apiModel || activeModel.id;
   const customEndpoint = activeModel.endpoint;

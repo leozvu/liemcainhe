@@ -2,6 +2,8 @@ const API_TARGETS = {
   '/api-proxy/openrouter': 'https://openrouter.ai',
   '/api-proxy/google': 'https://generativelanguage.googleapis.com',
   '/api-proxy/replicate': 'https://api.replicate.com',
+  '/api-proxy/kie-files': 'https://kieai.redpandaai.co',
+  '/api-proxy/kie': 'https://api.kie.ai',
   '/api-proxy/fpt': 'https://api.fpt.ai',
   '/api-proxy/viettel': 'https://viettelai.vn',
   '/api-proxy/elevenlabs': 'https://api.elevenlabs.io',

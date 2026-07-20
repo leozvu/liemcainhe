@@ -5,6 +5,7 @@ import { throwFromVideoHttpError, formatVideoTaskErrorForUser } from '../videoHt
 import { resolveSoraVideoDownloadId, downloadSoraCompletedVideo, encodeVideoPathId } from '../soraVideoResolve';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import { callReplicateVideoApi } from './replicateAdapter';
+import { callKieVideoApi } from './kieAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
 
 const retryOperation = async <T>(
@@ -306,6 +307,9 @@ const callVideoApiOnce = async (
   const provider = getProviderById(activeModel.providerId);
   if (provider?.protocol === 'replicate') {
     return callReplicateVideoApi(options, activeModel, apiKey, apiBase);
+  }
+  if (provider?.protocol === 'kie') {
+    return callKieVideoApi(options, activeModel, apiKey, apiBase);
   }
   const mode = activeModel.params.mode;
 
