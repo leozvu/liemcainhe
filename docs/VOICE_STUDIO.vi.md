@@ -1,34 +1,18 @@
-# Voice Studio tiếng Việt
+# Xưởng giọng Việt
 
-Voice Studio nằm ở Giai đoạn 03, giữa Tài nguyên và Xưởng dựng. Mỗi nhân vật có một hồ sơ giọng riêng; mỗi câu thoại có thể chứa nhiều take và chỉ một take được chọn để phát hành.
+Xưởng giọng nằm ở Giai đoạn 03, giữa Tài nguyên và Xưởng dựng. Mỗi nhân vật có một hồ sơ giọng riêng; mỗi câu thoại có thể chứa nhiều take và chỉ một take được chọn để phát hành.
 
-## Chọn nguồn giọng
-
-### FPT.AI Voice Maker
-
-1. Tạo khóa tại [FPT.AI Console](https://console.fpt.ai/).
-2. Trong dự án, mở **Giọng thoại → Kết nối giọng nói → FPT.AI**.
-3. Dán khóa, lưu kết nối, sau đó chọn giọng Bắc/Trung/Nam cho từng nhân vật.
-
-FPT xử lý bất đồng bộ nên đường dẫn âm thanh có thể cần vài giây trước khi phát được.
-
-### Viettel AI
-
-1. Lấy token tại [Viettel AI](https://viettelai.vn/dashboard/token).
-2. Mở **Kết nối giọng nói → Viettel AI** và lưu token.
-3. Chọn giọng theo vùng miền rồi tạo từng câu hoặc tạo hàng loạt.
-
-### ElevenLabs
+## Kết nối ElevenLabs
 
 1. Tạo khóa tại [ElevenLabs API Keys](https://elevenlabs.io/app/settings/api-keys).
-2. Lưu khóa trong **Kết nối giọng nói → ElevenLabs**.
-3. Sao chép Voice ID từ thư viện ElevenLabs và dán vào hồ sơ nhân vật.
+2. Nếu khóa bị giới hạn quyền, bật **Text to Speech** và **Voices**; không giới hạn IP cho bản web.
+3. Trong dự án, mở **Giọng thoại → Kết nối giọng nói**.
+4. Dán khóa rồi chọn **Kiểm tra và sử dụng**.
+5. Chọn giọng cho từng nhân vật từ danh sách My Voices được tải tự động.
 
-Nên chọn voice gốc nói tiếng Việt. Voice có accent ngoại ngữ dễ đọc sai thanh điệu hoặc tên riêng.
+Egoric sử dụng `eleven_v3`, ép ngôn ngữ `vi` và chỉ gửi các tham số mà model này hỗ trợ. Nếu khóa không có quyền đọc danh sách giọng, bạn vẫn có thể dán Voice ID thủ công.
 
-### Vbee
-
-Vbee AIVoice API trả kết quả qua callback URL công khai. Bản web tĩnh hiện không giữ một máy chủ callback riêng. Có thể tạo âm thanh tại Vbee rồi dùng nút **Nhập bản thu**, hoặc triển khai backend riêng và nối callback sau.
+Nên chọn voice gốc có chất giọng hoặc accent Việt Nam. Voice được huấn luyện chủ yếu bằng ngôn ngữ khác có thể đọc sai thanh điệu và tên riêng.
 
 ## Giọng người thật
 

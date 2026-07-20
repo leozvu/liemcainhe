@@ -49,7 +49,7 @@ Kho sáng tạo là khu vực nâng cao để tìm kiếm và chỉnh câu lện
 - D1 và R2 cho sao lưu cloud trên bản Sites
 - OpenRouter và Google AI Studio cho mô hình hội thoại
 - Replicate cho mô hình hình ảnh và video
-- FPT.AI, Viettel AI và ElevenLabs cho bản nháp giọng nói; tệp âm thanh cho diễn viên thật
+- ElevenLabs Eleven v3 cho bản nháp giọng nói; tệp âm thanh cho diễn viên thật
 - Electron cho bản máy tính
 - Docker và Nginx cho triển khai web
 
@@ -92,7 +92,7 @@ docker compose down
 
 ## Cấu hình API
 
-Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; FPT.AI, Viettel AI và ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Xưởng giọng Việt](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
+Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Xưởng giọng Việt](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
 
 Khóa API chỉ được giữ trong `sessionStorage` của phiên trình duyệt hiện tại. Khóa không được ghi vào dự án, localStorage, IndexedDB, D1, R2 hoặc lịch sử Git; đóng phiên sẽ yêu cầu nhập lại.
 

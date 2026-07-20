@@ -16,7 +16,7 @@ import {
   getActiveVideoModel,
   getApiKeyForModel,
 } from './modelRegistry';
-import { isVoiceProviderConfigured } from './voiceRegistry';
+import { isVoiceProviderConfigured, normalizeProductionVoiceProviderId } from './voiceRegistry';
 
 export interface StageReadiness {
   id: CoreStage;
@@ -73,9 +73,13 @@ export const normalizeWorkflowState = (project: ProjectState): ProjectState => {
   return {
     ...project,
     voiceStudio: project.voiceStudio ? {
-      defaultProviderId: project.voiceStudio.defaultProviderId || 'fpt',
+      defaultProviderId: normalizeProductionVoiceProviderId(project.voiceStudio.defaultProviderId),
       profiles: (project.voiceStudio.profiles || []).map((profile) => ({
         ...profile,
+        providerId: normalizeProductionVoiceProviderId(profile.providerId),
+        voiceId: normalizeProductionVoiceProviderId(profile.providerId) === profile.providerId ? profile.voiceId : '',
+        voiceName: normalizeProductionVoiceProviderId(profile.providerId) === profile.providerId ? profile.voiceName : 'Chọn giọng ElevenLabs',
+        region: normalizeProductionVoiceProviderId(profile.providerId) === profile.providerId ? profile.region : 'international',
         pitch: profile.pitch ?? 0,
         emotion: profile.emotion || 'neutral',
       })),
@@ -195,7 +199,7 @@ export const getPreflightItems = (project: ProjectState): PreflightItem[] => {
   const video = getActiveVideoModel();
   const dialogueShots = project.shots.filter((shot) => Boolean(shot.dialogue?.trim()));
   const providerIds = new Set(project.voiceStudio?.profiles.map((profile) => profile.providerId) || []);
-  if (dialogueShots.length && providerIds.size === 0) providerIds.add(project.voiceStudio?.defaultProviderId || 'fpt');
+  if (dialogueShots.length && providerIds.size === 0) providerIds.add(project.voiceStudio?.defaultProviderId || 'elevenlabs');
   const voiceReady = Array.from(providerIds).every((providerId) => isVoiceProviderConfigured(providerId));
   const hosted = typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
 

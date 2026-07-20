@@ -24,6 +24,25 @@ export interface GenerateVoiceResult {
   masteringSkippedReason?: string;
 }
 
+export interface ElevenLabsVoice {
+  id: string;
+  name: string;
+  description?: string;
+  accent?: string;
+  gender?: string;
+  previewUrl?: string;
+}
+
+interface ElevenLabsVoicePayload {
+  voice_id?: unknown;
+  name?: unknown;
+  description?: unknown;
+  preview_url?: unknown;
+  labels?: unknown;
+}
+
+let cachedElevenLabsCatalog: { apiKey: string; voices: ElevenLabsVoice[] } | null = null;
+
 const parseErrorMessage = async (response: Response): Promise<string> => {
   const fallback = `Yêu cầu thất bại (${response.status})`;
   try {
@@ -37,6 +56,48 @@ const parseErrorMessage = async (response: Response): Promise<string> => {
       return fallback;
     }
   }
+};
+
+export const parseElevenLabsVoiceCatalog = (payload: unknown): ElevenLabsVoice[] => {
+  const entries = Array.isArray((payload as { voices?: unknown })?.voices)
+    ? (payload as { voices: ElevenLabsVoicePayload[] }).voices
+    : [];
+  return entries
+    .filter((voice) => typeof voice.voice_id === 'string' && typeof voice.name === 'string')
+    .map((voice) => {
+      const labels = voice.labels && typeof voice.labels === 'object'
+        ? voice.labels as Record<string, unknown>
+        : {};
+      return {
+        id: String(voice.voice_id),
+        name: String(voice.name),
+        description: typeof voice.description === 'string' ? voice.description : undefined,
+        accent: typeof labels.accent === 'string' ? labels.accent : undefined,
+        gender: typeof labels.gender === 'string' ? labels.gender : undefined,
+        previewUrl: typeof voice.preview_url === 'string' ? voice.preview_url : undefined,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, 'vi'));
+};
+
+export const fetchElevenLabsVoices = async (apiKey?: string, force = false): Promise<ElevenLabsVoice[]> => {
+  const key = apiKey?.trim() || getVoiceCredentials('elevenlabs').apiKey;
+  if (!key) throw new Error('Chưa có khóa ElevenLabs. Hãy mở Kết nối giọng nói và nhập khóa trước.');
+  if (!force && cachedElevenLabsCatalog?.apiKey === key) return cachedElevenLabsCatalog.voices;
+
+  const response = await fetch('/api-proxy/elevenlabs/v2/voices?page_size=100&include_total_count=false', {
+    headers: { Accept: 'application/json', 'xi-api-key': key },
+  });
+  if (!response.ok) {
+    const detail = await parseErrorMessage(response);
+    if (response.status === 401) throw new Error('Khóa ElevenLabs không hợp lệ hoặc đã hết hiệu lực. Hãy tạo khóa mới rồi thử lại.');
+    if (response.status === 403) throw new Error('Khóa ElevenLabs đang bị giới hạn quyền hoặc IP. Hãy bật quyền Voices và Text to Speech cho khóa.');
+    throw new Error(`Không thể tải thư viện giọng ElevenLabs: ${detail}`);
+  }
+  const voices = parseElevenLabsVoiceCatalog(await response.json());
+  if (!voices.length) throw new Error('Khóa hợp lệ nhưng tài khoản chưa có giọng khả dụng. Hãy thêm một giọng vào My Voices trên ElevenLabs.');
+  cachedElevenLabsCatalog = { apiKey: key, voices };
+  return voices;
 };
 
 const blobToDataUrl = (blob: Blob): Promise<string> =>
@@ -154,6 +215,17 @@ const generateWithViettel = async (input: GenerateVoiceInput, token: string): Pr
   };
 };
 
+export const buildElevenLabsRequestBody = (input: Pick<GenerateVoiceInput, 'text' | 'emotion'>) => ({
+  text: input.text,
+  model_id: 'eleven_v3',
+  language_code: 'vi',
+  voice_settings: {
+    stability: input.emotion === 'dramatic' ? 0.35 : input.emotion === 'intimate' ? 0.65 : 0.5,
+    similarity_boost: 0.78,
+    use_speaker_boost: true,
+  },
+});
+
 const generateWithElevenLabs = async (input: GenerateVoiceInput, apiKey: string): Promise<GenerateVoiceResult> => {
   if (!input.voiceId.trim()) {
     throw new Error('Hãy nhập Voice ID của ElevenLabs trong hồ sơ nhân vật');
@@ -166,20 +238,16 @@ const generateWithElevenLabs = async (input: GenerateVoiceInput, apiKey: string)
     {
       method: 'POST',
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: input.text,
-        model_id: 'eleven_v3',
-        language_code: 'vi',
-        voice_settings: {
-          stability: input.emotion === 'dramatic' ? 0.34 : input.emotion === 'intimate' ? 0.62 : 0.48,
-          similarity_boost: 0.78,
-          style: input.emotion === 'neutral' || !input.emotion ? 0.2 : input.emotion === 'energetic' || input.emotion === 'dramatic' ? 0.58 : 0.36,
-          speed: Math.max(0.7, Math.min(1.2, input.speed)),
-        },
-      }),
+      body: JSON.stringify(buildElevenLabsRequestBody(input)),
     },
   );
-  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  if (!response.ok) {
+    const detail = await parseErrorMessage(response);
+    if (response.status === 401) throw new Error('Khóa ElevenLabs không hợp lệ hoặc đã hết hiệu lực.');
+    if (response.status === 403) throw new Error('Khóa ElevenLabs không có quyền Text to Speech hoặc đang bị giới hạn IP.');
+    if (response.status === 422) throw new Error(`ElevenLabs từ chối cấu hình giọng hoặc Voice ID: ${detail}`);
+    throw new Error(`ElevenLabs không thể tạo giọng: ${detail}`);
+  }
   const audioUrl = await blobToDataUrl(await response.blob());
   return {
     audioUrl,
@@ -196,7 +264,11 @@ export const generateVoice = async (input: GenerateVoiceInput): Promise<Generate
   assertUsageAllowed();
 
   const credentials = getVoiceCredentials(input.providerId);
-  if (!credentials.apiKey) throw new Error('Chưa cấu hình khóa API cho nhà cung cấp giọng nói');
+  if (!credentials.apiKey) {
+    throw new Error(input.providerId === 'elevenlabs'
+      ? 'Chưa có khóa ElevenLabs. Hãy mở Kết nối giọng nói và nhập khóa trước.'
+      : 'Chưa cấu hình khóa API cho nhà cung cấp giọng nói');
+  }
 
   const preparedInput = { ...input, text };
   const startedAt = Date.now();

@@ -264,7 +264,7 @@ Bao giờ cơn mưa này mới dừng?`,
 };
 
 export const createDefaultVoiceStudioState = () => ({
-  defaultProviderId: 'fpt' as const,
+  defaultProviderId: 'elevenlabs' as const,
   profiles: [],
   takes: [],
   selectedTakeByShot: {},

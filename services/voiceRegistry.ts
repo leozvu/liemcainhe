@@ -30,7 +30,7 @@ export interface VoiceProviderCredentials {
 
 const STORAGE_KEY = 'egoric_voice_provider_credentials';
 
-export const VOICE_PROVIDERS: VoiceProviderDefinition[] = [
+const ALL_VOICE_PROVIDERS: VoiceProviderDefinition[] = [
   {
     id: 'fpt',
     name: 'FPT.AI Voice Maker',
@@ -97,8 +97,20 @@ export const VOICE_PROVIDERS: VoiceProviderDefinition[] = [
   },
 ];
 
+const VISIBLE_VOICE_PROVIDER_IDS = new Set<VoiceProviderId>(['elevenlabs', 'human']);
+
+// Chỉ ElevenLabs và bản thu người thật được đưa lên giao diện production.
+// Các định nghĩa cũ vẫn được giữ nội bộ để đọc được project/take đã tạo trước đây.
+export const VOICE_PROVIDERS: VoiceProviderDefinition[] = ALL_VOICE_PROVIDERS.filter((provider) =>
+  VISIBLE_VOICE_PROVIDER_IDS.has(provider.id),
+);
+
 export const getVoiceProvider = (id: VoiceProviderId): VoiceProviderDefinition =>
-  VOICE_PROVIDERS.find((provider) => provider.id === id) || VOICE_PROVIDERS[0];
+  ALL_VOICE_PROVIDERS.find((provider) => provider.id === id)
+  || ALL_VOICE_PROVIDERS.find((provider) => provider.id === 'elevenlabs')!;
+
+export const normalizeProductionVoiceProviderId = (id?: VoiceProviderId): VoiceProviderId =>
+  id === 'human' ? 'human' : 'elevenlabs';
 
 let legacyCredentialsMigrated = false;
 

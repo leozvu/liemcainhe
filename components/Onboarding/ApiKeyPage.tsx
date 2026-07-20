@@ -26,9 +26,9 @@ const providers = [
     icon: Image,
   },
   {
-    name: 'FPT.AI Voice Maker',
-    description: 'Giọng Việt ba miền cho bản nháp thoại và thuyết minh.',
-    href: 'https://console.fpt.ai/',
+    name: 'ElevenLabs',
+    description: 'Eleven v3 cho giọng thoại tiếng Việt biểu cảm và tự nhiên.',
+    href: 'https://elevenlabs.io/app/settings/api-keys',
     icon: AudioLines,
   },
 ];

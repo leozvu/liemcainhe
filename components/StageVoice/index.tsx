@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BookOpenText,
@@ -37,8 +37,15 @@ import {
   VOICE_PROVIDERS,
   getVoiceProvider,
   isVoiceProviderConfigured,
+  normalizeProductionVoiceProviderId,
 } from '../../services/voiceRegistry';
-import { audioFileToDataUrl, createVoiceSourceHash, generateVoice } from '../../services/voiceService';
+import {
+  ElevenLabsVoice,
+  audioFileToDataUrl,
+  createVoiceSourceHash,
+  fetchElevenLabsVoices,
+  generateVoice,
+} from '../../services/voiceService';
 import { useAlert } from '../GlobalAlert';
 import VoicePlayer from './VoicePlayer';
 import VoiceSettingsModal from './VoiceSettingsModal';
@@ -76,16 +83,17 @@ const EMOTION_LABELS: Record<VoiceEmotion, string> = {
 
 const getDefaultProfile = (
   characterId: string,
-  providerId: VoiceProviderId = 'fpt',
+  providerId: VoiceProviderId = 'elevenlabs',
 ): VoiceProfile => {
-  const provider = getVoiceProvider(providerId);
+  const normalizedProviderId = normalizeProductionVoiceProviderId(providerId);
+  const provider = getVoiceProvider(normalizedProviderId);
   const voice = provider.voices[0];
   return {
     id: `voice_profile_${characterId}`,
     characterId,
-    providerId,
+    providerId: normalizedProviderId,
     voiceId: voice?.id || '',
-    voiceName: voice?.name || 'Chưa chọn giọng',
+    voiceName: voice?.name || (normalizedProviderId === 'human' ? 'Diễn viên thật' : 'Chọn giọng ElevenLabs'),
     region: voice?.region || 'international',
     speed: 1,
     pitch: 0,
@@ -123,10 +131,13 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const [lineFilter, setLineFilter] = useState<LineFilter>('all');
   const [query, setQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsProvider, setSettingsProvider] = useState<VoiceProviderId>(studio.defaultProviderId || 'fpt');
   const [batchRendering, setBatchRendering] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewAudio, setPreviewAudio] = useState<{ audioUrl: string; fileName: string; duration?: number } | null>(null);
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [voiceCatalogLoading, setVoiceCatalogLoading] = useState(false);
+  const [voiceCatalogError, setVoiceCatalogError] = useState('');
+  const [voiceConnectionRevision, setVoiceConnectionRevision] = useState(0);
 
   const updateStudio = (mutator: (current: VoiceStudioState) => VoiceStudioState) => {
     updateProject((previous) => ({
@@ -139,7 +150,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const getSpeakerId = (shot: Shot) => shot.characters.find((id) => characters.some((character) => character.id === id)) || characters[0]?.id || 'narrator';
   const getProfile = (characterId: string) =>
     studio.profiles.find((profile) => profile.characterId === characterId) ||
-    getDefaultProfile(characterId, studio.defaultProviderId || 'fpt');
+    getDefaultProfile(characterId, studio.defaultProviderId || 'elevenlabs');
 
   const saveProfile = (profile: VoiceProfile) => {
     updateStudio((current) => {
@@ -197,8 +208,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
     });
   };
 
-  const openSettings = (providerId: VoiceProviderId) => {
-    setSettingsProvider(providerId);
+  const openSettings = () => {
     setSettingsOpen(true);
   };
 
@@ -208,7 +218,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       return;
     }
     if (!isVoiceProviderConfigured(selectedProfile.providerId)) {
-      openSettings(selectedProfile.providerId);
+      openSettings();
       return;
     }
     if (!selectedProfile.voiceId.trim()) {
@@ -246,12 +256,12 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       if (profile.providerId === 'human') {
         showAlert('Hồ sơ này dùng diễn viên thật. Hãy tải bản thu lên bằng nút “Nhập bản thu”.', { type: 'info' });
       } else {
-        showAlert('Vbee cần máy chủ callback công khai. Hiện hãy tạo âm thanh ở Vbee rồi nhập bản thu vào dự án.', { type: 'warning' });
+        showAlert('Nguồn giọng cũ không còn được hiển thị. Hãy chuyển hồ sơ sang ElevenLabs hoặc nhập bản thu người thật.', { type: 'warning' });
       }
       return false;
     }
     if (!isVoiceProviderConfigured(profile.providerId)) {
-      openSettings(profile.providerId);
+      openSettings();
       return false;
     }
     if (!profile.voiceId.trim()) {
@@ -426,6 +436,33 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const humanReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.source === 'human').length;
   const totalDuration = dialogueShots.reduce((sum, shot) => sum + (getSelectedTake(shot.id)?.duration || 0), 0);
 
+  useEffect(() => {
+    if (settingsOpen || selectedProfile.providerId !== 'elevenlabs' || !isVoiceProviderConfigured('elevenlabs')) return;
+    let cancelled = false;
+    setVoiceCatalogLoading(true);
+    setVoiceCatalogError('');
+    void fetchElevenLabsVoices()
+      .then((voices) => {
+        if (cancelled) return;
+        setElevenLabsVoices(voices);
+        if (!selectedProfile.voiceId && voices[0]) {
+          saveProfile({
+            ...selectedProfile,
+            voiceId: voices[0].id,
+            voiceName: voices[0].name,
+            region: 'international',
+          });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setVoiceCatalogError(error instanceof Error ? error.message : 'Không thể tải danh sách giọng ElevenLabs.');
+      })
+      .finally(() => {
+        if (!cancelled) setVoiceCatalogLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [settingsOpen, selectedProfile.providerId, selectedProfile.voiceId, voiceConnectionRevision]);
+
   const filteredShots = dialogueShots.filter((shot) => {
     const take = getSelectedTake(shot.id);
     if (lineFilter === 'pending' && isVoiceCurrent(shot)) return false;
@@ -453,7 +490,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => openSettings(studio.defaultProviderId)} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-4 text-xs font-semibold">
+          <button type="button" onClick={openSettings} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-4 text-xs font-semibold">
             <Settings2 className="h-4 w-4" /> Kết nối giọng nói
           </button>
           <button type="button" onClick={renderAll} disabled={batchRendering || !dialogueShots.length} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold">
@@ -553,7 +590,44 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                       </select>
                     </div>
 
-                    {selectedProvider.voices.length > 0 ? (
+                    {selectedProfile.providerId === 'elevenlabs' ? (
+                      <div>
+                        <label htmlFor="voice-option" className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Giọng ElevenLabs</label>
+                        {voiceCatalogLoading ? (
+                          <div className="flex min-h-11 items-center gap-2 rounded-xl border border-cyan-200/15 bg-cyan-200/[.035] px-3 text-xs text-cyan-100/70" role="status">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Đang tải thư viện giọng…
+                          </div>
+                        ) : elevenLabsVoices.length ? (
+                          <select
+                            id="voice-option"
+                            value={selectedProfile.voiceId}
+                            onChange={(event) => {
+                              const voice = elevenLabsVoices.find((item) => item.id === event.target.value);
+                              if (voice) saveProfile({ ...selectedProfile, voiceId: voice.id, voiceName: voice.name, region: 'international' });
+                            }}
+                            className="eg-input px-3 text-xs"
+                          >
+                            {selectedProfile.voiceId && !elevenLabsVoices.some((voice) => voice.id === selectedProfile.voiceId) && (
+                              <option value={selectedProfile.voiceId}>{selectedProfile.voiceName || selectedProfile.voiceId}</option>
+                            )}
+                            {elevenLabsVoices.map((voice) => (
+                              <option key={voice.id} value={voice.id}>{voice.name}{voice.accent ? ` · ${voice.accent}` : ''}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input id="voice-option" value={selectedProfile.voiceId} onChange={(event) => saveProfile({ ...selectedProfile, voiceId: event.target.value.trim(), voiceName: event.target.value.trim() || 'Nhập Voice ID' })} className="eg-input px-3 font-mono text-xs" placeholder="Dán Voice ID từ ElevenLabs" />
+                        )}
+                        {voiceCatalogError && (
+                          <div className="mt-2 rounded-xl border border-amber-200/15 bg-amber-200/[.05] p-3 text-[11px] leading-5 text-amber-100" role="alert">
+                            <div className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{voiceCatalogError}</span></div>
+                            <button type="button" onClick={() => setVoiceConnectionRevision((value) => value + 1)} className="mt-2 min-h-11 text-xs font-semibold text-cyan-200 hover:text-cyan-100">Tải lại danh sách giọng</button>
+                          </div>
+                        )}
+                        {!voiceCatalogError && elevenLabsVoices.length > 0 && (
+                          <p className="mt-2 text-[10px] leading-4 text-zinc-600">Danh sách được lấy trực tiếp từ My Voices của tài khoản ElevenLabs đang kết nối.</p>
+                        )}
+                      </div>
+                    ) : selectedProvider.voices.length > 0 ? (
                       <div>
                         <label htmlFor="voice-option" className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Chất giọng</label>
                         <select
@@ -588,19 +662,27 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                             {(Object.entries(EMOTION_LABELS) as [VoiceEmotion, string][]).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                           </select>
                         </div>
-                        <div>
-                          <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                            <label htmlFor="voice-speed">Tốc độ đọc</label><span className="font-mono text-zinc-300">{selectedProfile.speed.toFixed(2)}×</span>
+                        {selectedProfile.providerId === 'elevenlabs' ? (
+                          <p className="rounded-xl border border-white/[.08] bg-black/15 p-3 text-[10px] leading-5 text-zinc-600">
+                            Eleven v3 tự điều khiển nhịp và cao độ theo câu thoại, dấu câu và sắc thái. Egoric không gửi các trường tốc độ không tương thích để tránh lỗi API 422.
+                          </p>
+                        ) : (
+                          <div className="space-y-4">
+                            <div>
+                              <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                                <label htmlFor="voice-speed">Tốc độ đọc</label><span className="font-mono text-zinc-300">{selectedProfile.speed.toFixed(2)}×</span>
+                              </div>
+                              <input id="voice-speed" type="range" min="0.8" max="1.2" step="0.05" value={selectedProfile.speed} onChange={(event) => saveProfile({ ...selectedProfile, speed: Number(event.target.value) })} className="w-full accent-cyan-200" />
+                            </div>
+                            <div>
+                              <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                                <label htmlFor="voice-pitch">Cao độ hậu kỳ</label><span className="font-mono text-zinc-300">{(selectedProfile.pitch ?? 0) > 0 ? '+' : ''}{selectedProfile.pitch ?? 0}</span>
+                              </div>
+                              <input id="voice-pitch" type="range" min="-4" max="4" step="1" value={selectedProfile.pitch ?? 0} onChange={(event) => saveProfile({ ...selectedProfile, pitch: Number(event.target.value) })} className="w-full accent-cyan-200" />
+                              <p className="mt-1 text-[10px] leading-4 text-zinc-600">Được lưu cùng take để giữ preset nhất quán; mức hỗ trợ phụ thuộc nhà cung cấp.</p>
+                            </div>
                           </div>
-                          <input id="voice-speed" type="range" min="0.8" max="1.2" step="0.05" value={selectedProfile.speed} onChange={(event) => saveProfile({ ...selectedProfile, speed: Number(event.target.value) })} className="w-full accent-cyan-200" />
-                        </div>
-                        <div>
-                          <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                            <label htmlFor="voice-pitch">Cao độ hậu kỳ</label><span className="font-mono text-zinc-300">{(selectedProfile.pitch ?? 0) > 0 ? '+' : ''}{selectedProfile.pitch ?? 0}</span>
-                          </div>
-                          <input id="voice-pitch" type="range" min="-4" max="4" step="1" value={selectedProfile.pitch ?? 0} onChange={(event) => saveProfile({ ...selectedProfile, pitch: Number(event.target.value) })} className="w-full accent-cyan-200" />
-                          <p className="mt-1 text-[10px] leading-4 text-zinc-600">Được lưu cùng take để giữ preset nhất quán; mức hỗ trợ phụ thuộc nhà cung cấp.</p>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -616,7 +698,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                     )}
 
                     {selectedProfile.providerId !== 'human' && !isVoiceProviderConfigured(selectedProfile.providerId) && (
-                      <button type="button" onClick={() => openSettings(selectedProfile.providerId)} className="eg-button-secondary flex w-full items-center justify-center gap-2 px-3 text-xs font-semibold text-amber-100">
+                      <button type="button" onClick={openSettings} className="eg-button-secondary flex w-full items-center justify-center gap-2 px-3 text-xs font-semibold text-amber-100">
                         <AlertCircle className="h-4 w-4" /> Cấu hình {selectedProvider.shortName}
                       </button>
                     )}
@@ -791,7 +873,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         </div>
       </div>
 
-      <VoiceSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} initialProviderId={settingsProvider} />
+      <VoiceSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => setVoiceConnectionRevision((value) => value + 1)} />
     </div>
   );
 };
