@@ -1,5 +1,7 @@
-import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_CHAT_MODEL_ID } from '../../types/model';
+import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_PROVIDER_ID } from '../../types/model';
 import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel } from '../modelRegistry';
+import { localizeApiErrorMessage } from '../apiErrorLocalization';
+import { verifyProviderApiKey } from '../providerService';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
@@ -52,7 +54,7 @@ export const callChatApi = async (
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('Thiếu API Key. Hãy cấu hình API Key trong phần cài đặt');
+    throw new ApiKeyError('Thiếu khóa API. Hãy cấu hình khóa API trong phần cài đặt');
   }
   
   const apiBase = getApiBaseUrlForModel(activeModel.id);
@@ -120,7 +122,7 @@ export const callChatApi = async (
           const errorText = await res.text();
           if (errorText) errorMessage = errorText;
         }
-        throw new Error(errorMessage);
+        throw new Error(localizeApiErrorMessage(errorMessage, res.status));
       }
       
       return res;
@@ -148,41 +150,7 @@ export const callChatApi = async (
 };
 
 export const verifyApiKey = async (apiKey: string, baseUrl?: string): Promise<{ success: boolean; message: string }> => {
-  try {
-    const url = baseUrl || 'https://api.gitcc.com';
-    
-    const response = await fetch(`${url}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: DEFAULT_CHAT_MODEL_ID,
-        messages: [{ role: 'user', content: 'Chỉ trả về số 1' }],
-        temperature: 0.1,
-        max_tokens: 5,
-      }),
-    });
-
-    if (!response.ok) {
-      let errorMessage = `Xác thực thất bại: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (e) {
-        // ignore
-      }
-      return { success: false, message: errorMessage };
-    }
-
-    const data = await response.json();
-    if (data.choices?.[0]?.message?.content !== undefined) {
-      return { success: true, message: 'Xác thực API Key thành công' };
-    } else {
-      return { success: false, message: 'Định dạng phản hồi không hợp lệ' };
-    }
-  } catch (error: any) {
-    return { success: false, message: error.message || 'Lỗi mạng' };
-  }
+  // baseUrl chỉ được giữ trong chữ ký để không làm hỏng mã gọi cũ.
+  void baseUrl;
+  return verifyProviderApiKey(DEFAULT_PROVIDER_ID, apiKey);
 };

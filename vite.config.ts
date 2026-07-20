@@ -1,18 +1,27 @@
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
+export default defineConfig(() => {
     return {
       server: {
         port: 3000,
         host: '0.0.0.0',
         proxy: {
-          '/api-proxy': {
-            target: 'https://api.gitcc.com',
+          '/api-proxy/openrouter': {
+            target: 'https://openrouter.ai',
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api-proxy/, ''),
+            rewrite: (path) => path.replace(/^\/api-proxy\/openrouter/, ''),
+          },
+          '/api-proxy/google': {
+            target: 'https://generativelanguage.googleapis.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/google/, ''),
+          },
+          '/api-proxy/replicate': {
+            target: 'https://api.replicate.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/replicate/, ''),
           },
         },
       },
@@ -20,18 +29,24 @@ export default defineConfig(({ mode }) => {
         port: 3005,
         host: '0.0.0.0',
         proxy: {
-          '/api-proxy': {
-            target: 'https://api.gitcc.com',
+          '/api-proxy/openrouter': {
+            target: 'https://openrouter.ai',
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api-proxy/, ''),
+            rewrite: (path) => path.replace(/^\/api-proxy\/openrouter/, ''),
+          },
+          '/api-proxy/google': {
+            target: 'https://generativelanguage.googleapis.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/google/, ''),
+          },
+          '/api-proxy/replicate': {
+            target: 'https://api.replicate.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/replicate/, ''),
           },
         },
       },
       plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.ANTSK_API_KEY),
-        'process.env.ANTSK_API_KEY': JSON.stringify(env.ANTSK_API_KEY)
-      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),

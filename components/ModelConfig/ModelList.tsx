@@ -1,6 +1,5 @@
 /**
- * 模型列表组件
- * 显示特定类型的模型列表，支持选择激活模型
+ * Danh sách mô hình theo từng nhóm và trạng thái sử dụng.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -28,8 +27,8 @@ interface ModelListProps {
 }
 
 const typeDescriptions: Record<ModelType, string> = {
-  chat: 'Dùng để phân tích kịch bản, tạo storyboard và tối ưu prompt',
-  image: 'Dùng để tạo concept nhân vật, bối cảnh và keyframe',
+  chat: 'Dùng để phân tích kịch bản, tạo bảng phân cảnh và tối ưu câu lệnh',
+  image: 'Dùng để tạo ý tưởng nhân vật, bối cảnh và khung hình chính',
   video: 'Dùng để tạo các đoạn video',
 };
 
@@ -47,7 +46,7 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
   const loadModels = () => {
     const allModels = getModels(type);
     setModels(allModels);
-    // 获取当前激活的模型
+    // Lấy mô hình đang được sử dụng.
     const activeConfig = getActiveModelsConfig();
     setActiveModelId(activeConfig[type]);
   };
@@ -63,7 +62,7 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
       );
       onRefresh();
     } else {
-      showAlert('Không thể kích hoạt model. Hãy bảo đảm model đã được bật.', { type: 'error' });
+      showAlert('Không thể kích hoạt mô hình. Hãy bảo đảm mô hình đã được bật.', { type: 'error' });
     }
   };
 
@@ -75,14 +74,14 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
   };
 
   const handleDeleteModel = (modelId: string) => {
-    showAlert('Bạn có chắc muốn xóa model này?', {
+    showAlert('Bạn có chắc muốn xóa mô hình này?', {
       type: 'warning',
       showCancel: true,
       onConfirm: () => {
         if (removeModel(modelId)) {
           loadModels();
           onRefresh();
-          showAlert('Đã xóa model', { type: 'success' });
+          showAlert('Đã xóa mô hình', { type: 'success' });
         }
       }
     });
@@ -94,9 +93,9 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
       setIsAddingModel(false);
       loadModels();
       onRefresh();
-      showAlert('Đã thêm model', { type: 'success' });
+      showAlert('Đã thêm mô hình', { type: 'success' });
     } catch (error) {
-      showAlert(error instanceof Error ? error.message : 'Không thể thêm model', { type: 'error' });
+      showAlert(error instanceof Error ? error.message : 'Không thể thêm mô hình', { type: 'error' });
     }
   };
 
@@ -106,12 +105,12 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
 
   return (
     <div className="space-y-4">
-      {/* 类型说明 */}
+      {/* Mô tả nhóm mô hình */}
       <div className="mb-4">
         <p className="text-xs text-zinc-400">{typeDescriptions[type]}</p>
       </div>
 
-      {/* 当前激活模型信息 */}
+      {/* Mô hình đang sử dụng */}
       <div className="bg-cyan-300/10 border border-cyan-200/20 rounded-2xl p-3">
         <div className="flex items-center gap-2 mb-1">
           <CheckCircle className="w-4 h-4 text-cyan-300" />
@@ -133,16 +132,16 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
         })()}
       </div>
 
-      {/* 提示信息 */}
+      {/* Thông tin hướng dẫn */}
       <div className="bg-white/[0.045] border border-white/10 rounded-2xl p-3 flex items-start gap-2">
         <Info className="w-4 h-4 text-zinc-500 flex-shrink-0 mt-0.5" />
         <p className="text-[10px] text-zinc-500 leading-relaxed">
-          Nhấn “Sử dụng model này” để chuyển model hoạt động. Khi model tùy chỉnh có nhà cung cấp riêng, yêu cầu API sẽ được gửi đến địa chỉ tương ứng.
-          Mở rộng thẻ model để điều chỉnh tham số.
+          Nhấn “Sử dụng mô hình này” để chuyển mô hình hoạt động. Khi mô hình tùy chỉnh có nhà cung cấp riêng, yêu cầu API sẽ được gửi đến địa chỉ tương ứng.
+          Mở rộng thẻ mô hình để điều chỉnh tham số.
         </p>
       </div>
 
-      {/* 模型列表 */}
+      {/* Danh sách mô hình */}
       <div className="space-y-2">
         {models.map((model) => (
           <ModelCard
@@ -158,7 +157,7 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
         ))}
       </div>
 
-      {/* 添加模型 */}
+      {/* Thêm mô hình */}
       {isAddingModel ? (
         <AddModelForm
           type={type}
@@ -171,7 +170,7 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
           className="w-full py-3 border border-dashed border-zinc-700 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Thêm model tùy chỉnh
+          Thêm mô hình tùy chỉnh
         </button>
       )}
     </div>

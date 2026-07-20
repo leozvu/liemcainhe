@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import {
   ChatOptions,
   ImageGenerateOptions,
@@ -134,18 +133,18 @@ export const getVideoModelCapabilities = (): {
 };
 
 function buildScriptParsePrompt(rawText: string, language: string, visualStyle: string): string {
-  return `You are a professional screenwriter assistant. Parse the following script/story into structured data.
+  return `Bạn là trợ lý biên kịch chuyên nghiệp. Hãy phân tích kịch bản hoặc câu chuyện sau thành dữ liệu có cấu trúc.
 
-Script Text:
+Nội dung kịch bản:
 ${rawText}
 
-Requirements:
-- Language: ${language}
-- Visual Style: ${visualStyle}
-- Extract: title, genre, logline, characters (with name, gender, age, personality), scenes (with location, time, atmosphere)
-- Generate story paragraphs with scene references
+Yêu cầu:
+- Ngôn ngữ đầu ra: ${language}
+- Phong cách hình ảnh: ${visualStyle}
+- Trích xuất tiêu đề, thể loại, tóm tắt, nhân vật (tên, giới tính, tuổi, tính cách) và bối cảnh (địa điểm, thời gian, không khí)
+- Tạo các đoạn truyện có liên kết đến bối cảnh tương ứng
 
-Return a valid JSON object with the structure:
+Chỉ trả về một đối tượng JSON hợp lệ theo cấu trúc:
 {
   "title": "string",
   "genre": "string", 
@@ -157,20 +156,20 @@ Return a valid JSON object with the structure:
 }
 
 function buildShotGenerationPrompt(scriptData: any): string {
-  return `You are a professional film director. Generate a shot list for the following script.
+  return `Bạn là đạo diễn điện ảnh chuyên nghiệp. Hãy tạo danh sách cảnh quay cho kịch bản sau.
 
-Script Data:
+Dữ liệu kịch bản:
 ${JSON.stringify(scriptData, null, 2)}
 
-Generate detailed shots with:
-- sceneId: reference to scene
-- actionSummary: what happens in the shot
-- dialogue: any spoken lines
-- cameraMovement: camera direction
-- shotSize: shot type (wide, medium, close-up, etc.)
-- characters: array of character IDs in the shot
+Mỗi cảnh quay cần có:
+- sceneId: mã bối cảnh tham chiếu
+- actionSummary: diễn biến trong cảnh quay
+- dialogue: lời thoại nếu có
+- cameraMovement: chuyển động máy quay
+- shotSize: cỡ cảnh như toàn, trung hoặc cận
+- characters: danh sách mã nhân vật xuất hiện
 
-Return a valid JSON object:
+Chỉ trả về một đối tượng JSON hợp lệ:
 {
   "shots": [
     {
@@ -197,35 +196,35 @@ function buildVisualPromptGenerationPrompt(options: {
   const { type, data, genre, visualStyle, language } = options;
   
   if (type === 'character') {
-    return `Generate a detailed visual prompt for this character:
-Name: ${data.name}
-Gender: ${data.gender}
-Age: ${data.age}
-Personality: ${data.personality}
+    return `Hãy tạo câu lệnh hình ảnh chi tiết cho nhân vật sau:
+Tên: ${data.name}
+Giới tính: ${data.gender}
+Tuổi: ${data.age}
+Tính cách: ${data.personality}
 
-Genre: ${genre}
-Visual Style: ${visualStyle}
-Language: ${language}
+Thể loại: ${genre}
+Phong cách hình ảnh: ${visualStyle}
+Ngôn ngữ đầu ra: ${language}
 
-Return JSON:
+Chỉ trả về JSON:
 {
-  "visualPrompt": "detailed description for image generation",
-  "negativePrompt": "elements to avoid"
+  "visualPrompt": "mô tả chi tiết để tạo ảnh",
+  "negativePrompt": "những yếu tố cần tránh"
 }`;
   } else {
-    return `Generate a detailed visual prompt for this scene:
-Location: ${data.location}
-Time: ${data.time}
-Atmosphere: ${data.atmosphere}
+    return `Hãy tạo câu lệnh hình ảnh chi tiết cho bối cảnh sau:
+Địa điểm: ${data.location}
+Thời gian: ${data.time}
+Không khí: ${data.atmosphere}
 
-Genre: ${genre}
-Visual Style: ${visualStyle}
-Language: ${language}
+Thể loại: ${genre}
+Phong cách hình ảnh: ${visualStyle}
+Ngôn ngữ đầu ra: ${language}
 
-Return JSON:
+Chỉ trả về JSON:
 {
-  "visualPrompt": "detailed description for image generation",
-  "negativePrompt": "elements to avoid"
+  "visualPrompt": "mô tả chi tiết để tạo ảnh",
+  "negativePrompt": "những yếu tố cần tránh"
 }`;
   }
 }
@@ -238,15 +237,15 @@ function buildKeyframeOptimizationPrompt(options: {
   characterInfo: string;
   visualStyle: string;
 }): string {
-  return `Optimize this keyframe prompt for ${options.frameType} frame:
+  return `Hãy tối ưu câu lệnh cho khung hình ${options.frameType === 'start' ? 'đầu' : 'cuối'}:
 
-Action: ${options.actionSummary}
-Camera: ${options.cameraMovement}
-Scene: ${options.sceneInfo}
-Characters: ${options.characterInfo}
-Visual Style: ${options.visualStyle}
+Hành động: ${options.actionSummary}
+Máy quay: ${options.cameraMovement}
+Bối cảnh: ${options.sceneInfo}
+Nhân vật: ${options.characterInfo}
+Phong cách hình ảnh: ${options.visualStyle}
 
-Generate a detailed, cinematic prompt for image generation. Return only the prompt text.`;
+Hãy tạo một câu lệnh điện ảnh chi tiết để sinh ảnh. Chỉ trả về nội dung câu lệnh bằng tiếng Việt.`;
 }
 
 function buildActionSuggestionPrompt(options: {
@@ -254,13 +253,13 @@ function buildActionSuggestionPrompt(options: {
   endFramePrompt: string;
   cameraMovement: string;
 }): string {
-  return `Suggest an action description connecting these keyframes:
+  return `Hãy đề xuất mô tả hành động kết nối hai khung hình chính sau:
 
-Start Frame: ${options.startFramePrompt}
-End Frame: ${options.endFramePrompt}
-Camera Movement: ${options.cameraMovement}
+Khung hình đầu: ${options.startFramePrompt}
+Khung hình cuối: ${options.endFramePrompt}
+Chuyển động máy quay: ${options.cameraMovement}
 
-Generate a concise action summary describing the transition. Return only the action text.`;
+Viết một câu ngắn gọn mô tả quá trình chuyển tiếp. Chỉ trả về nội dung hành động bằng tiếng Việt.`;
 }
 
 function buildShotSplitPrompt(options: {
@@ -269,14 +268,14 @@ function buildShotSplitPrompt(options: {
   characterNames: string[];
   visualStyle: string;
 }): string {
-  return `Split this shot into multiple sub-shots:
+  return `Hãy tách cảnh quay sau thành nhiều cảnh quay con:
 
-Shot: ${JSON.stringify(options.shot)}
-Scene: ${options.sceneInfo}
-Characters: ${options.characterNames.join(', ')}
-Visual Style: ${options.visualStyle}
+Cảnh quay: ${JSON.stringify(options.shot)}
+Bối cảnh: ${options.sceneInfo}
+Nhân vật: ${options.characterNames.join(', ')}
+Phong cách hình ảnh: ${options.visualStyle}
 
-Return JSON:
+Chỉ trả về JSON với nội dung mô tả bằng tiếng Việt:
 {
   "subShots": [
     {

@@ -63,7 +63,7 @@ const CharacterSection: React.FC<Props> = ({
             />
           ) : (
             <p className={STYLES.display.base}>
-              {char.visualPrompt || 'Chưa có prompt'}
+              {char.visualPrompt || 'Chưa có câu lệnh'}
             </p>
           )}
 

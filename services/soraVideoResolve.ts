@@ -69,7 +69,7 @@ function looksLikeVideoUrl(url: string): boolean {
   const u = url.trim();
   if (!/^https?:\/\//i.test(u)) return false;
   if (/\.mp4/i.test(u)) return true;
-  if (/volces\.com|tos-cn-|doubao-seedance|ark-arg|amazonaws|aliyuncs|myqcloud|oss-|cos\./i.test(u)) {
+  if (/replicate\.delivery|amazonaws/i.test(u)) {
     return true;
   }
   if (/\/videos?\//i.test(u) || /\/object\//i.test(u) || /\/download/i.test(u)) return true;

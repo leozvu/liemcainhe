@@ -1,7 +1,6 @@
-// Onboarding 常量配置
+// Cấu hình nội dung hướng dẫn bắt đầu.
 
 export const ONBOARDING_STORAGE_KEY = 'egoric_studio_onboarding_completed';
-export const LEGACY_ONBOARDING_STORAGE_KEY = ['big' + 'banana', 'onboarding', 'completed'].join('_');
 
 export const ONBOARDING_PAGES = {
   WELCOME: 0,
@@ -13,7 +12,7 @@ export const ONBOARDING_PAGES = {
 
 export const TOTAL_PAGES = 5;
 
-// 工作流步骤
+// Các bước trong quy trình.
 export const WORKFLOW_STEPS = [
   {
     number: '①',
@@ -23,12 +22,12 @@ export const WORKFLOW_STEPS = [
   {
     number: '②',
     title: 'Định hình nhân vật',
-    description: 'Tạo ảnh concept nhân vật chỉ với một thao tác',
+    description: 'Tạo ảnh ý tưởng nhân vật chỉ với một thao tác',
   },
   {
     number: '③',
-    title: 'Dựng storyboard',
-    description: 'Tạo video theo hệ thống keyframe',
+    title: 'Dựng bảng phân cảnh',
+    description: 'Tạo video theo hệ thống khung hình chính',
   },
   {
     number: '④',
@@ -37,7 +36,7 @@ export const WORKFLOW_STEPS = [
   },
 ] as const;
 
-// 核心亮点
+// Điểm nổi bật của sản phẩm.
 export const HIGHLIGHTS = [
   {
     title: 'Khóa khung hình đầu & cuối',
@@ -49,11 +48,11 @@ export const HIGHLIGHTS = [
   },
   {
     title: 'Phong cách nhất quán',
-    description: 'Chọn live-action, hoạt hình hoặc 3D và duy trì nhất quán toàn phim',
+    description: 'Chọn phim người đóng, hoạt hình hoặc 3D và duy trì nhất quán toàn phim',
   },
 ] as const;
 
-// 快速开始选项
+// Tùy chọn bắt đầu nhanh.
 export const QUICK_START_OPTIONS = [
   {
     id: 'script',

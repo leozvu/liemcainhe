@@ -12,7 +12,7 @@ const TimelineVisualizer: React.FC<Props> = ({ shots }) => {
     <div className="mb-10">
       <div className="flex justify-between text-[10px] text-zinc-600 font-mono uppercase tracking-widest mb-2 px-1">
         <span>Sơ đồ trình tự</span>
-        <span>TC 00:00:00:00</span>
+        <span>MÃ THỜI GIAN 00:00:00:00</span>
       </div>
       <div className={STYLES.timeline.container}>
         {shots.length === 0 ? (

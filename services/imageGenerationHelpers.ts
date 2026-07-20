@@ -1,7 +1,7 @@
-// Author: forsearch | Updated: 2026-04-30
 import { AspectRatio } from '../types/model';
+import { localizeApiErrorMessage } from './apiErrorLocalization';
 
-/** qwen-image / dall-e 等应走 OpenAI Images API，而非 chat/completions */
+/** Các mô hình ảnh dùng giao thức OpenAI Images thay vì chat/completions. */
 export const shouldUseImagesGenerationsEndpoint = (
   apiModel: string,
   customEndpoint?: string
@@ -53,7 +53,7 @@ const extractDataUrlFromText = (text: string): string | null => {
   return null;
 };
 
-/** 从 chat/completions 或 images/generations 等多种响应体中提取图片 */
+/** Trích xuất ảnh từ nhiều kiểu phản hồi của gateway. */
 export const extractImageFromApiResponse = (response: unknown): string | null => {
   if (!response || typeof response !== 'object') return null;
   const r = response as Record<string, unknown>;
@@ -174,7 +174,7 @@ export const normalizeImageResult = async (raw: string): Promise<string> => {
     try {
       return await urlToImageDataUrl(raw);
     } catch (e) {
-      // 阿里云 OSS 等外链常因 CORS 无法在页面内 fetch 转 base64，但 <img src> 可直接显示
+      // Một số liên kết ảnh ngoài không cho phép tải bằng fetch do CORS nhưng vẫn hiển thị được qua img.
       console.warn('Không thể chuyển ảnh sang base64, sẽ hiển thị URL gốc:', e);
       return raw;
     }
@@ -217,7 +217,7 @@ export const callImagesGenerationsApi = async (params: {
       const text = await res.text();
       if (text) errorMessage = text;
     }
-    throw new Error(errorMessage);
+    throw new Error(localizeApiErrorMessage(errorMessage, res.status));
   }
 
   const data = await res.json();

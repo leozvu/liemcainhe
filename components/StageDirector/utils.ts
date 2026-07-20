@@ -7,7 +7,7 @@ export const getRefImagesForShot = (shot: Shot, scriptData: ProjectState['script
   
   if (!scriptData) return referenceImages;
   
-  // 参考图优先使用场景氛围，再使用角色变体或基础形象。
+  // Ưu tiên ảnh bối cảnh, sau đó đến biến thể hoặc tạo hình cơ bản của nhân vật.
   const scene = scriptData.scenes.find(s => String(s.id) === String(shot.sceneId));
   if (scene?.referenceImage) {
     referenceImages.push(scene.referenceImage);
@@ -89,13 +89,13 @@ export const buildKeyframePromptWithAI = async (
     return basicPrompt;
   }
   
-  // 动态导入避免与模型服务形成循环依赖。
+  // Nhập động để tránh phụ thuộc vòng với dịch vụ mô hình.
   try {
     const { enhanceKeyframePrompt } = await import('../../services/geminiService');
     const enhanced = await enhanceKeyframePrompt(basicPrompt, visualStyle, cameraMovement, frameType);
     return enhanced;
   } catch (error) {
-    console.error('Không thể tăng cường bằng AI, chuyển sang prompt cơ bản:', error);
+    console.error('Không thể tăng cường bằng AI, chuyển sang câu lệnh cơ bản:', error);
     return basicPrompt;
   }
 };
@@ -106,7 +106,7 @@ export const buildVideoPrompt = (
   videoModel: 'sora-2' | 'veo' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait' | string,
   language: string
 ): string => {
-  if (videoModel === 'sora-2' || videoModel.startsWith('doubao-seedance')) {
+  if (!videoModel.toLowerCase().includes('veo')) {
     return VIDEO_PROMPT_TEMPLATES.sora2.standard
       .replace('{actionSummary}', actionSummary)
       .replace('{cameraMovement}', cameraMovement)
@@ -120,7 +120,9 @@ export const buildVideoPrompt = (
 };
 
 export const extractBasePrompt = (fullPrompt: string, fallback: string): string => {
-  const visualStyleIndex = fullPrompt.indexOf('\n\nVisual Style:');
+  const vietnameseIndex = fullPrompt.indexOf('\n\nPhong cách hình ảnh:');
+  const legacyIndex = fullPrompt.indexOf(atob('CgpWaXN1YWwgU3R5bGU6'));
+  const visualStyleIndex = vietnameseIndex > 0 ? vietnameseIndex : legacyIndex;
   if (visualStyleIndex > 0) {
     return fullPrompt.substring(0, visualStyleIndex);
   }

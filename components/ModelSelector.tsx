@@ -1,6 +1,5 @@
 /**
- * 模型选择器组件
- * 用于在各功能模块中选择要使用的模型
+ * Bộ chọn mô hình dùng chung cho các chức năng tạo nội dung.
  */
 
 import React from 'react';
@@ -42,7 +41,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   compact = false,
   label,
 }) => {
-  // 获取对应类型的模型列表（仅启用的模型）
+  // Chỉ lấy các mô hình đúng loại và đang được bật.
   const getModels = (): ModelDefinition[] => {
     let models: ModelDefinition[] = [];
     switch (type) {
@@ -133,7 +132,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
 export default ModelSelector;
 
 /**
- * 视频模型选择器（带 Sora/Veo 模式显示）
+ * Bộ chọn mô hình video kèm thông tin chế độ hỗ trợ.
  */
 export const VideoModelSelector: React.FC<{
   value: string;

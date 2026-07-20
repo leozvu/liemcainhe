@@ -3,5 +3,13 @@
  */
 
 export * from './chatAdapter';
-export * from './imageAdapter';
-export * from './videoAdapter';
+export {
+  callImageApi,
+  isAspectRatioSupported as isImageAspectRatioSupported,
+} from './imageAdapter';
+export {
+  callVideoApi,
+  isAspectRatioSupported as isVideoAspectRatioSupported,
+  isDurationSupported,
+} from './videoAdapter';
+export { callReplicateImageApi, callReplicateVideoApi } from './replicateAdapter';

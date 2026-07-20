@@ -188,7 +188,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
           <PromptEditor
             prompt={scene.visualPrompt || ''}
             onSave={onPromptSave}
-            label="Prompt bối cảnh"
+            label="Câu lệnh bối cảnh"
             placeholder="Nhập mô tả hình ảnh bối cảnh..."
             maxHeight="max-h-[120px]"
           />

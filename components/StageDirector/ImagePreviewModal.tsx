@@ -35,7 +35,7 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, title, 
           src={imageUrl} 
           className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
           onClick={(e) => e.stopPropagation()}
-          alt={title || 'Preview'}
+          alt={title || 'Xem trước'}
         />
       </div>
       

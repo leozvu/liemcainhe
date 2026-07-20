@@ -5,17 +5,16 @@ import { AspectRatio, VideoDuration } from '../types';
 interface AspectRatioSelectorProps {
   value: AspectRatio;
   onChange: (value: AspectRatio) => void;
-  /** 是否支持方形 (1:1)，默认 true。Veo 模型不支持方形 */
+  /** Cho phép tỷ lệ vuông 1:1; một số mô hình video không hỗ trợ. */
   allowSquare?: boolean;
-  /** 紧凑模式，只显示图标 */
+  /** Chế độ gọn, chỉ hiển thị biểu tượng. */
   compact?: boolean;
-  /** 是否禁用 */
+  /** Trạng thái vô hiệu hóa. */
   disabled?: boolean;
 }
 
 /**
- * 横竖屏选择器组件
- * 用于选择图片/视频生成的画面比例
+ * Bộ chọn tỷ lệ khung hình cho ảnh và video.
  */
 export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({
   value,
@@ -75,13 +74,12 @@ export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({
 interface VideoDurationSelectorProps {
   value: VideoDuration;
   onChange: (value: VideoDuration) => void;
-  /** 是否禁用 */
+  /** Trạng thái vô hiệu hóa. */
   disabled?: boolean;
 }
 
 /**
- * 视频时长选择器组件
- * 仅用于 Sora-2 模型
+ * Bộ chọn thời lượng video cho các mô hình hỗ trợ.
  */
 export const VideoDurationSelector: React.FC<VideoDurationSelectorProps> = ({
   value,
@@ -118,18 +116,17 @@ interface VideoSettingsPanelProps {
   onAspectRatioChange: (value: AspectRatio) => void;
   duration: VideoDuration;
   onDurationChange: (value: VideoDuration) => void;
-  /** 视频模型类型，veo 不支持方形和时长选择 */
+  /** Loại mô hình video; một số loại không hỗ trợ tỷ lệ vuông hoặc thời lượng tùy chọn. */
   modelType: 'sora' | 'veo';
   disabled?: boolean;
-  /** 支持的横竖屏比例列表 */
+  /** Danh sách tỷ lệ khung hình được hỗ trợ. */
   supportedAspectRatios?: AspectRatio[];
-  /** 支持的时长列表 */
+  /** Danh sách thời lượng được hỗ trợ. */
   supportedDurations?: VideoDuration[];
 }
 
 /**
- * 视频设置面板
- * 组合了横竖屏选择和时长选择
+ * Bảng cài đặt tỷ lệ và thời lượng video.
  */
 export const VideoSettingsPanel: React.FC<VideoSettingsPanelProps> = ({
   aspectRatio,
@@ -141,17 +138,17 @@ export const VideoSettingsPanel: React.FC<VideoSettingsPanelProps> = ({
   supportedAspectRatios,
   supportedDurations,
 }) => {
-  // 根据模型支持的比例过滤
+  // Lọc theo tỷ lệ mà mô hình hỗ trợ.
   const allowSquare = supportedAspectRatios 
     ? supportedAspectRatios.includes('1:1')
     : modelType === 'sora';
   
-  // 是否显示时长选择器
+  // Chỉ hiển thị thời lượng khi mô hình cho phép.
   const showDuration = supportedDurations 
     ? supportedDurations.length > 1
     : modelType === 'sora';
   
-  // 可用的时长列表
+  // Danh sách thời lượng có thể chọn.
   const availableDurations = supportedDurations || [4, 8, 12];
 
   return (

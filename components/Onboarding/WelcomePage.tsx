@@ -10,7 +10,7 @@ interface WelcomePageProps {
 const WelcomePage: React.FC<WelcomePageProps> = ({ onNext, onSkip }) => {
   return (
     <div className="flex flex-col items-center text-center">
-      {/* 大图区域：Logo + 装饰 */}
+      {/* Khu vực nhận diện thương hiệu */}
       <div className="relative mb-8 flex min-h-28 items-center justify-center">
         <div className="absolute -inset-8 bg-gradient-to-r from-cyan-300/20 via-sky-400/20 to-fuchsia-400/20 rounded-full blur-3xl opacity-50"></div>
         <img 
@@ -21,22 +21,22 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onNext, onSkip }) => {
         <Sparkles className="absolute -top-2 -right-2 w-6 h-6 text-yellow-400 animate-pulse" />
       </div>
 
-      {/* 欢迎语 */}
+      {/* Lời chào */}
       <h1 className="text-3xl font-bold text-white mb-3">
         Chào nhà sáng tạo
       </h1>
 
-      {/* 核心价值 */}
+      {/* Giá trị cốt lõi */}
       <p className="text-xl text-zinc-300 mb-2">
         Biến câu chuyện của bạn thành phim ngắn sống động
       </p>
 
-      {/* 说明文案 */}
+      {/* Mô tả */}
       <p className="text-sm text-zinc-500 mb-10 max-w-xs">
         Chỉ cần một kịch bản, Egoric Studio và AI sẽ hỗ trợ phần còn lại
       </p>
 
-      {/* 主按钮 */}
+      {/* Hành động chính */}
       <button
         onClick={onNext}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"
@@ -44,7 +44,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onNext, onSkip }) => {
         Khám phá quy trình
       </button>
 
-      {/* 跳过入口 */}
+      {/* Bỏ qua hướng dẫn */}
       <button
         onClick={onSkip}
         className="mt-6 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"

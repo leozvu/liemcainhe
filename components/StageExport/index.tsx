@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState, useRef, useEffect } from 'react';
 import { Film } from 'lucide-react';
 import { ProjectState } from '../../types';
@@ -54,7 +53,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
         playPromise
           .then(() => setIsPlaying(true))
           .catch(err => {
-            console.warn('Auto-play failed:', err);
+            console.warn('Tự động phát video thất bại:', err);
             setIsPlaying(false);
           });
       }
@@ -119,7 +118,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
         setDownloadProgress(0);
       }, 2000);
     } catch (error) {
-      console.error('Download failed:', error);
+      console.error('Tải tệp thất bại:', error);
       showAlert(`Xuất tệp thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
       setIsDownloading(false);
       setDownloadPhase('');
@@ -150,7 +149,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
         setAssetsProgress(0);
       }, 2000);
     } catch (error) {
-      console.error('Assets download failed:', error);
+      console.error('Tải tài nguyên thất bại:', error);
       showAlert(`Tải tài nguyên gốc thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
       setIsDownloadingAssets(false);
       setAssetsPhase('');
@@ -165,12 +164,12 @@ const StageExport: React.FC<Props> = ({ project }) => {
           <h2 className={STYLES.header.title}>
             <Film className="w-5 h-5 text-cyan-300" />
             Sản xuất & xuất bản
-            <span className={STYLES.header.subtitle}>Rendering & Export</span>
+            <span className={STYLES.header.subtitle}>KẾT XUẤT VÀ XUẤT BẢN</span>
           </h2>
         </div>
         <div className="flex items-center gap-2">
           <span className={STYLES.header.status}>
-            Status: {progress === 100 ? 'READY' : 'IN PROGRESS'}
+            Trạng thái: {progress === 100 ? 'SẴN SÀNG' : 'ĐANG XỬ LÝ'}
           </span>
         </div>
       </div>

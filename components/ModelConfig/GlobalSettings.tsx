@@ -1,184 +1,272 @@
-/**
- * 全局配置组件
- * 包含 API Key 配置和折扣广告
- */
-
-import React, { useState, useEffect } from 'react';
-import { Key, Loader2, CheckCircle, AlertCircle, ExternalLink, Gift, Sparkles } from 'lucide-react';
-import { getGlobalApiKey } from '../../services/modelRegistry';
-import { verifyApiKey } from '../../services/modelService';
-import { setGlobalApiKey } from '../../services/geminiService';
+import React, { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Image as ImageIcon,
+  KeyRound,
+  Loader2,
+  MessageSquareText,
+  ShieldCheck,
+  Trash2,
+  Video,
+} from 'lucide-react';
+import { ModelProvider, ModelType } from '../../types/model';
+import {
+  getProviders,
+  setProviderApiKey,
+} from '../../services/modelRegistry';
+import { verifyProviderApiKey } from '../../services/providerService';
 
 interface GlobalSettingsProps {
   onRefresh: () => void;
 }
 
+type VerificationState = {
+  state: 'idle' | 'checking' | 'success' | 'error';
+  message: string;
+};
+
+const CAPABILITY_LABELS: Record<ModelType, string> = {
+  chat: 'Hội thoại',
+  image: 'Hình ảnh',
+  video: 'Video',
+};
+
+const CAPABILITY_ICONS: Record<ModelType, React.ComponentType<{ className?: string }>> = {
+  chat: MessageSquareText,
+  image: ImageIcon,
+  video: Video,
+};
+
 const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
-  const [apiKey, setApiKey] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [verifyMessage, setVerifyMessage] = useState('');
+  const [providers, setProviders] = useState<ModelProvider[]>([]);
+  const [draftKeys, setDraftKeys] = useState<Record<string, string>>({});
+  const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
+  const [statuses, setStatuses] = useState<Record<string, VerificationState>>({});
+
+  const refreshProviders = () => {
+    const nextProviders = getProviders();
+    setProviders(nextProviders);
+    setDraftKeys(
+      Object.fromEntries(nextProviders.map((provider) => [provider.id, provider.apiKey || '']))
+    );
+    setStatuses(
+      Object.fromEntries(
+        nextProviders.map((provider) => [
+          provider.id,
+          {
+            state: provider.apiKey ? 'success' : 'idle',
+            message: provider.apiKey ? 'Đã lưu khóa trên thiết bị này' : '',
+          },
+        ])
+      )
+    );
+  };
 
   useEffect(() => {
-    const currentKey = getGlobalApiKey() || '';
-    setApiKey(currentKey);
-    if (currentKey) {
-      setVerifyStatus('success');
-      setVerifyMessage('API Key đã được cấu hình');
-    }
+    refreshProviders();
   }, []);
 
-  const handleVerifyAndSave = async () => {
-    if (!apiKey.trim()) {
-      setVerifyStatus('error');
-      setVerifyMessage('Vui lòng nhập API Key');
+  const setStatus = (providerId: string, status: VerificationState) => {
+    setStatuses((current) => ({ ...current, [providerId]: status }));
+  };
+
+  const handleKeyChange = (providerId: string, value: string) => {
+    setDraftKeys((current) => ({ ...current, [providerId]: value }));
+    setStatus(providerId, { state: 'idle', message: '' });
+  };
+
+  const handleVerifyAndSave = async (provider: ModelProvider) => {
+    const key = (draftKeys[provider.id] || '').trim();
+    if (!key) {
+      setStatus(provider.id, { state: 'error', message: 'Vui lòng nhập khóa API' });
       return;
     }
 
-    setIsVerifying(true);
-    setVerifyStatus('idle');
-    setVerifyMessage('');
-
-    try {
-      const result = await verifyApiKey(apiKey.trim());
-      
-      if (result.success) {
-        setVerifyStatus('success');
-        setVerifyMessage('Xác thực thành công! API Key đã được lưu');
-        setGlobalApiKey(apiKey.trim());
-        onRefresh();
-      } else {
-        setVerifyStatus('error');
-        setVerifyMessage(result.message);
-      }
-    } catch (error: any) {
-      setVerifyStatus('error');
-      setVerifyMessage(error.message || 'Có lỗi trong quá trình xác thực');
-    } finally {
-      setIsVerifying(false);
+    setStatus(provider.id, { state: 'checking', message: 'Đang kiểm tra kết nối…' });
+    const result = await verifyProviderApiKey(provider.id, key);
+    if (!result.success) {
+      setStatus(provider.id, { state: 'error', message: result.message });
+      return;
     }
+
+    setProviderApiKey(provider.id, key);
+    setProviders(getProviders());
+    setStatus(provider.id, { state: 'success', message: `${result.message} · Đã lưu` });
+    onRefresh();
   };
 
-  const handleClearKey = () => {
-    setApiKey('');
-    setVerifyStatus('idle');
-    setVerifyMessage('');
-    setGlobalApiKey('');
+  const handleClear = (provider: ModelProvider) => {
+    setProviderApiKey(provider.id, '');
+    setDraftKeys((current) => ({ ...current, [provider.id]: '' }));
+    setVisibleKeys((current) => ({ ...current, [provider.id]: false }));
+    setProviders(getProviders());
+    setStatus(provider.id, { state: 'idle', message: 'Đã xóa khóa khỏi thiết bị' });
     onRefresh();
   };
 
   return (
-    <div className="space-y-6">
-      {/* 折扣广告卡片 */}
-      <div className="bg-gradient-to-r from-cyan-300/10 via-sky-400/10 to-fuchsia-400/10 border border-cyan-200/20 rounded-2xl p-5">
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-cyan-200/20 bg-gradient-to-r from-cyan-300/10 via-sky-400/10 to-fuchsia-400/10 p-5">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-300 to-sky-400 flex items-center justify-center flex-shrink-0">
-            <Gift className="w-6 h-6 text-white" />
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-300 to-sky-400">
+            <ShieldCheck className="h-6 w-6 text-slate-950" aria-hidden="true" />
           </div>
-          <div className="flex-1">
-            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-yellow-400" />
-              Kết nối các mô hình AI
-            </h3>
-            <p className="text-xs text-zinc-400 mb-3 leading-relaxed">
-              Hỗ trợ mô hình văn bản, hình ảnh và video; có thể thêm model tùy chỉnh tương thích OpenAI.
-              Cấu hình linh hoạt theo nhà cung cấp và lưu toàn bộ thông tin truy cập ngay trên thiết bị của bạn.
+          <div>
+            <h3 className="text-base font-bold text-white">Kết nối nhà cung cấp AI</h3>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
+              Mỗi nhà cung cấp dùng khóa riêng. Egoric Studio chỉ gửi khóa đến đúng dịch vụ bạn chọn
+              và lưu cấu hình trong trình duyệt trên thiết bị này.
             </p>
-            <div className="flex items-center gap-3">
-              <a 
-                href="https://github.com/leozvu/liemcainhe#cau-hinh-api"
-                target="_blank" 
-                rel="noreferrer"
-                className="px-4 py-2 bg-cyan-300 text-slate-950 text-xs font-bold rounded-xl hover:bg-cyan-200 transition-colors inline-flex items-center gap-1.5"
-              >
-                Xem hướng dẫn
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              {/* 使用教程已隐藏 */}
-            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* API Key 配置 */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Key className="w-4 h-4 text-cyan-300" />
-          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-            API Key toàn cục
-          </label>
-        </div>
-        
-        <div className="space-y-3">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value);
-              setVerifyStatus('idle');
-              setVerifyMessage('');
-            }}
-            placeholder="Nhập API Key của bạn..."
-            className="w-full bg-white/[0.06] border border-white/10 text-white px-4 py-3 text-sm rounded-xl focus:border-cyan-300/40 focus:outline-none focus:ring-2 focus:ring-cyan-300/10 transition-all font-mono placeholder:text-slate-500"
-            disabled={isVerifying}
-          />
-          
-          {/* 状态提示 */}
-          {verifyMessage && (
-            <div className={`flex items-center gap-2 text-xs ${
-              verifyStatus === 'success' ? 'text-green-400' : 'text-red-400'
-            }`}>
-              {verifyStatus === 'success' ? (
-                <CheckCircle className="w-3.5 h-3.5" />
-              ) : (
-                <AlertCircle className="w-3.5 h-3.5" />
-              )}
-              {verifyMessage}
-            </div>
-          )}
+      <div className="space-y-4">
+        {providers.map((provider) => {
+          const status = statuses[provider.id] || { state: 'idle', message: '' };
+          const isChecking = status.state === 'checking';
+          const hasStoredKey = Boolean(provider.apiKey);
 
-          {/* 说明文字 */}
-          <p className="text-[10px] text-zinc-600 leading-relaxed">
-            API Key toàn cục được dùng cho mọi lời gọi mô hình. Bạn cũng có thể đặt API Key riêng cho từng nhà cung cấp.
-          </p>
-
-          {/* 操作按钮 */}
-          <div className="flex gap-3">
-            {getGlobalApiKey() && (
-              <button
-                onClick={handleClearKey}
-                className="flex-1 py-3 bg-white/[0.06] hover:bg-white/10 text-zinc-400 hover:text-white text-xs font-bold uppercase tracking-wider transition-colors rounded-xl border border-white/10"
-              >
-                Xóa Key
-              </button>
-            )}
-            <button
-              onClick={handleVerifyAndSave}
-              disabled={isVerifying || !apiKey.trim()}
-              className="flex-1 py-3 bg-cyan-300 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-cyan-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          return (
+            <section
+              key={provider.id}
+              className="rounded-2xl border border-white/10 bg-white/[0.045] p-5"
+              aria-labelledby={`provider-${provider.id}`}
             >
-              {isVerifying ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Đang xác thực...
-                </>
-              ) : (
-                'Xác thực và lưu'
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 id={`provider-${provider.id}`} className="text-sm font-bold text-white">
+                      {provider.name}
+                    </h4>
+                    {hasStoredKey && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">
+                        <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                        Đã cấu hình
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">{provider.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {provider.supportedModelTypes.map((capability) => {
+                      const Icon = CAPABILITY_ICONS[capability];
+                      return (
+                        <span
+                          key={capability}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-[10px] text-zinc-400"
+                        >
+                          <Icon className="h-3 w-3" aria-hidden="true" />
+                          {CAPABILITY_LABELS[capability]}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
 
-      {/* 提示 */}
-      <div className="p-4 bg-white/[0.045] rounded-2xl border border-white/10">
-        <h4 className="text-xs font-bold text-zinc-400 mb-2">Hướng dẫn cấu hình</h4>
-        <ul className="text-[10px] text-zinc-600 space-y-1 list-disc list-inside">
-          <li>API Key toàn cục được dùng cho các mô hình tích hợp sẵn</li>
-          <li>Có thể điều chỉnh tham số model như temperature và số token trong từng nhóm</li>
-          <li>Hỗ trợ thêm model tùy chỉnh từ dịch vụ API khác</li>
-          <li>Mọi cấu hình chỉ được lưu trong trình duyệt, không tự động tải lên máy chủ</li>
-        </ul>
+                {provider.keyUrl && (
+                  <a
+                    href={provider.keyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-semibold text-zinc-300 transition-colors hover:border-cyan-300/30 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
+                  >
+                    Lấy khóa API
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <label
+                  htmlFor={`key-${provider.id}`}
+                  className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500"
+                >
+                  <KeyRound className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
+                  Khóa API {provider.name}
+                </label>
+                <div className="relative">
+                  <input
+                    id={`key-${provider.id}`}
+                    type={visibleKeys[provider.id] ? 'text' : 'password'}
+                    value={draftKeys[provider.id] || ''}
+                    onChange={(event) => handleKeyChange(provider.id, event.target.value)}
+                    disabled={isChecking}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={`Dán khóa ${provider.name} tại đây`}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 pr-12 font-mono text-sm text-white outline-none transition focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-300/10 disabled:cursor-wait disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleKeys((current) => ({
+                        ...current,
+                        [provider.id]: !current[provider.id],
+                      }))
+                    }
+                    className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
+                    aria-label={visibleKeys[provider.id] ? 'Ẩn khóa API' : 'Hiện khóa API'}
+                  >
+                    {visibleKeys[provider.id] ? (
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+
+                {status.message && (
+                  <div
+                    role="status"
+                    className={`mt-2 flex items-start gap-2 text-xs ${
+                      status.state === 'error'
+                        ? 'text-rose-300'
+                        : status.state === 'success'
+                          ? 'text-emerald-300'
+                          : 'text-zinc-500'
+                    }`}
+                  >
+                    {status.state === 'checking' ? (
+                      <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                    ) : status.state === 'error' ? (
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    ) : status.state === 'success' ? (
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    ) : null}
+                    <span>{status.message}</span>
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  {hasStoredKey && (
+                    <button
+                      type="button"
+                      onClick={() => handleClear(provider)}
+                      disabled={isChecking}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-xs font-semibold text-zinc-400 transition-colors hover:border-rose-400/30 hover:text-rose-300 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-rose-300/20"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Xóa khóa
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleVerifyAndSave(provider)}
+                    disabled={isChecking || !(draftKeys[provider.id] || '').trim()}
+                    className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-xs font-bold text-slate-950 transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-cyan-100/50"
+                  >
+                    {isChecking && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                    {isChecking ? 'Đang kiểm tra…' : 'Kiểm tra và lưu'}
+                  </button>
+                </div>
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );

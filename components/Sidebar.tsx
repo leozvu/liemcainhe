@@ -1,4 +1,4 @@
-// White-label edition by Egoric Agency
+// Phiên bản thương hiệu Egoric Agency
 import React from 'react';
 import { LayoutDashboard, FileText, Users, Clapperboard, Film, ChevronLeft, ListTree, HelpCircle, Cpu } from 'lucide-react';
 const LOGO_URL = '/egoric-agency-icon.png';
@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentStage, setStage, onExit, proje
           </div>
           <div className="overflow-hidden">
             <h1 className="text-sm font-bold text-white tracking-wider group-hover:text-cyan-100 transition-colors">Egoric Studio</h1>
-            <p className="text-[10px] text-cyan-200/50 tracking-widest group-hover:text-cyan-200/80 transition-colors">BY EGORIC AGENCY</p>
+            <p className="text-[10px] text-cyan-200/50 tracking-widest group-hover:text-cyan-200/80 transition-colors">SẢN PHẨM CỦA EGORIC AGENCY</p>
           </div>
         </a>
 

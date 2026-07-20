@@ -78,7 +78,7 @@ const ScriptEditor: React.FC<Props> = ({
               </>
             )}
           </button>
-          <span className="text-[10px] font-mono text-cyan-100/35 uppercase tracking-widest">MARKDOWN SUPPORTED</span>
+          <span className="text-[10px] font-mono text-cyan-100/35 uppercase tracking-widest">HỖ TRỢ MARKDOWN</span>
         </div>
       </div>
       

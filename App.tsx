@@ -1,4 +1,4 @@
-// White-label edition by Egoric Agency
+// Phiên bản thương hiệu Egoric Agency
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import StageScript from './components/StageScript';
@@ -12,13 +12,11 @@ import ModelConfigModal from './components/ModelConfig';
 import { ProjectState } from './types';
 import { Save, CheckCircle, X } from 'lucide-react';
 import { saveProjectToDB } from './services/storageService';
-import { setGlobalApiKey } from './services/geminiService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
 const LOGO_URL = '/egoric-agency-logo.png';
 
 function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
-  const [apiKey, setApiKey] = useState<string>('');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
@@ -42,11 +40,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const storedKey = localStorage.getItem('antsk_api_key');
-    if (storedKey) {
-      setApiKey(storedKey);
-      setGlobalApiKey(storedKey);
-    }
     if (shouldShowOnboarding()) {
       setShowOnboarding(true);
     }
@@ -65,18 +58,6 @@ function App() {
     setShowOnboarding(true);
   };
 
-  const handleSaveApiKey = (key: string) => {
-    if (key) {
-      setApiKey(key);
-      setGlobalApiKey(key);
-      localStorage.setItem('antsk_api_key', key);
-    } else {
-      setApiKey('');
-      setGlobalApiKey('');
-      localStorage.removeItem('antsk_api_key');
-    }
-  };
-
   const handleShowModelConfig = () => {
     setShowModelConfig(true);
   };
@@ -85,8 +66,8 @@ function App() {
     const handleError = (event: ErrorEvent) => {
       if (event.error?.name === 'ApiKeyError' || 
           event.error?.message?.includes('API Key missing') ||
-          event.error?.message?.includes('AntSK API Key')) {
-        console.warn('🔐 Phát hiện lỗi API Key. Vui lòng cấu hình lại API Key...');
+          event.error?.message?.includes('Thiếu khóa API')) {
+        console.warn('Phát hiện lỗi khóa API. Vui lòng cấu hình lại khóa API...');
         setShowModelConfig(true);
         event.preventDefault();
       }
@@ -95,8 +76,8 @@ function App() {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       if (event.reason?.name === 'ApiKeyError' ||
           event.reason?.message?.includes('API Key missing') ||
-          event.reason?.message?.includes('AntSK API Key')) {
-        console.warn('🔐 Phát hiện lỗi API Key. Vui lòng cấu hình lại API Key...');
+          event.reason?.message?.includes('Thiếu khóa API')) {
+        console.warn('Phát hiện lỗi khóa API. Vui lòng cấu hình lại khóa API...');
         setShowModelConfig(true);
         event.preventDefault();
       }
@@ -142,7 +123,7 @@ function App() {
         await saveProjectToDB(project);
         setSaveStatus('saved');
       } catch (e) {
-        console.error("Auto-save failed", e);
+        console.error('Tự động lưu thất bại', e);
       }
     }, 1000);
 
@@ -248,8 +229,6 @@ function App() {
            <Onboarding 
              onComplete={handleOnboardingComplete}
              onQuickStart={handleOnboardingQuickStart}
-             currentApiKey={apiKey}
-             onSaveApiKey={handleSaveApiKey}
            />
          )}
          <ModelConfigModal
@@ -296,8 +275,6 @@ function App() {
         <Onboarding 
           onComplete={handleOnboardingComplete}
           onQuickStart={handleOnboardingQuickStart}
-          currentApiKey={apiKey}
-          onSaveApiKey={handleSaveApiKey}
         />
       )}
 

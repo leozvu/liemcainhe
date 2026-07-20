@@ -79,7 +79,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
   const startKf = shot.keyframes?.find(k => k.type === 'start');
   const endKf = shot.keyframes?.find(k => k.type === 'end');
   
-  // shot-1 / shot-1-1 需要映射为工作台上的主镜头/子镜头编号。
+  // Chuyển mã cảnh quay thành số thứ tự cảnh chính hoặc cảnh phụ trong bàn dựng.
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {

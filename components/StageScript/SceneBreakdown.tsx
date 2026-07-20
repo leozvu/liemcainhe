@@ -66,7 +66,7 @@ const SceneBreakdown: React.FC<Props> = ({
           <h2 className="text-lg font-light text-white tracking-tight flex items-center gap-3">
             <List className="w-5 h-5 text-cyan-300" />
             Danh sách cảnh quay
-            <span className="text-xs text-cyan-100/40 font-mono uppercase tracking-wider ml-1">STORYBOARD</span>
+            <span className="text-xs text-cyan-100/40 font-mono uppercase tracking-wider ml-1">BẢNG PHÂN CẢNH</span>
           </h2>
           <div className="h-6 w-px bg-white/10"></div>
           

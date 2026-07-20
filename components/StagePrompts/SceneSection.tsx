@@ -63,7 +63,7 @@ const SceneSection: React.FC<Props> = ({
             />
           ) : (
             <p className={STYLES.display.base}>
-              {scene.visualPrompt || 'Chưa có prompt'}
+              {scene.visualPrompt || 'Chưa có câu lệnh'}
             </p>
           )}
         </div>

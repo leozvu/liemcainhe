@@ -33,26 +33,25 @@ export const GRID_LAYOUTS = {
 export const DEFAULTS = {
   language: 'Vietnamese',
   visualStyle: 'live-action',
-  genre: 'Cinematic',
+  genre: 'Điện ảnh',
   modelVersion: 'gpt-5.2',
   batchGenerateDelay: 3000,
 };
 
 export const REGIONAL_FEATURES = {
-  Chinese: {
-    character: 'Chinese person, East Asian facial features, Chinese ethnicity, ',
-    scene: 'Chinese setting, East Asian architecture and aesthetics, ',
+  Vietnamese: {
+    character: 'Người Việt Nam, đường nét khuôn mặt Đông Nam Á, bản sắc Việt Nam, ',
+    scene: 'Bối cảnh Việt Nam, kiến trúc địa phương và thẩm mỹ Việt Nam đương đại, ',
   },
   Japanese: {
-    character: 'Japanese person, East Asian facial features, Japanese ethnicity, ',
-    scene: 'Japanese setting, Japanese architecture and aesthetics, ',
+    character: 'Người Nhật Bản, đường nét khuôn mặt Đông Á, bản sắc Nhật Bản, ',
+    scene: 'Bối cảnh Nhật Bản, kiến trúc và thẩm mỹ Nhật Bản, ',
   },
 };
 
 export const LANGUAGE_MAP: Record<string, keyof typeof REGIONAL_FEATURES> = {
+  'Tiếng Việt': 'Vietnamese',
   'Vietnamese': 'Vietnamese',
-  '中文': 'Chinese',
-  'Chinese': 'Chinese',
-  '日本語': 'Japanese',
+  'Tiếng Nhật': 'Japanese',
   'Japanese': 'Japanese',
 };

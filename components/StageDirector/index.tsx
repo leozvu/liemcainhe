@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState, useEffect } from 'react';
 import { LayoutGrid, Sparkles, Loader2, AlertCircle, Edit2, Film, Video as VideoIcon } from 'lucide-react';
 import { ProjectState, Shot, Keyframe, AspectRatio, VideoDuration } from '../../types';
@@ -57,7 +56,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
   const allStartFramesGenerated = project.shots.length > 0 && 
     project.shots.every(s => s.keyframes?.find(k => k.type === 'start')?.imageUrl);
 
-  // 页面重开后可能保留 generating 状态，需要回退为 failed 让用户能重新生成。
+  // Khôi phục tác vụ bị gián đoạn để người dùng có thể tạo lại sau khi mở trang.
   useEffect(() => {
     const hasStuckGenerating = project.shots.some(shot => {
       const stuckKeyframes = shot.keyframes?.some(kf => kf.status === 'generating' && !kf.imageUrl);
@@ -113,7 +112,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
       try {
         prompt = await buildKeyframePromptWithAI(basePrompt, visualStyle, shot.cameraMovement, type, true);
       } catch (error) {
-        console.error('Không thể tăng cường bằng AI, dùng prompt cơ bản:', error);
+        console.error('Không thể tăng cường bằng AI, dùng câu lệnh cơ bản:', error);
         prompt = buildKeyframePrompt(basePrompt, visualStyle, shot.cameraMovement, type);
       }
     } else {
@@ -281,10 +280,10 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     }
   };
 
-  // 内容审核拦截时保留叙事意图，但弱化敏感表述以便用户重试。
+  // Giữ ý đồ kể chuyện nhưng làm dịu nội dung nhạy cảm khi tối ưu để thử lại.
   const handleOptimizeVideoPromptForModeration = async () => {
     if (!activeShot?.interval?.videoPrompt) {
-      showAlert('Cảnh quay hiện tại chưa có prompt video để tối ưu. Hãy tạo video hoặc chỉnh prompt trước.', { type: 'warning' });
+      showAlert('Cảnh quay hiện tại chưa có câu lệnh video để tối ưu. Hãy tạo video hoặc chỉnh câu lệnh trước.', { type: 'warning' });
       return;
     }
     setIsAIGenerating(true);
@@ -391,7 +390,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
       try {
         await handleGenerateKeyframe(shot, 'start');
       } catch (e: any) {
-        console.error(`Failed to generate for shot ${shot.id}`, e);
+        console.error(`Không thể tạo nội dung cho cảnh quay ${shot.id}`, e);
         if (onApiKeyError && onApiKeyError(e)) {
           setBatchProgress(null);
           return;
@@ -437,7 +436,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     const endKf = activeShot.keyframes?.find(k => k.type === 'end');
     
     if (!startKf?.visualPrompt && !endKf?.visualPrompt) {
-      showAlert('Hãy tạo hoặc chỉnh prompt khung bắt đầu và kết thúc để AI hiểu bối cảnh tốt hơn.', { type: 'warning' });
+      showAlert('Hãy tạo hoặc chỉnh câu lệnh khung bắt đầu và kết thúc để AI hiểu bối cảnh tốt hơn.', { type: 'warning' });
       return;
     }
     
@@ -514,7 +513,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         );
       });
       
-      showAlert(`Đã tối ưu prompt ${type === 'start' ? 'khung bắt đầu' : 'khung kết thúc'}`, { type: 'success' });
+      showAlert(`Đã tối ưu câu lệnh ${type === 'start' ? 'khung bắt đầu' : 'khung kết thúc'}`, { type: 'success' });
     } catch (e: any) {
       console.error('AI tối ưu thất bại:', e);
       if (onApiKeyError && onApiKeyError(e)) return;
@@ -579,7 +578,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         return updated;
       });
       
-      showAlert('Đã tối ưu prompt khung bắt đầu và kết thúc', { type: 'success' });
+      showAlert('Đã tối ưu câu lệnh khung bắt đầu và kết thúc', { type: 'success' });
     } catch (e: any) {
       console.error('AI tối ưu thất bại:', e);
       if (onApiKeyError && onApiKeyError(e)) return;
@@ -589,7 +588,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     }
   };
 
-  // 将单个镜头拆成多个子镜头时，需要同步替换原镜头并保留场景/角色上下文。
+  // Khi tách cảnh quay, thay cảnh gốc đồng thời giữ bối cảnh và nhân vật liên quan.
   const handleSplitShot = async (shot: Shot) => {
     if (!shot) return;
     
@@ -651,7 +650,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     return (
       <div className="flex flex-col items-center justify-center h-full text-slate-500 bg-slate-950/35 backdrop-blur-sm">
         <AlertCircle className="w-12 h-12 mb-4 opacity-50"/>
-        <p>Chưa có dữ liệu cảnh quay. Hãy quay lại Giai đoạn 01 để tạo storyboard.</p>
+        <p>Chưa có dữ liệu cảnh quay. Hãy quay lại Giai đoạn 01 để tạo bảng phân cảnh.</p>
       </div>
     );
   }
@@ -681,7 +680,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
             <LayoutGrid className="w-5 h-5 text-cyan-300" />
             Xưởng AI
             <span className="text-xs text-cyan-100/40 font-mono font-normal uppercase tracking-wider bg-white/5 px-2 py-1 rounded-full">
-              Director Workbench
+              BÀN ĐẠO DIỄN
             </span>
           </h2>
         </div>
@@ -690,7 +689,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
             <Sparkles className={`w-3.5 h-3.5 ${useAIEnhancement ? 'text-cyan-300' : 'text-slate-600'}`} />
             <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs text-zinc-400">AI tăng cường prompt</span>
+              <span className="text-xs text-zinc-400">AI tăng cường câu lệnh</span>
               <input
                 type="checkbox"
                 checked={useAIEnhancement}
@@ -803,8 +802,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         onSave={handleSaveEdit}
         title={
           editModal?.type === 'action' ? 'Chỉnh sửa hành động kể chuyện' :
-          editModal?.type === 'keyframe' ? 'Chỉnh sửa prompt keyframe' :
-          'Chỉnh sửa prompt video'
+          editModal?.type === 'keyframe' ? 'Chỉnh sửa câu lệnh khung hình chính' :
+          'Chỉnh sửa câu lệnh video'
         }
         icon={
           editModal?.type === 'action' ? <Film className="w-4 h-4 text-cyan-300" /> :
@@ -815,8 +814,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         onChange={(value) => setEditModal(editModal ? { ...editModal, value } : null)}
         placeholder={
           editModal?.type === 'action' ? 'Mô tả hành động và nội dung cảnh quay...' :
-          editModal?.type === 'keyframe' ? 'Nhập prompt keyframe...' :
-          'Nhập prompt tạo video...'
+          editModal?.type === 'keyframe' ? 'Nhập câu lệnh cho khung hình chính...' :
+          'Nhập câu lệnh tạo video...'
         }
         textareaClassName={editModal?.type === 'keyframe' || editModal?.type === 'video' ? 'font-mono' : 'font-normal'}
         showAIGenerate={editModal?.type === 'action'}

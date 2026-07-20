@@ -37,7 +37,7 @@ export const validateConfig = (config: {
     return { valid: false, error: 'Hãy chọn thời lượng mục tiêu.' };
   }
   if (!config.model) {
-    return { valid: false, error: 'Hãy chọn hoặc nhập tên model.' };
+    return { valid: false, error: 'Hãy chọn hoặc nhập tên mô hình.' };
   }
   if (!config.visualStyle) {
     return { valid: false, error: 'Hãy chọn hoặc nhập phong cách hình ảnh.' };

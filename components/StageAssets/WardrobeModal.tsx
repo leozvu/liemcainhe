@@ -46,7 +46,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">{character.name}</h3>
-              <p className="text-xs text-zinc-500 font-mono uppercase tracking-wider">Wardrobe & Variations</p>
+              <p className="text-xs text-zinc-500 font-mono uppercase tracking-wider">TRANG PHỤC VÀ BIẾN THỂ</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
@@ -58,7 +58,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <User className="w-4 h-4" /> Base Appearance
+                <User className="w-4 h-4" /> Tạo hình cơ bản
               </h4>
               <div className="bg-white/[0.045] p-4 rounded-2xl border border-white/10 backdrop-blur">
                 <div 
@@ -66,12 +66,12 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
                   onClick={() => character.referenceImage && onImageClick(character.referenceImage)}
                 >
                   {character.referenceImage ? (
-                    <img src={character.referenceImage} className="w-full h-full object-cover" alt="Base" />
+                    <img src={character.referenceImage} className="w-full h-full object-cover" alt="Tạo hình cơ bản" />
                   ) : (
-                    <div className="flex items-center justify-center h-full text-zinc-700">No Image</div>
+                    <div className="flex items-center justify-center h-full text-zinc-700">Chưa có ảnh</div>
                   )}
                   <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 backdrop-blur rounded text-[10px] text-white font-bold uppercase border border-white/10">
-                    Default
+                    Mặc định
                   </div>
                 </div>
                 <p className="text-xs text-zinc-500 leading-relaxed font-mono">{character.visualPrompt}</p>
@@ -81,7 +81,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                  <Shirt className="w-4 h-4" /> Variations / Outfits
+                  <Shirt className="w-4 h-4" /> Biến thể và trang phục
                 </h4>
               </div>
 
@@ -145,7 +145,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         </button>
                         <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer">
                           <Upload className="w-3 h-3" />
-                          Upload
+                          Tải lên
                           <input
                             type="file"
                             accept="image/*"
@@ -168,13 +168,13 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
                   <div className="space-y-3">
                     <input 
                       type="text" 
-                      placeholder="Variation Name (e.g. Tactical Gear)" 
+                      placeholder="Tên biến thể (ví dụ: Trang phục chiến thuật)"
                       value={newVarName}
                       onChange={(e) => setNewVarName(e.target.value)}
                       className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-300/40"
                     />
                     <textarea 
-                      placeholder="Visual description of outfit/state..."
+                      placeholder="Mô tả hình ảnh trang phục hoặc trạng thái..."
                       value={newVarPrompt}
                       onChange={(e) => setNewVarPrompt(e.target.value)}
                       className="w-full bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-300/40 resize-none h-16"
@@ -184,7 +184,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       disabled={!newVarName || !newVarPrompt}
                       className="w-full py-2 bg-cyan-300 hover:bg-cyan-200 text-slate-950 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
                     >
-                      <Plus className="w-3 h-3" /> Add Variation
+                      <Plus className="w-3 h-3" /> Thêm biến thể
                     </button>
                   </div>
                 </div>

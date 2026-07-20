@@ -1,6 +1,12 @@
-// Author: forsearch | Updated: 2026-04-30
 import { ScriptData, Shot, Character, Scene, AspectRatio, VideoDuration } from "../types";
-import { DEFAULT_CHAT_MODEL_ID, DEFAULT_IMAGE_MODEL_ID, DEFAULT_VIDEO_MODEL_ID } from '../types/model';
+import {
+  DEFAULT_CHAT_MODEL_ID,
+  DEFAULT_IMAGE_MODEL_ID,
+  DEFAULT_VIDEO_MODEL_ID,
+  DEFAULT_PROVIDER_ID,
+  ImageModelDefinition,
+  VideoModelDefinition,
+} from '../types/model';
 import {
   shouldUseImagesGenerationsEndpoint,
   callImagesGenerationsApi,
@@ -10,8 +16,8 @@ import {
 import { addRenderLogWithTokens } from './renderLogService';
 import { throwFromVideoHttpError, formatVideoTaskErrorForUser } from './videoHttpErrors';
 import { resolveSoraVideoDownloadId, downloadSoraCompletedVideo, encodeVideoPathId } from './soraVideoResolve';
-import { 
-  getGlobalApiKey as getRegistryApiKey,
+import { localizeApiErrorMessage } from './apiErrorLocalization';
+import {
   setGlobalApiKey as setRegistryApiKey,
   getApiBaseUrlForModel,
   getApiKeyForModel,
@@ -19,9 +25,12 @@ import {
   getModels,
   getActiveModel,
   getActiveChatModel,
-  getActiveVideoModel,
-  getActiveImageModel,
+  getProviderById,
+  getApiBaseUrlForProvider,
 } from './modelRegistry';
+import { callImageApi } from './adapters/imageAdapter';
+import { callVideoApi } from './adapters/videoAdapter';
+import { verifyProviderApiKey } from './providerService';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
@@ -30,10 +39,7 @@ export class ApiKeyError extends Error {
   }
 }
 
-let runtimeApiKey: string = process.env.API_KEY || "";
-
 export const setGlobalApiKey = (key: string) => {
-  runtimeApiKey = key;
   setRegistryApiKey(key);
 };
 
@@ -60,14 +66,8 @@ const checkApiKey = (type: 'chat' | 'image' | 'video' = 'chat', modelId?: string
     if (modelApiKey) return modelApiKey;
   }
   
-  const registryKey = getRegistryApiKey();
-  if (registryKey) return registryKey;
-  
-  if (!runtimeApiKey) throw new ApiKeyError('Thiếu API Key. Hãy thiết lập khóa trong phần cấu hình mô hình.');
-  return runtimeApiKey;
+  throw new ApiKeyError('Thiếu khóa API của nhà cung cấp đang chọn. Hãy mở Cấu hình mô hình để thêm khóa.');
 };
-
-const DEFAULT_API_BASE = 'https://api.gitcc.com';
 
 const SCRIPT_INPUT_MAX_CHARS = 120000;
 const LONG_FORM_MAX_TOKENS = 32768;
@@ -86,12 +86,7 @@ const getApiBase = (type: 'chat' | 'image' | 'video' = 'chat', modelId?: string)
 };
 
 const getDefaultApiBase = (): string => {
-  if (typeof window !== 'undefined') {
-    const o = window.location.origin;
-    const isLocal = o.startsWith('http://localhost') || o.startsWith('http://127.0.0.1') || o.startsWith('https://localhost') || o.startsWith('https://127.0.0.1');
-    if (isLocal && DEFAULT_API_BASE === 'https://api.gitcc.com') return '/api-proxy';
-  }
-  return DEFAULT_API_BASE;
+  return getApiBaseUrlForProvider(DEFAULT_PROVIDER_ID);
 };
 
 const getActiveChatModelName = (): string => {
@@ -122,45 +117,8 @@ const getSoraVideoSize = (aspectRatio: AspectRatio): string => {
   return sizeMap[aspectRatio];
 };
 
-const ANTSK_API_BASE = DEFAULT_API_BASE;
-
 export const verifyApiKey = async (key: string): Promise<{ success: boolean; message: string }> => {
-  try {
-    const apiBase = getApiBase('chat');
-    const response = await fetch(`${apiBase}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`
-      },
-      body: JSON.stringify({
-        model: DEFAULT_CHAT_MODEL_ID,
-        messages: [{ role: 'user', content: 'Chỉ trả về số 1' }],
-        temperature: 0.1,
-        max_tokens: 5
-      })
-    });
-
-    if (!response.ok) {
-      let errorMessage = `Xác thực thất bại: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (e) {
-        // ignore
-      }
-      return { success: false, message: errorMessage };
-    }
-
-    const data = await response.json();
-    if (data.choices?.[0]?.message?.content !== undefined) {
-      return { success: true, message: 'Xác thực API Key thành công' };
-    } else {
-      return { success: false, message: 'Định dạng phản hồi không hợp lệ' };
-    }
-  } catch (error: any) {
-    return { success: false, message: error.message || 'Lỗi mạng' };
-  }
+  return verifyProviderApiKey(DEFAULT_PROVIDER_ID, key);
 };
 
 /**
@@ -268,7 +226,7 @@ const chatCompletion = async (prompt: string, model: string = DEFAULT_CHAT_MODEL
     } catch (_) {
       if (raw) errorMessage = raw;
     }
-    throw new Error(errorMessage);
+    throw new Error(localizeApiErrorMessage(errorMessage, response.status));
   }
 
   const data = JSON.parse(await response.text() || '{}');
@@ -342,7 +300,7 @@ const chatCompletionStream = async (
       } catch (_) {
         if (raw) errorMessage = raw;
       }
-      throw new Error(errorMessage);
+      throw new Error(localizeApiErrorMessage(errorMessage, response.status));
     }
 
     if (!response.body) {
@@ -402,9 +360,9 @@ const chatCompletionStream = async (
 };
 
 /**
- * Agent 1 & 2: cấu trúc và phân rã kịch bản dài theo hai giai đoạn.
- * Giai đoạn 1 chỉ trích xuất title, genre, logline, characters và scenes.
- * Giai đoạn 2 trích xuất storyParagraphs theo từng cảnh rồi hợp nhất.
+ * Tác vụ 1 và 2: cấu trúc và phân rã kịch bản dài theo hai giai đoạn.
+ * Giai đoạn 1 chỉ trích xuất tiêu đề, thể loại, tóm tắt, nhân vật và bối cảnh.
+ * Giai đoạn 2 trích xuất các đoạn truyện theo từng cảnh rồi hợp nhất.
  */
 export const parseScriptToData = async (rawText: string, language: string = 'Vietnamese', model: string = DEFAULT_CHAT_MODEL_ID, visualStyle: string = 'live-action'): Promise<ScriptData> => {
   console.log('📝 parseScriptToData được gọi (hai giai đoạn) - mô hình:', model, 'phong cách:', visualStyle);
@@ -415,20 +373,20 @@ export const parseScriptToData = async (rawText: string, language: string = 'Vie
   }
 
   try {
-    // Giai đoạn 1: chỉ trích xuất cấu trúc, không gồm storyParagraphs.
+    // Giai đoạn 1: chỉ trích xuất cấu trúc, chưa gồm các đoạn truyện.
     const structurePrompt = `
-Analyze the text and output a JSON object in the language: ${language}.
+Phân tích nội dung và trả về đối tượng JSON bằng ngôn ngữ: ${language}.
 
-Tasks:
-1. Extract title, genre, logline (in ${language}).
-2. Extract characters (id, name, gender, age, personality).
-3. Extract scenes (id, location, time, atmosphere).
-Do NOT output storyParagraphs in this step.
+Yêu cầu:
+1. Trích xuất tiêu đề, thể loại và tóm tắt bằng ${language}.
+2. Trích xuất nhân vật gồm id, tên, giới tính, tuổi và tính cách.
+3. Trích xuất bối cảnh gồm id, địa điểm, thời gian và không khí.
+Không trả về storyParagraphs ở bước này.
 
-Input:
+Nội dung đầu vào:
 "${inputText}"
 
-Output ONLY valid JSON with this structure (no storyParagraphs):
+Chỉ trả về JSON hợp lệ theo cấu trúc sau, không kèm storyParagraphs:
 {
   "title": "string",
   "genre": "string",
@@ -451,8 +409,8 @@ Output ONLY valid JSON with this structure (no storyParagraphs):
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      console.error("Failed to parse script structure JSON:", e);
-      console.error("Raw (first 500 chars):", responseText.slice(0, 500));
+      console.error('Không thể phân tích JSON cấu trúc kịch bản:', e);
+      console.error('Phản hồi gốc (500 ký tự đầu):', responseText.slice(0, 500));
       throw new Error('Không thể phân tích cấu trúc do AI trả về. Hãy thử lại hoặc đổi mô hình.');
     }
 
@@ -473,23 +431,23 @@ Output ONLY valid JSON with this structure (no storyParagraphs):
 
     const genre = parsed.genre || 'Tổng hợp';
 
-    // Giai đoạn 2: trích xuất storyParagraphs theo từng cảnh.
+    // Giai đoạn 2: trích xuất các đoạn truyện theo từng cảnh.
     const storyParagraphs: { id: number; text: string; sceneRefId: string }[] = [];
     let nextId = 1;
 
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const scenePrompt = `
-Given the script and scene list below, extract ONLY the story paragraphs that belong to this scene.
-Scene to extract for: id="${scene.id}", location="${scene.location}".
+Dựa trên kịch bản và danh sách bối cảnh dưới đây, chỉ trích xuất các đoạn truyện thuộc bối cảnh này.
+Bối cảnh cần trích xuất: id="${scene.id}", địa điểm="${scene.location}".
 
-Full script:
+Toàn bộ kịch bản:
 "${inputText}"
 
-All scene IDs for reference: ${scenes.map((s: any) => s.id).join(', ')}
+Tất cả mã bối cảnh để tham chiếu: ${scenes.map((s: any) => s.id).join(', ')}
 
-Output ONLY a JSON array of objects. Each object: {"id": number, "text": string, "sceneRefId": "${scene.id}"}.
-Use short paragraph texts. Language: ${language}.
+Chỉ trả về một mảng JSON. Mỗi phần tử có dạng: {"id": number, "text": string, "sceneRefId": "${scene.id}"}.
+Dùng các đoạn văn ngắn. Ngôn ngữ: ${language}.
 `;
 
       try {
@@ -533,13 +491,13 @@ Use short paragraph texts. Language: ${language}.
     if (storyParagraphs.length === 0 && scenes.length > 0) {
       console.log('[parseScriptToData] Không có đoạn theo cảnh; đang thử trích xuất toàn bộ...');
       const fallbackPrompt = `
-Break down the story into paragraphs linked to scenes. Language: ${language}.
-Script:
+Chia câu chuyện thành các đoạn văn liên kết với bối cảnh. Ngôn ngữ: ${language}.
+Kịch bản:
 "${inputText.slice(0, 60000)}"
 
-Scenes (use these sceneRefId): ${JSON.stringify(scenes.map((s: any) => ({ id: s.id, location: s.location })))}
+Các bối cảnh (dùng đúng sceneRefId này): ${JSON.stringify(scenes.map((s: any) => ({ id: s.id, location: s.location })))}
 
-Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", "sceneRefId": "string"} ] }
+Chỉ trả về JSON hợp lệ: { "storyParagraphs": [ {"id": number, "text": "string", "sceneRefId": "string"} ] }
 `;
       try {
         const fallbackResp = await retryOperation(() =>
@@ -562,7 +520,7 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
     }
 
     // Tạo prompt hình ảnh cho nhân vật và bối cảnh.
-    console.log('🎨 Đang tạo prompt hình ảnh cho nhân vật và bối cảnh...', `phong cách: ${visualStyle}`);
+    console.log('🎨 Đang tạo câu lệnh hình ảnh cho nhân vật và bối cảnh...', `phong cách: ${visualStyle}`);
     for (let i = 0; i < characters.length; i++) {
       try {
         if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -570,7 +528,7 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
         characters[i].visualPrompt = prompts.visualPrompt;
         (characters[i] as any).negativePrompt = prompts.negativePrompt;
       } catch (e) {
-        console.error(`Failed to generate visual prompt for character ${characters[i].name}:`, e);
+        console.error(`Không thể tạo câu lệnh hình ảnh cho nhân vật ${characters[i].name}:`, e);
       }
     }
     for (let i = 0; i < scenes.length; i++) {
@@ -580,11 +538,11 @@ Output ONLY valid JSON: { "storyParagraphs": [ {"id": number, "text": "string", 
         scenes[i].visualPrompt = prompts.visualPrompt;
         (scenes[i] as any).negativePrompt = prompts.negativePrompt;
       } catch (e) {
-        console.error(`Failed to generate visual prompt for scene ${scenes[i].location}:`, e);
+        console.error(`Không thể tạo câu lệnh hình ảnh cho bối cảnh ${scenes[i].location}:`, e);
       }
     }
 
-    console.log('✅ Đã tạo xong prompt hình ảnh');
+    console.log('✅ Đã tạo xong câu lệnh hình ảnh');
     const result: ScriptData = {
       title: parsed.title || 'Kịch bản chưa đặt tên',
       genre,
@@ -655,83 +613,83 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
     const shotsPerScene = Math.max(1, Math.round(totalShotsNeeded / scenesCount));
     
     const prompt = `
-      Act as a professional cinematographer. Generate a detailed shot list (Camera blocking) for Scene ${index + 1}.
-      Language for Text Output: ${lang}.
+      Bạn là một nhà quay phim chuyên nghiệp. Hãy tạo danh sách cảnh quay chi tiết cho Bối cảnh ${index + 1}.
+      Ngôn ngữ đầu ra: ${lang}.
       
-      IMPORTANT VISUAL STYLE: ${stylePrompt}
-      All 'visualPrompt' fields MUST describe shots in this "${visualStyle}" style.
+      PHONG CÁCH HÌNH ẢNH BẮT BUỘC: ${stylePrompt}
+      Mọi trường 'visualPrompt' phải mô tả cảnh quay theo phong cách "${visualStyle}" này.
       
-      Scene Details:
-      Location: ${scene.location}
-      Time: ${scene.time}
-      Atmosphere: ${scene.atmosphere}
+      Chi tiết bối cảnh:
+      Địa điểm: ${scene.location}
+      Thời gian: ${scene.time}
+      Không khí: ${scene.atmosphere}
       
-      Scene Action:
+      Hành động trong bối cảnh:
       "${paragraphs.slice(0, 12000)}"
       
-      Context:
-      Genre: ${scriptData.genre}
-      Visual Style: ${visualStyle} (${stylePrompt})
-      Target Duration (Whole Script): ${scriptData.targetDuration || 'Standard'}
-      Total Shots Budget: ${totalShotsNeeded} shots (Each shot = 10 seconds of video)
-      Shots for This Scene: Approximately ${shotsPerScene} shots
+      Ngữ cảnh:
+      Thể loại: ${scriptData.genre}
+      Phong cách hình ảnh: ${visualStyle} (${stylePrompt})
+      Thời lượng mục tiêu của toàn kịch bản: ${scriptData.targetDuration || 'Tiêu chuẩn'}
+      Tổng số cảnh quay dự kiến: ${totalShotsNeeded} cảnh, mỗi cảnh tương ứng 10 giây video
+      Số cảnh quay cho bối cảnh này: khoảng ${shotsPerScene} cảnh
       
-      Characters:
+      Nhân vật:
       ${JSON.stringify(scriptData.characters.map(c => ({ id: c.id, name: c.name, desc: c.visualPrompt || c.personality })))}
 
-      Professional Camera Movement Reference (Choose from these categories):
-      - Horizontal Left Shot (trượt ngang sang trái) - Camera moves left
-      - Horizontal Right Shot (trượt ngang sang phải) - Camera moves right
-      - Pan Left Shot (lia trái) - Pan left
-      - Pan Right Shot (lia phải) - Pan right
-      - Vertical Up Shot (di chuyển thẳng lên) - Move up vertically
-      - Vertical Down Shot (di chuyển thẳng xuống) - Move down vertically
-      - Tilt Up Shot (ngẩng máy lên) - Tilt upward
-      - Tilt Down Shot (hạ máy xuống) - Tilt downward
-      - Zoom Out Shot (thu nhỏ/lùi xa) - Pull back/zoom out
-      - Zoom In Shot (phóng to/tiến gần) - Push in/zoom in
-      - Dolly Shot (dolly tiến/lùi) - Dolly in/out movement
-      - Circular Shot (quay vòng quanh chủ thể) - Orbit around subject
-      - Over the Shoulder Shot (qua vai) - Over shoulder perspective
-      - Pan Shot (lia máy) - Pan movement
-      - Low Angle Shot (góc thấp) - Low angle view
-      - High Angle Shot (góc cao) - High angle view
-      - Tracking Shot (bám theo chủ thể) - Follow subject
-      - Handheld Shot (máy cầm tay) - Handheld camera
-      - Static Shot (máy cố định) - Fixed camera position
-      - POV Shot (góc nhìn chủ quan) - Point of view
-      - Bird's Eye View Shot (góc nhìn từ trên cao) - Overhead view
-      - 360-Degree Circular Shot (quay vòng 360 độ) - Full circle
-      - Parallel Tracking Shot (bám song song) - Side tracking
-      - Diagonal Tracking Shot (bám chéo) - Diagonal tracking
-      - Rotating Shot (xoay máy) - Rotating movement
-      - Slow Motion Shot (chuyển động chậm) - Slow-mo effect
-      - Time-Lapse Shot (tua nhanh thời gian) - Time-lapse
-      - Canted Shot (góc nghiêng Dutch) - Dutch angle
-      - Cinematic Dolly Zoom (dolly zoom điện ảnh) - Vertigo effect
+      Danh mục chuyển động máy quay chuyên nghiệp:
+      - Trượt ngang sang trái
+      - Trượt ngang sang phải
+      - Lia trái
+      - Lia phải
+      - Di chuyển thẳng lên
+      - Di chuyển thẳng xuống
+      - Ngẩng máy lên
+      - Hạ máy xuống
+      - Thu nhỏ hoặc lùi xa
+      - Phóng to hoặc tiến gần
+      - Dolly tiến hoặc lùi
+      - Quay vòng quanh chủ thể
+      - Góc máy qua vai
+      - Lia máy
+      - Góc máy thấp
+      - Góc máy cao
+      - Bám theo chủ thể
+      - Máy cầm tay
+      - Máy quay cố định
+      - Góc nhìn chủ quan
+      - Góc nhìn từ trên cao
+      - Quay vòng 360 độ
+      - Bám song song
+      - Bám chéo
+      - Xoay máy
+      - Chuyển động chậm
+      - Tua nhanh thời gian
+      - Góc máy nghiêng
+      - Dolly zoom điện ảnh
 
-      Instructions:
-      1. Create EXACTLY ${shotsPerScene} shots (or ${shotsPerScene - 1} to ${shotsPerScene + 1} shots if needed for story flow) for this scene.
-      2. CRITICAL: Each shot will be 10 seconds. Total shots must match the target duration formula: ${targetSeconds} seconds ÷ 10 = ${totalShotsNeeded} total shots across all scenes.
-      3. DO NOT exceed ${shotsPerScene + 1} shots for this scene. Select the most important moments only.
-      4. 'cameraMovement': Can reference the Professional Camera Movement Reference list above for inspiration, or use your own creative camera movements. You may use the exact English terms (e.g., "Dolly Shot", "Pan Right Shot", "Zoom In Shot", "Tracking Shot") or describe custom movements.
-      5. 'shotSize': Specify the field of view (e.g., Extreme Close-up, Medium Shot, Wide Shot).
-      6. 'actionSummary': Detailed description of what happens in the shot (in ${lang}).
-      7. 'visualPrompt': Detailed description for image generation in ${visualStyle} style (OUTPUT IN ${lang}). Include style-specific keywords. Keep it under 50 words.
+      Hướng dẫn:
+      1. Tạo đúng ${shotsPerScene} cảnh quay cho bối cảnh này; có thể dao động từ ${shotsPerScene - 1} đến ${shotsPerScene + 1} nếu cần để mạch truyện tự nhiên.
+      2. Mỗi cảnh quay dài 10 giây. Tổng số cảnh phải khớp công thức: ${targetSeconds} giây ÷ 10 = ${totalShotsNeeded} cảnh trên toàn bộ kịch bản.
+      3. Không vượt quá ${shotsPerScene + 1} cảnh cho bối cảnh này. Chỉ chọn những khoảnh khắc quan trọng nhất.
+      4. 'cameraMovement': Chọn một chuyển động trong danh mục trên hoặc mô tả chuyển động sáng tạo khác bằng ${lang}.
+      5. 'shotSize': Ghi rõ cỡ cảnh, ví dụ đặc tả, cận, trung hoặc toàn.
+      6. 'actionSummary': Mô tả chi tiết diễn biến trong cảnh quay bằng ${lang}.
+      7. 'visualPrompt': Mô tả chi tiết để tạo ảnh theo phong cách ${visualStyle}, viết bằng ${lang}, có từ khóa đặc trưng của phong cách và không quá 50 từ.
       
-      Output ONLY a valid JSON OBJECT with this exact structure (no markdown, no extra text):
+      Chỉ trả về một đối tượng JSON hợp lệ theo đúng cấu trúc sau, không dùng Markdown và không thêm giải thích:
       {
         "shots": [
           {
             "id": "string",
             "sceneId": "${scene.id}",
             "actionSummary": "string",
-            "dialogue": "string (empty if none)",
+            "dialogue": "string (để trống nếu không có)",
             "cameraMovement": "string",
             "shotSize": "string",
             "characters": ["string"],
             "keyframes": [
-              {"id": "string", "type": "start|end", "visualPrompt": "string (MUST include ${visualStyle} style keywords)"}
+              {"id": "string", "type": "start|end", "visualPrompt": "string (phải có từ khóa phong cách ${visualStyle})"}
             ]
           }
         ]
@@ -744,7 +702,7 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
       const text = cleanJsonString(responseText);
       const parsed = JSON.parse(text);
 
-      // json_object buộc phản hồi là object; hỗ trợ cả mảng cũ và { shots: [...] } mới.
+      // Chế độ JSON buộc phản hồi là đối tượng; hỗ trợ cả mảng cũ và cấu trúc cảnh quay mới.
       const shots = Array.isArray(parsed)
         ? parsed
         : (parsed && Array.isArray((parsed as any).shots) ? (parsed as any).shots : []);
@@ -768,11 +726,11 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
       return result;
 
     } catch (e: any) {
-      console.error(`Failed to generate shots for scene ${scene.id}`, e);
+      console.error(`Không thể tạo cảnh quay cho bối cảnh ${scene.id}`, e);
       try {
-        console.error(`  ↳ sceneId=${scene.id}, sceneIndex=${index}, responseText(snippet)=`, String(responseText || '').slice(0, 500));
+        console.error(`  ↳ mã bối cảnh=${scene.id}, thứ tự bối cảnh=${index}, đoạn phản hồi=`, String(responseText || '').slice(0, 500));
       } catch {
-        // ignore
+        // Bỏ qua lỗi đọc nội dung phản hồi.
       }
       
       addRenderLogWithTokens({
@@ -819,21 +777,21 @@ export const generateShotList = async (scriptData: ScriptData, model: string = D
 };
 
 const VISUAL_STYLE_PROMPTS: { [key: string]: string } = {
-  'live-action': 'photorealistic, cinematic film quality, real human actors, professional cinematography, natural lighting, 8K resolution',
-  'anime': 'Japanese anime style, cel-shaded, vibrant colors, expressive eyes, dynamic poses, Studio Ghibli/Makoto Shinkai quality',
-  '2d-animation': 'classic 2D animation, hand-drawn style, Disney/Pixar quality, smooth lines, expressive characters, painterly backgrounds',
-  '3d-animation': 'high-quality 3D CGI animation, Pixar/DreamWorks style, subsurface scattering, detailed textures, stylized characters',
-  'cyberpunk': 'cyberpunk aesthetic, neon-lit, rain-soaked streets, holographic displays, high-tech low-life, Blade Runner style',
-  'oil-painting': 'oil painting style, visible brushstrokes, rich textures, classical art composition, museum quality fine art',
+  'live-action': 'hình ảnh chân thực, chất lượng phim điện ảnh, diễn viên người thật, quay phim chuyên nghiệp, ánh sáng tự nhiên, độ phân giải 8K',
+  'anime': 'phong cách hoạt hình Nhật Bản, đổ bóng theo mảng, màu sắc rực rỡ, đôi mắt biểu cảm, tư thế năng động, chất lượng điện ảnh',
+  '2d-animation': 'hoạt hình 2D cổ điển, nét vẽ tay, đường nét mượt mà, nhân vật giàu biểu cảm, phông nền như tranh vẽ',
+  '3d-animation': 'hoạt hình 3D CGI chất lượng cao, tán xạ dưới bề mặt, chất liệu chi tiết, nhân vật cách điệu',
+  'cyberpunk': 'thẩm mỹ tương lai công nghệ cao, ánh sáng neon, đường phố mưa ướt, màn hình ba chiều, tương phản mạnh',
+  'oil-painting': 'phong cách tranh sơn dầu, nét cọ rõ, chất liệu phong phú, bố cục mỹ thuật cổ điển, chất lượng trưng bày',
 };
 
 const NEGATIVE_PROMPTS: { [key: string]: string } = {
-  'live-action': 'cartoon, anime, illustration, painting, drawing, 3d render, cgi, low quality, blurry, grainy, watermark, text, logo, signature, distorted face, bad anatomy, extra limbs, mutated hands, deformed, ugly, disfigured, poorly drawn, amateur',
-  'anime': 'photorealistic, 3d render, western cartoon, ugly, bad anatomy, extra limbs, deformed limbs, blurry, watermark, text, logo, poorly drawn face, mutated hands, extra fingers, missing fingers, bad proportions, grotesque',
-  '2d-animation': 'photorealistic, 3d, low quality, pixelated, blurry, watermark, text, bad anatomy, deformed, ugly, amateur drawing, inconsistent style, rough sketch',
-  '3d-animation': 'photorealistic, 2d, flat, hand-drawn, low poly, bad topology, texture artifacts, z-fighting, clipping, low quality, blurry, watermark, text, bad rigging, unnatural movement',
-  'cyberpunk': 'bright daylight, pastoral, medieval, fantasy, cartoon, low tech, rural, natural, watermark, text, logo, low quality, blurry, amateur',
-  'oil-painting': 'digital art, photorealistic, 3d render, cartoon, anime, low quality, blurry, watermark, text, amateur, poorly painted, muddy colors, overworked canvas',
+  'live-action': 'hoạt hình, minh họa, tranh vẽ, dựng hình 3D, CGI, chất lượng thấp, mờ, nhiễu hạt, dấu chìm, chữ, biểu trưng, chữ ký, khuôn mặt méo, giải phẫu sai, thừa chi, bàn tay biến dạng, nghiệp dư',
+  'anime': 'ảnh chân thực, dựng hình 3D, hoạt hình phương Tây, giải phẫu sai, thừa chi, tay chân biến dạng, mờ, dấu chìm, chữ, biểu trưng, khuôn mặt vẽ lỗi, thừa ngón, thiếu ngón, tỷ lệ sai',
+  '2d-animation': 'ảnh chân thực, 3D, chất lượng thấp, vỡ hạt, mờ, dấu chìm, chữ, giải phẫu sai, biến dạng, nét vẽ nghiệp dư, phong cách thiếu nhất quán, bản phác thô',
+  '3d-animation': 'ảnh chân thực, 2D, phẳng, vẽ tay, đa giác thấp, cấu trúc lưới lỗi, lỗi chất liệu, xuyên vật thể, chất lượng thấp, mờ, dấu chìm, chữ, chuyển động thiếu tự nhiên',
+  'cyberpunk': 'ánh sáng ban ngày rực, đồng quê, trung cổ, giả tưởng, hoạt hình, công nghệ thấp, dấu chìm, chữ, biểu trưng, chất lượng thấp, mờ, nghiệp dư',
+  'oil-painting': 'mỹ thuật số, ảnh chân thực, dựng hình 3D, hoạt hình, chất lượng thấp, mờ, dấu chìm, chữ, nghiệp dư, màu bùn, bề mặt bị xử lý quá mức',
 };
 
 /**
@@ -854,63 +812,63 @@ export const generateVisualPrompts = async (type: 'character' | 'scene', data: C
    
    if (type === 'character') {
      const char = data as Character;
-     prompt = `You are an expert AI prompt engineer for ${visualStyle} style image generation.
+     prompt = `Bạn là chuyên gia thiết kế câu lệnh tạo ảnh theo phong cách ${visualStyle}.
 
-Create a detailed visual prompt for a character with the following structure:
+Hãy tạo mô tả hình ảnh chi tiết cho nhân vật theo cấu trúc sau:
 
-Character Data:
-- Name: ${char.name}
-- Gender: ${char.gender}
-- Age: ${char.age}
-- Personality: ${char.personality}
+Dữ liệu nhân vật:
+- Tên: ${char.name}
+- Giới tính: ${char.gender}
+- Tuổi: ${char.age}
+- Tính cách: ${char.personality}
 
-REQUIRED STRUCTURE (output in ${language}):
-1. Core Identity: [ethnicity, age, gender, body type]
-2. Facial Features: [specific distinguishing features - eyes, nose, face shape, skin tone]
-3. Hairstyle: [detailed hair description - color, length, style]
-4. Clothing: [detailed outfit appropriate for ${genre} genre]
-5. Pose & Expression: [body language and facial expression matching personality]
-6. Technical Quality: ${stylePrompt}
+CẤU TRÚC BẮT BUỘC (đầu ra bằng ${language}):
+1. Nhận dạng cốt lõi: [dân tộc, tuổi, giới tính, vóc dáng]
+2. Đặc điểm khuôn mặt: [mắt, mũi, dáng mặt, tông da và nét phân biệt]
+3. Kiểu tóc: [màu, độ dài, chất tóc và kiểu tóc]
+4. Trang phục: [bộ đồ chi tiết phù hợp thể loại ${genre}]
+5. Tư thế và biểu cảm: [ngôn ngữ cơ thể, nét mặt phù hợp tính cách]
+6. Chất lượng kỹ thuật: ${stylePrompt}
 
-CRITICAL RULES:
-- Sections 1-3 are FIXED features for consistency across all variations
-- Use specific, concrete visual details
-- Output as single paragraph, comma-separated
-- MUST include style keywords: ${visualStyle}
-- Length: 60-90 words
-- Focus on visual details that can be rendered in images
+QUY TẮC QUAN TRỌNG:
+- Mục 1–3 là đặc điểm CỐ ĐỊNH để giữ nhất quán giữa mọi biến thể
+- Dùng chi tiết hình ảnh cụ thể, có thể tái hiện
+- Viết thành một đoạn duy nhất, ngăn cách bằng dấu phẩy
+- Bắt buộc thể hiện rõ phong cách ${visualStyle}
+- Độ dài 60–90 từ
+- Chỉ tập trung vào yếu tố có thể nhìn thấy trong ảnh
 
-Output ONLY the visual prompt text, no explanations.`;
+Chỉ trả về nội dung câu lệnh hình ảnh, không giải thích.`;
    } else {
      const scene = data as Scene;
-     prompt = `You are an expert cinematographer and AI prompt engineer for ${visualStyle} productions.
+     prompt = `Bạn là chuyên gia quay phim và thiết kế câu lệnh hình ảnh cho tác phẩm phong cách ${visualStyle}.
 
-Create a cinematic scene prompt with this structure:
+Hãy tạo câu lệnh bối cảnh điện ảnh theo cấu trúc sau:
 
-Scene Data:
-- Location: ${scene.location}
-- Time: ${scene.time}
-- Atmosphere: ${scene.atmosphere}
-- Genre: ${genre}
+Dữ liệu bối cảnh:
+- Địa điểm: ${scene.location}
+- Thời gian: ${scene.time}
+- Không khí: ${scene.atmosphere}
+- Thể loại: ${genre}
 
-REQUIRED STRUCTURE (output in ${language}):
-1. Environment: [detailed location description with architectural/natural elements]
-2. Lighting: [specific lighting setup - direction, color temperature, quality (soft/hard), key light source]
-3. Composition: [camera angle (eye-level/low/high), framing rules (rule of thirds/symmetry), depth layers]
-4. Atmosphere: [mood, weather, particles in air (fog/dust/rain), environmental effects]
-5. Color Palette: [dominant colors, color temperature (warm/cool), saturation level]
-6. Technical Quality: ${stylePrompt}
+CẤU TRÚC BẮT BUỘC (đầu ra bằng ${language}):
+1. Môi trường: [địa điểm, kiến trúc hoặc yếu tố tự nhiên]
+2. Ánh sáng: [hướng, nhiệt độ màu, độ mềm/cứng và nguồn sáng chính]
+3. Bố cục: [góc máy, quy tắc khung hình và các lớp chiều sâu]
+4. Không khí: [tâm trạng, thời tiết, sương/bụi/mưa và hiệu ứng môi trường]
+5. Bảng màu: [màu chủ đạo, sắc độ ấm/lạnh và độ bão hòa]
+6. Chất lượng kỹ thuật: ${stylePrompt}
 
-CRITICAL RULES:
-- Use professional cinematography terminology
-- Specify light sources and direction (e.g., "golden hour backlight from right")
-- Include composition guidelines (rule of thirds, leading lines, depth of field)
-- Output as single paragraph, comma-separated
-- MUST emphasize ${visualStyle} style throughout
-- Length: 70-110 words
-- Focus on elements that establish mood and cinematic quality
+QUY TẮC QUAN TRỌNG:
+- Dùng thuật ngữ quay phim chuyên nghiệp
+- Nêu rõ nguồn và hướng sáng
+- Có hướng dẫn bố cục như quy tắc một phần ba, đường dẫn thị giác và độ sâu trường ảnh
+- Viết thành một đoạn duy nhất, ngăn cách bằng dấu phẩy
+- Nhấn mạnh phong cách ${visualStyle} xuyên suốt
+- Độ dài 70–110 từ
+- Tập trung vào yếu tố tạo tâm trạng và chất lượng điện ảnh
 
-Output ONLY the visual prompt text, no explanations.`;
+Chỉ trả về nội dung câu lệnh hình ảnh, không giải thích.`;
    }
 
    const visualPrompt = await retryOperation(() => chatCompletion(prompt, model, 0.7, 1024));
@@ -922,7 +880,7 @@ Output ONLY the visual prompt text, no explanations.`;
 };
 
 /**
- * Tạo ảnh (Agent 4 & 6) qua API hình ảnh hoặc chat/completions tương thích.
+ * Tạo ảnh qua API hình ảnh hoặc giao thức hoàn tất hội thoại tương thích.
  * @param prompt - Prompt tạo ảnh.
  * @param referenceImages - Ảnh tham chiếu base64; ảnh đầu là bối cảnh, các ảnh sau là nhân vật.
  * @param aspectRatio - Tỷ lệ 16:9 hoặc 9:16; một số mô hình không hỗ trợ 1:1.
@@ -938,8 +896,8 @@ export const generateImage = async (
 ): Promise<string> => {
   const startTime = Date.now();
   
-  // Lấy mô hình ảnh đang hoạt động từ modelRegistry.
-  const activeImageModel = getActiveModel('image');
+  // Lấy mô hình ảnh đang hoạt động từ sổ đăng ký mô hình.
+  const activeImageModel = getActiveModel('image') as ImageModelDefinition | undefined;
   const imageModelId = activeImageModel?.apiModel || activeImageModel?.id || DEFAULT_IMAGE_MODEL_ID;
   const imageEndpoint = activeImageModel?.endpoint;
   const apiKey = checkApiKey('image', activeImageModel?.id);
@@ -947,6 +905,32 @@ export const generateImage = async (
   const requestEndpoint = '/v1/chat/completions';
 
   try {
+    const imageProvider = activeImageModel
+      ? getProviderById(activeImageModel.providerId)
+      : undefined;
+    if (activeImageModel && imageProvider?.protocol === 'replicate') {
+      const replicatePrompt = referenceImages.length
+        ? isVariation
+          ? `${prompt}\n\nYêu cầu bắt buộc: giữ nguyên khuôn mặt, mái tóc, màu tóc, tông da và tỷ lệ cơ thể từ ảnh tham chiếu; thay toàn bộ trang phục theo mô tả mới và thể hiện trang phục rõ ràng.`
+          : `${prompt}\n\nYêu cầu bắt buộc: duy trì chính xác khuôn mặt, mái tóc, trang phục, tỷ lệ nhân vật, ánh sáng và bối cảnh từ các ảnh tham chiếu.`
+        : prompt;
+      const rawResult = await callImageApi(
+        { prompt: replicatePrompt, referenceImages, aspectRatio },
+        activeImageModel
+      );
+      const result = await normalizeImageResult(rawResult);
+      addRenderLogWithTokens({
+        type: 'keyframe',
+        resourceId: 'image-' + Date.now(),
+        resourceName: prompt.substring(0, 50) + '...',
+        status: 'success',
+        model: imageModelId,
+        prompt,
+        duration: Date.now() - startTime,
+      });
+      return result;
+    }
+
     // Các mô hình như qwen-image-2.0 dùng /v1/images/generations.
     if (shouldUseImagesGenerationsEndpoint(imageModelId, imageEndpoint)) {
       const result = await callImagesGenerationsApi({
@@ -967,64 +951,64 @@ export const generateImage = async (
       });
       return result;
     }
-    // If we have reference images, instruct the model to use them for consistency
+    // Nếu có ảnh tham chiếu, yêu cầu mô hình duy trì tính nhất quán.
     let finalPrompt = prompt;
     if (referenceImages.length > 0) {
       if (isVariation) {
         // Chế độ biến thể: giữ khuôn mặt, thay trang phục/tạo hình.
         finalPrompt = `
-      ⚠️⚠️⚠️ CRITICAL REQUIREMENTS - CHARACTER OUTFIT VARIATION ⚠️⚠️⚠️
-      
-      Reference Images Information:
-      - The provided image shows the CHARACTER's BASE APPEARANCE that you MUST use as reference for FACE ONLY.
-      
-      Task:
-      Generate a character image with a NEW OUTFIT/COSTUME based on this description: "${prompt}".
-      
-      ⚠️ ABSOLUTE REQUIREMENTS (NON-NEGOTIABLE):
-      
-      1. FACE & IDENTITY - MUST BE 100% IDENTICAL TO REFERENCE:
-         • Facial Features: Eyes (color, shape, size), nose structure, mouth shape, facial contours must be EXACTLY the same
-         • Hairstyle & Hair Color: Length, color, texture, and style must be PERFECTLY matched (unless prompt specifies hair change)
-         • Skin tone and facial structure: MUST remain identical
-         • Expression can vary based on prompt
-         
-      2. OUTFIT/CLOTHING - MUST BE COMPLETELY DIFFERENT FROM REFERENCE:
-         • Generate NEW clothing/outfit as described in the prompt
-         • DO NOT copy the clothing from the reference image
-         • The outfit should match the description provided: "${prompt}"
-         • Include all accessories, props, or costume details mentioned in the prompt
-         
-      3. Body proportions should remain consistent with the reference.
-      
-      ⚠️ This is an OUTFIT VARIATION task - The face MUST match the reference, but the CLOTHES MUST be NEW as described!
-      ⚠️ If the new outfit is not clearly visible and different from the reference, the task has FAILED!
+      ⚠️⚠️⚠️ YÊU CẦU QUAN TRỌNG — BIẾN THỂ TRANG PHỤC ⚠️⚠️⚠️
+
+      Thông tin ảnh tham chiếu:
+      - Ảnh cung cấp tạo hình gốc của NHÂN VẬT; chỉ dùng làm tham chiếu nhận dạng khuôn mặt.
+
+      Nhiệm vụ:
+      Tạo ảnh nhân vật với TRANG PHỤC MỚI dựa trên mô tả: "${prompt}".
+
+      ⚠️ YÊU CẦU BẮT BUỘC:
+
+      1. KHUÔN MẶT VÀ NHẬN DẠNG — PHẢI GIỐNG HỆT THAM CHIẾU:
+         • Mắt, mũi, miệng và đường nét khuôn mặt phải khớp chính xác.
+         • Độ dài, màu, chất và kiểu tóc phải nhất quán, trừ khi câu lệnh yêu cầu đổi tóc.
+         • Tông da và cấu trúc khuôn mặt không được thay đổi.
+         • Biểu cảm có thể thay đổi theo câu lệnh.
+
+      2. TRANG PHỤC — PHẢI KHÁC HOÀN TOÀN ẢNH THAM CHIẾU:
+         • Tạo trang phục mới đúng mô tả trong câu lệnh.
+         • Không sao chép quần áo từ ảnh tham chiếu.
+         • Trang phục phải khớp mô tả: "${prompt}".
+         • Bao gồm đầy đủ phụ kiện, đạo cụ và chi tiết phục trang được nhắc đến.
+
+      3. Giữ nguyên tỷ lệ cơ thể của nhân vật.
+
+      ⚠️ Đây là tác vụ thay trang phục: khuôn mặt phải giữ nguyên, quần áo phải mới và hiện rõ.
+      ⚠️ Nếu trang phục mới không rõ ràng hoặc không khác ảnh tham chiếu, kết quả không đạt yêu cầu.
     `;
       } else {
         // Chế độ thường: ưu tiên tính nhất quán hoàn toàn.
         finalPrompt = `
-      ⚠️⚠️⚠️ CRITICAL REQUIREMENTS - CHARACTER CONSISTENCY ⚠️⚠️⚠️
-      
-      Reference Images Information:
-      - The FIRST image is the Scene/Environment reference.
-      - Any subsequent images are Character references (Base Look or Variation).
-      
-      Task:
-      Generate a cinematic shot matching this prompt: "${prompt}".
-      
-      ⚠️ ABSOLUTE REQUIREMENTS (NON-NEGOTIABLE):
-      1. Scene Consistency:
-         - STRICTLY maintain the visual style, lighting, and environment from the scene reference.
-      
-      2. Character Consistency - HIGHEST PRIORITY:
-         If characters are present in the prompt, they MUST be IDENTICAL to the character reference images:
-         • Facial Features: Eyes (color, shape, size), nose structure, mouth shape, facial contours must be EXACTLY the same
-         • Hairstyle & Hair Color: Length, color, texture, and style must be PERFECTLY matched
-         • Clothing & Outfit: Style, color, material, and accessories must be IDENTICAL
-         • Body Type: Height, build, proportions must remain consistent
-         
-      ⚠️ DO NOT create variations or interpretations of the character - STRICT REPLICATION ONLY!
-      ⚠️ Character appearance consistency is THE MOST IMPORTANT requirement!
+      ⚠️⚠️⚠️ YÊU CẦU QUAN TRỌNG — NHẤT QUÁN NHÂN VẬT ⚠️⚠️⚠️
+
+      Thông tin ảnh tham chiếu:
+      - Ảnh ĐẦU TIÊN là tham chiếu bối cảnh hoặc môi trường.
+      - Các ảnh tiếp theo là tham chiếu nhân vật, gồm tạo hình gốc hoặc biến thể.
+
+      Nhiệm vụ:
+      Tạo cảnh quay điện ảnh phù hợp câu lệnh: "${prompt}".
+
+      ⚠️ YÊU CẦU BẮT BUỘC:
+      1. Nhất quán bối cảnh:
+         - Giữ nghiêm ngặt phong cách hình ảnh, ánh sáng và môi trường từ ảnh tham chiếu.
+
+      2. Nhất quán nhân vật — ƯU TIÊN CAO NHẤT:
+         Nếu câu lệnh có nhân vật, họ phải giống hệt ảnh tham chiếu:
+         • Khuôn mặt: màu, dáng và kích thước mắt; cấu trúc mũi, miệng và đường nét phải khớp chính xác.
+         • Tóc: độ dài, màu, chất tóc và kiểu tóc phải nhất quán.
+         • Trang phục: kiểu dáng, màu sắc, chất liệu và phụ kiện phải giống hệt.
+         • Vóc dáng: chiều cao, thể hình và tỷ lệ cơ thể không được thay đổi.
+
+      ⚠️ Không tự tạo biến thể hoặc diễn giải lại nhân vật; chỉ tái tạo đúng tham chiếu.
+      ⚠️ Nhất quán ngoại hình nhân vật là yêu cầu quan trọng nhất.
     `;
       }
     }
@@ -1061,7 +1045,7 @@ export const generateImage = async (
     if (!res.ok) {
       // Xử lý riêng lỗi 400/500 do bộ lọc nội dung.
       if (res.status === 400) {
-        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh prompt khung hình, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
+        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh câu lệnh khung hình, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
       }
       else if (res.status === 500) {
         throw new Error('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.');
@@ -1079,7 +1063,7 @@ export const generateImage = async (
       } catch (_) {
         // Dùng thông báo mặc định khi body đã đọc hoặc không phân tích được.
       }
-      throw new Error(errorMessage);
+      throw new Error(localizeApiErrorMessage(errorMessage, res.status));
     }
 
     return await res.json();
@@ -1105,7 +1089,7 @@ export const generateImage = async (
       'Mô hình kiểu qwen-image tự động dùng /v1/images/generations; mô hình kiểu Gemini dùng chat/completions.'
   );
   } catch (error: any) {
-    // Log failed generation
+    // Ghi nhật ký tác vụ tạo nội dung thất bại.
     addRenderLogWithTokens({
       type: 'keyframe',
       resourceId: 'image-' + Date.now(),
@@ -1192,14 +1176,14 @@ const resizeImageToSize = async (base64Data: string, targetWidth: number, target
 };
 
 /**
- * sora-2专用：使用异步API生成视频
- * 流程：1. 创建任务 -> 2. 轮询状态 -> 3. 下载视频
- * @param prompt - 视频生成提示词
- * @param startImageBase64 - 起始关键帧图像(base64格式，可选)
- * @param apiKey - API密钥
- * @param aspectRatio - 横竖屏比例，支持 '16:9'（横屏）、'9:16'（竖屏）、'1:1'（方形）
- * @param duration - 视频时长，支持 4、8、12 秒
- * @returns 返回视频的base64编码
+ * Tạo video riêng cho Sora-2 bằng API bất đồng bộ.
+ * Quy trình: tạo tác vụ, kiểm tra trạng thái rồi tải video.
+ * @param prompt - Câu lệnh tạo video.
+ * @param startImageBase64 - Khung hình đầu ở định dạng base64, không bắt buộc.
+ * @param apiKey - Khóa API.
+ * @param aspectRatio - Tỷ lệ khung hình: 16:9, 9:16 hoặc 1:1.
+ * @param duration - Thời lượng video: 4, 8 hoặc 12 giây.
+ * @returns Video ở định dạng base64.
  */
 const generateVideoWithSora2 = async (
   prompt: string, 
@@ -1211,31 +1195,31 @@ const generateVideoWithSora2 = async (
 ): Promise<string> => {
   console.log(`🎬 Đang tạo video bất đồng bộ (${modelName}, ${aspectRatio}, ${duration} giây)...`);
   
-  // 根据横竖屏比例计算视频尺寸
+  // Tính kích thước video theo tỷ lệ khung hình.
   const videoSize = getSoraVideoSize(aspectRatio);
   const [VIDEO_WIDTH, VIDEO_HEIGHT] = videoSize.split('x').map(Number);
   
   console.log(`📐 Kích thước video: ${VIDEO_WIDTH}x${VIDEO_HEIGHT}`);
   
-  // 获取 API 基础 URL
+  // Lấy URL cơ sở của API.
   const apiBase = getApiBase('video', modelName);
   
-  // Step 1: 创建视频任务
+  // Bước 1: tạo tác vụ video.
   const formData = new FormData();
   formData.append('model', modelName);
   formData.append('prompt', prompt);
   formData.append('seconds', String(duration));
   formData.append('size', videoSize);
   
-  // 如果有参考图片，调整尺寸后添加到FormData
+  // Nếu có ảnh tham chiếu, đổi kích thước rồi thêm vào biểu mẫu dữ liệu.
   if (startImageBase64) {
     const cleanBase64 = startImageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     
-    // 调整图片尺寸以匹配视频尺寸要求
+    // Đổi kích thước ảnh theo yêu cầu của video.
     console.log(`📐 Đang đổi kích thước ảnh tham chiếu thành ${VIDEO_WIDTH}x${VIDEO_HEIGHT}...`);
     const resizedBase64 = await resizeImageToSize(cleanBase64, VIDEO_WIDTH, VIDEO_HEIGHT);
     
-    // 将base64转换为Blob
+    // Chuyển base64 thành Blob.
     const byteCharacters = atob(resizedBase64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -1247,7 +1231,7 @@ const generateVideoWithSora2 = async (
     console.log('✅ Đã đổi kích thước và thêm ảnh tham chiếu');
   }
   
-  // 创建任务
+  // Gửi yêu cầu tạo tác vụ.
   const createResponse = await fetch(`${apiBase}/v1/videos`, {
     method: 'POST',
     headers: {
@@ -1262,7 +1246,7 @@ const generateVideoWithSora2 = async (
   }
   
   const createData = await createResponse.json();
-  // 响应格式可能是 { id: "sora-2:task_xxx" } 或 { task_id: "xxx" }
+  // Phản hồi có thể dùng trường id hoặc task_id.
   const taskId = createData.id || createData.task_id;
   if (!taskId) {
     throw new Error('Không thể tạo tác vụ video: máy chủ không trả về mã tác vụ');
@@ -1270,9 +1254,9 @@ const generateVideoWithSora2 = async (
   
   console.log('📋 Đã tạo tác vụ sora-2, mã tác vụ:', taskId);
   
-  // Step 2: 轮询查询任务状态
-  const maxPollingTime = 1200000; // 20分钟超时
-  const pollingInterval = 5000; // 每5秒查询一次
+  // Bước 2: kiểm tra trạng thái tác vụ theo chu kỳ.
+  const maxPollingTime = 1200000; // Hết thời gian chờ sau 20 phút.
+  const pollingInterval = 5000; // Kiểm tra mỗi 5 giây.
   const startTime = Date.now();
   
   let videoId: string | null = null;
@@ -1314,7 +1298,7 @@ const generateVideoWithSora2 = async (
     } else if (status === 'failed' || status === 'error') {
       throw new Error(formatVideoTaskErrorForUser(statusData.error ?? statusData, statusData.message, 'sora'));
     }
-    // 其他状态（pending, processing等）继续轮询
+    // Tiếp tục kiểm tra với các trạng thái đang chờ hoặc đang xử lý.
   }
 
   if (!videoId && !completedStatus) {
@@ -1333,19 +1317,16 @@ const generateVideoWithSora2 = async (
 };
 
 /**
- * 生成视频(Agent 8)
- * 使用antsk视频生成API (veo_3_1 或 sora-2)
- * 通过起始帧和结束帧生成视频片段
- * @param prompt - 视频生成提示词
- * @param startImageBase64 - 起始关键帧图像(base64格式)
- * @param endImageBase64 - 结束关键帧图像(base64格式)
- * @param model - 使用的视频生成模型，'veo' 会根据 aspectRatio 自动选择具体模型，'sora-2' 使用异步API
- * @param aspectRatio - 横竖屏比例，支持 '16:9'（横屏，默认）、'9:16'（竖屏）、'1:1'（方形，仅 sora-2 支持）
- * @param duration - 视频时长（仅 sora-2 支持），支持 4、8、12 秒
- * @returns 返回生成的视频base64编码(而非URL),用于存储到indexedDB
- * @throws 如果视频生成失败则抛出错误
- * @note 视频URL会过期,因此转换为base64存储
- * @note sora-2使用异步API模式(/v1/videos)，veo模型使用同步模式(/v1/chat/completions)
+ * Tạo đoạn video từ khung hình đầu và khung hình cuối.
+ * @param prompt - Câu lệnh tạo video.
+ * @param startImageBase64 - Khung hình đầu ở định dạng base64.
+ * @param endImageBase64 - Khung hình cuối ở định dạng base64.
+ * @param model - Mô hình video; Veo tự chọn biến thể theo tỷ lệ, Sora-2 dùng API bất đồng bộ.
+ * @param aspectRatio - Tỷ lệ khung hình 16:9, 9:16 hoặc 1:1.
+ * @param duration - Thời lượng video 4, 8 hoặc 12 giây với Sora-2.
+ * @returns Video base64 để lưu trong IndexedDB.
+ * @throws Lỗi khi quá trình tạo video thất bại.
+ * @note URL video có thể hết hạn nên kết quả được chuyển sang base64.
  */
 export const generateVideo = async (
   prompt: string, 
@@ -1355,16 +1336,38 @@ export const generateVideo = async (
   aspectRatio: AspectRatio = '16:9',
   duration: VideoDuration = 8
 ): Promise<string> => {
-  const resolvedVideoModel = resolveModel('video', model);
+  const resolvedVideoModel = resolveModel('video', model) as VideoModelDefinition | undefined;
   const requestModel = resolveRequestModel('video', model) || model;
   const apiKey = checkApiKey('video', model);
   const apiBase = getApiBase('video', model);
   const endpoint = resolvedVideoModel?.endpoint || '';
+  const videoProvider = resolvedVideoModel
+    ? getProviderById(resolvedVideoModel.providerId)
+    : undefined;
+  if (resolvedVideoModel && videoProvider?.protocol === 'replicate') {
+    const outputUrl = await callVideoApi(
+      {
+        prompt,
+        startImage: startImageBase64,
+        endImage: endImageBase64,
+        aspectRatio,
+        duration,
+      },
+      resolvedVideoModel
+    );
+    if (/^https?:\/\//i.test(outputUrl)) {
+      try {
+        return await convertVideoUrlToBase64(outputUrl);
+      } catch (error) {
+        console.warn('Không thể lưu cục bộ video Replicate, sẽ dùng URL kết quả:', error);
+      }
+    }
+    return outputUrl;
+  }
   const isAsyncMode =
     resolvedVideoModel?.params?.mode === 'async' ||
     requestModel === 'sora-2' ||
-    requestModel === DEFAULT_VIDEO_MODEL_ID ||
-    (requestModel.startsWith('doubao-seedance') && endpoint.includes('/v1/videos'));
+    requestModel === DEFAULT_VIDEO_MODEL_ID;
 
   if (isAsyncMode) {
     return generateVideoWithSora2(
@@ -1377,31 +1380,31 @@ export const generateVideo = async (
     );
   }
   
-  // 如果是 veo 模型，根据横竖屏和是否有参考图动态选择模型名称
+  // Với Veo, tự chọn biến thể theo tỷ lệ và sự hiện diện của ảnh tham chiếu.
   let actualModel = requestModel;
   if (actualModel === 'veo' || actualModel.startsWith('veo_3_1')) {
     const hasReferenceImage = !!startImageBase64;
     actualModel = getVeoModelName(hasReferenceImage, aspectRatio);
     console.log(`🎬 Đang dùng mô hình Veo: ${actualModel} (${aspectRatio})`);
     
-    // Veo 不支持 1:1 方形视频
+    // Veo không hỗ trợ video vuông 1:1.
     if (aspectRatio === '1:1') {
       console.warn('⚠️ Veo không hỗ trợ video vuông (1:1); sẽ dùng tỷ lệ ngang 16:9');
       actualModel = getVeoModelName(hasReferenceImage, '16:9');
     }
   }
   
-  // Veo 模型使用同步模式 (/v1/chat/completions)
-  // Clean base64 strings
+  // Mô hình Veo dùng chế độ đồng bộ qua /v1/chat/completions.
+  // Làm sạch chuỗi base64.
   const cleanStart = startImageBase64?.replace(/^data:image\/(png|jpeg|jpg);base64,/, '') || '';
   const cleanEnd = endImageBase64?.replace(/^data:image\/(png|jpeg|jpg);base64,/, '') || '';
 
-  // Build request body based on model requirements
+  // Tạo nội dung yêu cầu theo đặc điểm của mô hình.
   const messages: any[] = [
     { role: 'user', content: prompt }
   ];
 
-  // Add images as content if provided
+  // Thêm ảnh vào nội dung nếu có.
   if (cleanStart) {
     messages[0].content = [
       { type: 'text', text: prompt },
@@ -1421,7 +1424,7 @@ export const generateVideo = async (
     }
   }
 
-  // Use non-streaming mode with increased timeout for video generation
+  // Không truyền phát và dùng thời gian chờ dài hơn cho tác vụ video.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 minutes timeout
 
@@ -1452,11 +1455,11 @@ export const generateVideo = async (
 
     clearTimeout(timeoutId);
 
-    // Parse non-streaming response
+    // Đọc phản hồi không truyền phát.
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
     
-    // Look for video URL in the content
+    // Tìm URL video trong nội dung trả về.
     const urlMatch = content.match(/(https?:\/\/[^\s]+\.mp4)/);
     const videoUrl = urlMatch ? urlMatch[1] : '';
 
@@ -1466,14 +1469,14 @@ export const generateVideo = async (
 
     console.log('🎬 Đã nhận URL video, đang chuyển sang base64...');
     
-    // 将视频URL转换为base64,避免URL过期问题
+    // Chuyển URL video sang base64 để tránh hết hạn.
     try {
       const videoBase64 = await convertVideoUrlToBase64(videoUrl);
       console.log('✅ Đã chuyển video sang base64 để lưu an toàn trong IndexedDB');
       return videoBase64;
     } catch (error: any) {
       console.error('❌ Chuyển video sang base64 thất bại, dùng URL gốc:', error);
-      // 如果转换失败,返回原始URL作为降级方案
+      // Nếu chuyển đổi thất bại, dùng URL gốc làm phương án dự phòng.
       return videoUrl;
     }
   } catch (error: any) {
@@ -1843,17 +1846,16 @@ Prompt đã viết lại:
 };
 
 /**
- * AI镜头拆分功能 - 将单个镜头拆分为多个细致的子镜头
- * 根据动作描述，按照景别（全景、中景、特写）和视角拆分镜头
- * @param shot - 原始镜头对象
- * @param sceneInfo - 场景信息（地点、时间、氛围）
- * @param characterNames - 角色名称数组
- * @param visualStyle - 视觉风格
- * @param model - 使用的模型，默认DEFAULT_CHAT_MODEL_ID
- * @returns 返回包含子镜头数组的对象
+ * Dùng AI chia một cảnh quay thành các cảnh con chi tiết theo cỡ cảnh và góc máy.
+ * @param shot - Cảnh quay ban đầu.
+ * @param sceneInfo - Địa điểm, thời gian và không khí của cảnh.
+ * @param characterNames - Danh sách tên nhân vật.
+ * @param visualStyle - Phong cách hình ảnh.
+ * @param model - Mô hình sử dụng; mặc định là DEFAULT_CHAT_MODEL_ID.
+ * @returns Đối tượng chứa danh sách cảnh quay con.
  */
 export const splitShotIntoSubShots = async (
-  shot: any, // Shot type from types.ts
+  shot: any, // Kiểu Shot được định nghĩa trong types.ts.
   sceneInfo: { location: string; time: string; atmosphere: string },
   characterNames: string[],
   visualStyle: string,
@@ -1871,178 +1873,6 @@ export const splitShotIntoSubShots = async (
   };
 
   const styleDesc = stylePrompts[visualStyle] || visualStyle;
-
-  const prompt = `
-你是一位专业的电影分镜师和导演。你的任务是将一个粗略的镜头描述，拆分为多个细致、专业的子镜头。
-
-## 原始镜头信息
-
-**场景地点：** ${sceneInfo.location}
-**场景时间：** ${sceneInfo.time}
-**场景氛围：** ${sceneInfo.atmosphere}
-**角色：** ${characterNames.length > 0 ? characterNames.join('、') : '无特定角色'}
-**视觉风格：** ${styleDesc}
-**原始镜头运动：** ${shot.cameraMovement || '未指定'}
-
-**原始动作描述：**
-${shot.actionSummary}
-
-${shot.dialogue ? `**对白：** "${shot.dialogue}"
-
-⚠️ **对白处理说明**：原始镜头包含对白。请在拆分时，将对白放在最合适的子镜头中（通常是角色说话的中景或近景镜头），并在该子镜头的actionSummary中明确提及对白内容。其他子镜头不需要包含对白。` : ''}
-
-## 拆分要求
-
-### 核心原则
-1. **单一职责**：每个子镜头只负责一个视角或动作细节，避免混合多个视角
-2. **时长控制**：每个子镜头时长约2-4秒，总时长保持在8-10秒左右
-3. **景别多样化**：合理运用全景、中景、特写等不同景别
-4. **连贯性**：子镜头之间要有逻辑的视觉过渡和叙事连贯性
-
-### 拆分维度示例
-
-**景别分类（Shot Size）：**
-- **远景 Long Shot / 全景 Wide Shot**：展示整体环境、人物位置关系、空间布局
-- **中景 Medium Shot**：展示人物上半身或腰部以上，强调动作和表情
-- **近景 Close-up**：展示人物头部或重要物体，强调情感和细节
-- **特写 Extreme Close-up**：聚焦关键细节（如手部动作、眼神、物体特写）
-
-**拆分策略：**
-- 如果原始描述是"我在书房走向书桌坐下来，打开电脑"，应拆分为：
-  1. 全景：展示我从书房门口走向书桌的整体环境
-  2. 中景：我走到椅子前准备坐下的动作
-  3. 特写：我坐下时身体与椅子接触的瞬间
-  4. 近景：我伸手按下电脑开机键或打开笔记本盖
-
-- 如果原始描述是连续的打斗动作，应从不同视角拆分：
-  1. 远景：展示双方对峙的整体画面
-  2. 中景：第一次攻击动作
-  3. 特写：拳头或武器的碰撞细节
-  4. 近景：角色面部反应
-
-### 必须包含的字段
-
-每个子镜头必须包含以下信息：
-
-1. **shotSize**（景别）：明确标注景别类型（全景、中景、特写等）
-2. **cameraMovement**（镜头运动）：描述镜头如何移动（静止、推进、跟踪、环绕等）
-3. **actionSummary**（动作描述）：清晰、具体的动作和画面内容描述（60-100字）
-4. **visualFocus**（视觉焦点）：这个镜头的视觉重点是什么（如"人物移动轨迹"、"手部特写"、"面部表情变化"等）
-5. **keyframes**（关键帧数组）：包含起始帧(start)和结束帧(end)的视觉描述
-   - 每个关键帧必须包含：
-     - **type**: "start" 或 "end"
-     - **visualPrompt**: 详细的画面视觉描述（用于AI图像生成），包含场景、人物、光影、构图等细节（100-150字）
-
-### 专业镜头运动参考
-
-可从以下类型中选择或自定义：
-- 静止镜头 Static Shot
-- 推镜头 Dolly Shot / 拉镜头 Zoom Out
-- 跟踪镜头 Tracking Shot
-- 平移镜头 Pan Shot
-- 环绕镜头 Circular Shot
-- 俯视镜头 High Angle / 仰视镜头 Low Angle
-- 主观视角 POV Shot
-- 越肩镜头 Over the Shoulder
-
-## 输出格式
-
-请输出JSON格式，结构如下：
-
-\`\`\`json
-{
-  "subShots": [
-    {
-      "shotSize": "全景 Wide Shot",
-      "cameraMovement": "静止镜头 Static Shot",
-      "actionSummary": "镜头从书房门口的角度，展示整个书房空间，我从门口缓步走向位于房间中央的书桌，背景可见书架、窗户和温暖的灯光。",
-      "visualFocus": "整体环境布局和人物移动轨迹",
-      "keyframes": [
-        {
-          "type": "start",
-          "visualPrompt": "书房全景，${styleDesc}，我站在门口，身体朝向书桌方向，准备迈步。房间中央是深色木质书桌，背后是装满书籍的书架，窗户透进柔和的自然光，营造温馨的学习氛围。构图采用三分法，人物位于左侧，书桌位于画面中心。"
-        },
-        {
-          "type": "end",
-          "visualPrompt": "书房全景，${styleDesc}，我已走到书桌旁边，身体靠近椅子，手即将触碰椅背。画面保持整体环境视角，展示完整的移动轨迹。光线保持一致，强调空间的纵深感。"
-        }
-      ]
-    },
-    {
-      "shotSize": "中景 Medium Shot",
-      "cameraMovement": "跟踪镜头 Tracking Shot",
-      "actionSummary": "镜头跟随我走到书桌前，拍摄腰部以上，我伸手拉开椅子，身体微微前倾准备坐下。",
-      "visualFocus": "人物上半身动作和与椅子的互动",
-      "keyframes": [
-        {
-          "type": "start",
-          "visualPrompt": "中景人物镜头，${styleDesc}，拍摄腰部以上，我正在接近书桌，手臂自然摆动，表情专注。背景虚化的书架和窗户，突出人物主体。侧面光勾勒人物轮廓。"
-        },
-        {
-          "type": "end",
-          "visualPrompt": "中景人物镜头，${styleDesc}，我的手已抓住椅背，身体微微前倾，准备坐下的姿态。表情放松，眼神看向座位。背景保持虚化，强调动作细节。"
-        }
-      ]
-    },
-    {
-      "shotSize": "特写 Close-up",
-      "cameraMovement": "静止镜头 Static Shot",
-      "actionSummary": "特写镜头聚焦在我的臀部和椅子座面，捕捉我坐下的瞬间，椅子轻微下沉的动作。",
-      "visualFocus": "身体与椅子接触的细节瞬间",
-      "keyframes": [
-        {
-          "type": "start",
-          "visualPrompt": "特写镜头，${styleDesc}，聚焦椅子座面和我即将坐下的臀部位置，椅子为深色皮革材质，反射柔和光线。身体正在下降，距离椅面约10厘米。浅景深，背景完全虚化。"
-        },
-        {
-          "type": "end",
-          "visualPrompt": "特写镜头，${styleDesc}，身体已完全坐在椅子上，座面轻微凹陷，皮革产生自然的皱褶。捕捉接触瞬间的微妙变化，展现材质质感和重量感。"
-        }
-      ]
-    },
-    {
-      "shotSize": "近景 Close Shot",
-      "cameraMovement": "推镜头 Dolly In",
-      "actionSummary": "镜头从侧面推进，拍摄我端坐在椅子上，手伸向电脑，按下开机键，屏幕亮起微光照亮脸部。",
-      "visualFocus": "手部按键动作和屏幕亮起的瞬间",
-      "keyframes": [
-        {
-          "type": "start",
-          "visualPrompt": "近景侧面镜头，${styleDesc}，我端坐在椅子上，上半身和电脑在画面中。手臂伸向笔记本电脑，手指即将触碰键盘或电源键。电脑屏幕暗黑，面部被环境光照亮，表情期待。"
-        },
-        {
-          "type": "end",
-          "visualPrompt": "近景侧面镜头，${styleDesc}，镜头推进更近，手指已按下开机键，屏幕亮起柔和的蓝白色光芒，照亮我的脸部轮廓和手部。表情专注，眼神看向屏幕，营造科技氛围。"
-        }
-      ]
-    }
-  ]
-}
-\`\`\`
-
-**关键帧visualPrompt要求**：
-- 必须包含视觉风格标记（${styleDesc}）
-- 详细描述画面构图、光影、色彩、景深等视觉元素
-- 起始帧和结束帧要有明显的视觉差异，体现动作过程
-- 长度控制在100-150字，既详细又不过于冗长
-- 使用专业的摄影和美术术语
-
-## 重要提示
-
-❌ **避免：**
-- 不要在单个子镜头中混合多个视角或景别
-- 不要拆分过细导致总时长超过10秒
-- 不要使用过于技术化或晦涩的术语
-- 不要忽略视觉连贯性
-
-✅ **追求：**
-- 每个子镜头职责清晰、画面感强
-- 景别和视角多样化但符合叙事逻辑
-- 动作描述具体、可执行
-- 保持电影级的专业表达
-
-请开始拆分，直接输出JSON格式（不要包含markdown代码块标记）：
-`;
 
   const localizedPrompt = `
 Bạn là họa sĩ storyboard và đạo diễn điện ảnh. Hãy chia cảnh quay thô thành các cảnh quay con rõ ràng, chuyên nghiệp.
@@ -2149,14 +1979,13 @@ Chỉ trả về JSON hợp lệ theo cấu trúc:
 };
 
 /**
- * AI增强关键帧提示词 - 添加详细的技术规格和视觉细节
- * 使用LLM根据基础提示词生成专业的电影级视觉描述
- * @param basePrompt - 基础提示词(包含场景、角色、动作等基本信息)
- * @param visualStyle - 视觉风格
- * @param cameraMovement - 镜头运动
- * @param frameType - 帧类型(start/end)
- * @param model - 使用的模型,默认DEFAULT_CHAT_MODEL_ID
- * @returns 返回增强后的提示词
+ * Dùng AI bổ sung thông số kỹ thuật và chi tiết điện ảnh cho câu lệnh khung hình.
+ * @param basePrompt - Câu lệnh cơ sở gồm cảnh, nhân vật và hành động.
+ * @param visualStyle - Phong cách hình ảnh.
+ * @param cameraMovement - Chuyển động máy quay.
+ * @param frameType - Loại khung hình đầu hoặc cuối.
+ * @param model - Mô hình sử dụng; mặc định là DEFAULT_CHAT_MODEL_ID.
+ * @returns Câu lệnh đã được tăng cường.
  */
 export const enhanceKeyframePrompt = async (
   basePrompt: string,
@@ -2178,83 +2007,6 @@ export const enhanceKeyframePrompt = async (
 
   const styleDesc = stylePrompts[visualStyle] || visualStyle;
   const frameLabel = frameType === 'start' ? 'khung hình đầu' : 'khung hình cuối';
-
-  const prompt = `
-你是一位资深的电影摄影指导和视觉特效专家。请基于以下基础提示词,生成一个包含详细技术规格和视觉细节的专业级${frameLabel}描述。
-
-## 基础提示词
-${basePrompt}
-
-## 视觉风格
-${styleDesc}
-
-## 镜头运动
-${cameraMovement}
-
-## ${frameLabel}要求
-${frameType === 'start' ? '建立清晰的初始状态、起始姿态、为后续运动预留空间' : '展现最终状态、动作完成、情绪高潮'}
-
-## 任务
-请在基础提示词的基础上,添加以下专业的电影级视觉规格描述:
-
-### 1. 技术规格 (Technical Specifications)
-- 分辨率规格 (8K等)
-- 镜头语言和摄影美学
-- 景深控制和焦点策略
-
-### 2. 视觉细节 (Visual Details)  
-- 光影层次: 三点布光、阴影与高光的配置
-- 色彩饱和度: 色彩分级、色温控制
-- 材质质感: 表面纹理、细节丰富度
-- 大气效果: 体积光、雾气、粒子、天气效果
-
-### 3. 角色要求 (Character Details) - 如果有角色
-⚠️ 最高优先级: 如果提供了角色参考图,必须严格保持人物外观的完全一致性!
-- 角色识别: 严格按照参考图中人物的面部特征、发型发色、服装造型
-- 面部特征: 五官轮廓、眼睛颜色形状、鼻子嘴巴结构必须与参考图一致
-- 发型发色: 头发长度、颜色、质感、发型样式必须完全匹配参考图
-- 服装造型: 服装款式、颜色、材质必须与参考图保持一致
-- 面部表情: 在保持外观一致的基础上,添加微表情、情绪真实度、眼神方向
-- 肢体语言: 在保持体型一致的基础上,展现自然的身体姿态、重心分布、肌肉张力
-- 服装细节: 服装的运动感、物理真实性、纹理细节
-- 毛发细节: 头发丝、自然的毛发运动
-
-### 4. 环境要求 (Environment Details)
-- 背景层次: 前景、中景、背景的深度分离
-- 空间透视: 准确的线性透视、大气透视
-- 环境光影: 光源的真实性、阴影投射
-- 细节丰富度: 环境叙事元素、纹理变化
-
-### 5. 氛围营造 (Mood & Atmosphere)
-- 情绪基调与场景情感的匹配
-- 色彩心理学的运用
-- 视觉节奏的平衡
-- 叙事的视觉暗示
-
-### 6. 质量保证 (Quality Assurance)
-- 主体清晰度和轮廓
-- 背景过渡的自然性
-- 光影一致性
-- 色彩协调性
-- 构图平衡(三分法或黄金比例)
-- 动作连贯性
-
-## 输出格式
-请使用清晰的分节格式输出,包含上述所有要素。使用中文输出,保持专业性和可读性。
-
-格式示例:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【技术规格】Technical Specifications
-• 分辨率: ...
-
-【视觉细节】Visual Details  
-• 光影层次: ...
-• 色彩饱和度: ...
-
-(依次类推)
-
-请开始创作:
-`;
 
   const localizedPrompt = `
 Bạn là giám đốc hình ảnh và chuyên gia hiệu ứng thị giác. Hãy nâng cấp prompt cơ sở thành mô tả ${frameLabel} chuyên nghiệp bằng tiếng Việt.
@@ -2282,14 +2034,14 @@ Trả về phần bổ sung rõ ràng, dễ đọc; không nhắc lại yêu c�
     
     console.log(`✅ AI đã tăng cường ${frameLabel}, thời gian:`, duration, 'ms');
     
-    // Kết hợp prompt cơ sở và phần tăng cường.
+    // Kết hợp câu lệnh cơ sở và phần tăng cường.
     return `${basePrompt}
 
 ${result.trim()}`;
   } catch (error: any) {
     console.error(`❌ AI tăng cường ${frameLabel} thất bại:`, error);
-    // Trả về prompt cơ sở khi tăng cường thất bại.
-    console.warn('⚠️ Đang quay lại prompt cơ sở');
+    // Trả về câu lệnh cơ sở khi tăng cường thất bại.
+    console.warn('⚠️ Đang quay lại câu lệnh cơ sở');
     return basePrompt;
   }
 };

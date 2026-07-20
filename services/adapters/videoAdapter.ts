@@ -1,8 +1,10 @@
 import { VideoModelDefinition, VideoGenerateOptions, AspectRatio, VideoDuration } from '../../types/model';
-import { getApiKeyForModel, getApiBaseUrlForModel, getActiveVideoModel } from '../modelRegistry';
+import { getApiKeyForModel, getApiBaseUrlForModel, getActiveVideoModel, getProviderById } from '../modelRegistry';
 import { ApiKeyError } from './chatAdapter';
 import { throwFromVideoHttpError, formatVideoTaskErrorForUser } from '../videoHttpErrors';
 import { resolveSoraVideoDownloadId, downloadSoraCompletedVideo, encodeVideoPathId } from '../soraVideoResolve';
+import { localizeApiErrorMessage } from '../apiErrorLocalization';
+import { callReplicateVideoApi } from './replicateAdapter';
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
@@ -285,97 +287,6 @@ const callSoraApi = async (
   });
 };
 
-const callDoubaoSeedanceApi = async (
-  options: VideoGenerateOptions,
-  model: VideoModelDefinition,
-  apiKey: string,
-  apiBase: string
-): Promise<string> => {
-  const endpoint = model.endpoint || '/v1/chat/completions';
-  const apiModel = model.apiModel || model.id;
-
-  // API tương thích Doubao Seedance ưu tiên URL ảnh từ xa.
-  let messages: any[] = [];
-
-  if (options.startImage && options.startImage.startsWith('http')) {
-    messages = [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: options.prompt },
-          { type: 'image_url', image_url: { url: options.startImage } },
-        ],
-      },
-    ];
-  } else {
-    messages = [{ role: 'user', content: options.prompt }];
-  }
-
-  const requestBody: any = {
-    model: apiModel,
-    messages,
-    stream: false,
-  };
-
-  const response = await fetch(`${apiBase}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Yêu cầu Doubao Seedance thất bại: HTTP ${response.status}`;
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.error?.message || errorData.message || errorMessage;
-    } catch (e) {
-      const errorText = await response.text();
-      if (errorText) errorMessage = errorText;
-    }
-    throw new Error(errorMessage);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-
-  const urlMatch =
-    typeof content === 'string'
-      ? content.match(/https?:\/\/[^\s\])"]+\.mp4[^\s\])"']*/i) ||
-        content.match(/https?:\/\/[^\s\])"]+/i)
-      : JSON.stringify(content).match(/https?:\/\/[^\s"']+\.mp4[^\s"']*/i) ||
-        JSON.stringify(content).match(/https?:\/\/[^\s"']+/i);
-
-  if (!urlMatch) {
-    throw new Error('Doubao Seedance tạo video thất bại: không thể lấy URL video từ phản hồi');
-  }
-
-  const videoUrl = urlMatch[0];
-
-  const videoResponse = await fetch(videoUrl);
-  if (!videoResponse.ok) {
-    throw new Error(`Tải video Doubao Seedance thất bại: HTTP ${videoResponse.status}`);
-  }
-
-  const videoBlob = await videoResponse.blob();
-
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      if (result && result.startsWith('data:')) {
-        resolve(result);
-      } else {
-        reject(new Error('Chuyển đổi video Doubao Seedance thất bại'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Đọc video Doubao Seedance thất bại'));
-    reader.readAsDataURL(videoBlob);
-  });
-};
-
 export const callVideoApi = async (
   options: VideoGenerateOptions,
   model?: VideoModelDefinition
@@ -387,26 +298,20 @@ export const callVideoApi = async (
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('Thiếu API Key. Hãy cấu hình API Key trong phần cài đặt');
+    throw new ApiKeyError('Thiếu khóa API. Hãy cấu hình khóa API trong phần cài đặt');
   }
 
   const apiBase = getApiBaseUrlForModel(activeModel.id);
+  const provider = getProviderById(activeModel.providerId);
+  if (provider?.protocol === 'replicate') {
+    return callReplicateVideoApi(options, activeModel, apiKey, apiBase);
+  }
   const mode = activeModel.params.mode;
 
   const apiModel = activeModel.apiModel || activeModel.id;
   const endpoint = activeModel.endpoint || '';
   const usesVideosApi =
     mode === 'async' || endpoint.includes('/v1/videos');
-
-  const isDoubaoChatApi =
-    mode === 'doubao' ||
-    endpoint.includes('/api/v3/contents/generations/tasks') ||
-    (apiModel.startsWith('doubao-seedance') &&
-      endpoint.includes('/chat/completions'));
-
-  if (isDoubaoChatApi) {
-    return callDoubaoSeedanceApi(options, activeModel, apiKey, apiBase);
-  }
 
   if (usesVideosApi) {
     return callSoraApi(options, activeModel, apiKey, apiBase);

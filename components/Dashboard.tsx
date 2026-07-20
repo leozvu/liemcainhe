@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2, Loader2, Folder, ChevronRight, Calendar, AlertTriangle, X, HelpCircle, Cpu, Archive, Search, Users, MapPin, ExternalLink } from 'lucide-react';
 import { ProjectState, AssetLibraryItem, Character, Scene } from '../types';
@@ -31,7 +30,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
       const list = await getAllProjectsMetadata();
       setProjects(list);
     } catch (e) {
-      console.error("Failed to load projects", e);
+      console.error('Không thể tải danh sách dự án', e);
     } finally {
       setIsLoading(false);
     }
@@ -43,7 +42,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
       const items = await getAllAssetLibraryItems();
       setLibraryItems(items);
     } catch (e) {
-      console.error('Failed to load asset library', e);
+      console.error('Không thể tải thư viện tài nguyên', e);
     } finally {
       setIsLibraryLoading(false);
     }
@@ -269,9 +268,9 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
                             <div className="text-[9px] text-zinc-600 space-y-1 pt-2 border-t border-zinc-900">
                               <p>Các tài nguyên sau cũng sẽ bị xóa:</p>
                               <p className="text-zinc-700 font-mono">· Ảnh tham chiếu nhân vật và bối cảnh</p>
-                              <p className="text-zinc-700 font-mono">· Toàn bộ hình ảnh keyframe</p>
+                              <p className="text-zinc-700 font-mono">· Toàn bộ khung hình chính</p>
                               <p className="text-zinc-700 font-mono">· Toàn bộ video đã tạo</p>
-                              <p className="text-zinc-700 font-mono">· Lịch sử render</p>
+                              <p className="text-zinc-700 font-mono">· Lịch sử kết xuất</p>
                             </div>
                         </div>
                         <div className="flex gap-2 w-full pt-2">
@@ -377,7 +376,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
                 <h2 className="text-lg text-white flex items-center gap-2">
                   <Archive className="w-4 h-4 text-cyan-300" />
                   Thư viện tài nguyên
-                  <span className="text-cyan-100/40 text-xs font-mono uppercase tracking-widest">EGORIC ASSETS</span>
+                  <span className="text-cyan-100/40 text-xs font-mono uppercase tracking-widest">TÀI NGUYÊN EGORIC</span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-2">
                   Thêm nội dung từ mục “Nhân vật & bối cảnh” để tái sử dụng giữa các dự án.

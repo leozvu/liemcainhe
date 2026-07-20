@@ -17,7 +17,7 @@ const PromptEditor: React.FC<Props> = ({
   onChange,
   onSave,
   onCancel,
-  placeholder = 'Nhập prompt...',
+  placeholder = 'Nhập câu lệnh...',
   size = 'large',
   isVideo = false
 }) => {

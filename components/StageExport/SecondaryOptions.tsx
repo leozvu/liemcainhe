@@ -53,7 +53,7 @@ const SecondaryOptions: React.FC<Props> = ({
       >
         <Clock className="w-5 h-5 text-slate-600 group-hover:text-cyan-300 mb-4 transition-colors" />
         <div>
-          <h4 className="text-sm font-bold text-white mb-1">Nhật ký render</h4>
+          <h4 className="text-sm font-bold text-white mb-1">Nhật ký kết xuất</h4>
           <p className="text-[10px] text-zinc-500">Xem lịch sử tạo nội dung và trạng thái.</p>
         </div>
       </div>

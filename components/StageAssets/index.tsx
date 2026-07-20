@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState, useEffect } from 'react';
 import { Users, Sparkles, RefreshCw, Loader2, MapPin, Archive, X, Search, Trash2 } from 'lucide-react';
 import { ProjectState, CharacterVariation, Character, Scene, AspectRatio, AssetLibraryItem } from '../../types';
@@ -54,7 +53,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   const visualStyle = getProjectVisualStyle(project.visualStyle, project.scriptData?.visualStyle);
   const genre = project.scriptData?.genre || DEFAULTS.genre;
 
-  // 页面重开后可能保留 generating 状态，需要回退为 failed 让用户能重新生成。
+  // Khôi phục tác vụ bị gián đoạn để người dùng có thể tạo lại sau khi mở trang.
   useEffect(() => {
     if (!project.scriptData) return;
 
@@ -95,7 +94,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       const items = await getAllAssetLibraryItems();
       setLibraryItems(items);
     } catch (e) {
-      console.error('Failed to load asset library', e);
+      console.error('Không thể tải thư viện tài nguyên', e);
     } finally {
       setLibraryLoading(false);
     }
@@ -446,7 +445,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const newData = { ...project.scriptData };
     newData.characters.push(newChar);
     updateProject({ scriptData: newData });
-    showAlert('Đã tạo nhân vật mới. Hãy chỉnh prompt và tạo ảnh.', { type: 'success' });
+    showAlert('Đã tạo nhân vật mới. Hãy chỉnh câu lệnh và tạo ảnh.', { type: 'success' });
   };
 
   const handleDeleteCharacter = (charId: string) => {
@@ -455,7 +454,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     if (!char) return;
 
     showAlert(
-      `Bạn có chắc muốn xóa nhân vật "${char.name}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi storyboard có sử dụng nhân vật và có thể làm sai liên kết.`,
+      `Bạn có chắc muốn xóa nhân vật "${char.name}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi bảng phân cảnh có sử dụng nhân vật và có thể làm sai liên kết.`,
       {
         type: 'warning',
         title: 'Xóa nhân vật',
@@ -487,7 +486,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const newData = { ...project.scriptData };
     newData.scenes.push(newScene);
     updateProject({ scriptData: newData });
-    showAlert('Đã tạo bối cảnh mới. Hãy chỉnh prompt và tạo ảnh.', { type: 'success' });
+    showAlert('Đã tạo bối cảnh mới. Hãy chỉnh câu lệnh và tạo ảnh.', { type: 'success' });
   };
 
   const handleDeleteScene = (sceneId: string) => {
@@ -496,7 +495,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     if (!scene) return;
 
     showAlert(
-      `Bạn có chắc muốn xóa bối cảnh "${scene.location}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi storyboard có sử dụng bối cảnh và có thể làm sai liên kết.`,
+      `Bạn có chắc muốn xóa bối cảnh "${scene.location}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi bảng phân cảnh có sử dụng bối cảnh và có thể làm sai liên kết.`,
       {
         type: 'warning',
         title: 'Xóa bối cảnh',
@@ -557,7 +556,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     try {
       const refImages = char.referenceImage ? [char.referenceImage] : [];
       const regionalPrefix = getRegionalPrefix(language, 'character');
-      const enhancedPrompt = `${regionalPrefix}Character "${char.name}" wearing NEW OUTFIT: ${variation.visualPrompt}. This is a costume/outfit change - the character's face and identity must remain identical to the reference, but they should be wearing the described new outfit.`;
+      const enhancedPrompt = `${regionalPrefix}Nhân vật "${char.name}" mặc TRANG PHỤC MỚI: ${variation.visualPrompt}. Đây chỉ là thay đổi trang phục; khuôn mặt và danh tính nhân vật phải giống hệt ảnh tham chiếu, đồng thời mặc đúng bộ đồ được mô tả.`;
       
       const imageUrl = await generateImage(enhancedPrompt, refImages, aspectRatio, true);
 
@@ -582,7 +581,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       if (onApiKeyError && onApiKeyError(e)) {
         return;
       }
-      showAlert("Variation generation failed", { type: 'error' });
+      showAlert('Tạo biến thể thất bại', { type: 'error' });
     }
   };
 
@@ -670,7 +669,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 <div>
                   <div className="text-sm font-bold text-white">Thư viện tài nguyên</div>
                   <div className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">
-                    {libraryItems.length} assets
+                    {libraryItems.length} tài nguyên
                   </div>
                 </div>
               </div>
@@ -795,7 +794,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                   <Users className="w-5 h-5 text-cyan-300" />
             Nhân vật & bối cảnh
             <span className="text-xs text-cyan-100/40 font-mono font-normal uppercase tracking-wider bg-white/5 px-2 py-1 rounded-full">
-              Assets & Casting
+              TÀI NGUYÊN VÀ TUYỂN VAI
             </span>
           </h2>
         </div>
@@ -809,7 +808,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             Thư viện tài nguyên
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500 uppercase">Model</span>
+            <span className="text-[10px] text-zinc-500 uppercase">Mô hình</span>
             <ModelSelector
               type="image"
               value={selectedImageModelId}
@@ -834,10 +833,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           <div className="w-px h-6 bg-white/10" />
           <div className="flex gap-2">
             <span className={STYLES.badge}>
-              {project.scriptData.characters.length} CHARS
+              {project.scriptData.characters.length} NHÂN VẬT
             </span>
             <span className={STYLES.badge}>
-              {project.scriptData.scenes.length} SCENES
+              {project.scriptData.scenes.length} BỐI CẢNH
             </span>
           </div>
         </div>
@@ -849,7 +848,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-cyan-300 rounded-full shadow-lg shadow-cyan-300/40" />
-                Concept nhân vật
+                Ý tưởng nhân vật
               </h3>
               <p className="text-xs text-zinc-500 mt-1 pl-3.5">Tạo hình ảnh tham chiếu nhất quán cho nhân vật trong kịch bản</p>
             </div>
@@ -906,7 +905,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                Concept bối cảnh
+                Ý tưởng bối cảnh
               </h3>
               <p className="text-xs text-zinc-500 mt-1 pl-3.5">Tạo hình ảnh tham chiếu cho môi trường trong kịch bản</p>
             </div>

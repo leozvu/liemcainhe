@@ -15,17 +15,17 @@ const icons = {
 const ActionPage: React.FC<ActionPageProps> = ({ onComplete, onQuickStart }) => {
   return (
     <div className="flex flex-col items-center text-center">
-      {/* 标题 */}
+      {/* Tiêu đề */}
       <h2 className="text-2xl font-bold text-white mb-2">
         Bắt đầu sáng tạo ngay
       </h2>
 
-      {/* 说明文案 */}
+      {/* Mô tả */}
       <p className="text-zinc-500 text-sm mb-8">
         Chọn một cách bắt đầu phù hợp với bạn
       </p>
 
-      {/* 选项卡片 */}
+      {/* Lựa chọn bắt đầu */}
       <div className="w-full max-w-md space-y-3 mb-8">
         {QUICK_START_OPTIONS.map((option) => {
           const Icon = icons[option.id as keyof typeof icons];
@@ -49,7 +49,7 @@ const ActionPage: React.FC<ActionPageProps> = ({ onComplete, onQuickStart }) => 
         })}
       </div>
 
-      {/* 主按钮 */}
+      {/* Hành động chính */}
       <button
         onClick={onComplete}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"
@@ -57,7 +57,7 @@ const ActionPage: React.FC<ActionPageProps> = ({ onComplete, onQuickStart }) => 
         Tạo bộ phim đầu tiên
       </button>
 
-      {/* 辅助入口 */}
+      {/* Hành động phụ */}
       <p className="mt-6 text-[10px] text-zinc-600">
         Bạn có thể xem lại hướng dẫn từ thanh bên bất cứ lúc nào
       </p>

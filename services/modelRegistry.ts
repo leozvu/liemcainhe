@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import {
   ModelType,
   ModelDefinition,
@@ -13,27 +12,61 @@ import {
   DEFAULT_ACTIVE_MODELS,
   DEFAULT_CHAT_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
+  DEFAULT_VIDEO_MODEL_ID,
   DEPRECATED_BUILTIN_CHAT_MODEL_IDS,
   DEPRECATED_BUILTIN_IMAGE_MODEL_IDS,
   DEPRECATED_BUILTIN_VIDEO_MODEL_IDS,
   migrateDeprecatedVideoModelId,
   AspectRatio,
   VideoDuration,
+  DEFAULT_PROVIDER_ID,
+  OPENROUTER_PROVIDER_ID,
+  GOOGLE_PROVIDER_ID,
+  REPLICATE_PROVIDER_ID,
 } from '../types/model';
 
-const STORAGE_KEY = 'ai_manga_studio_model_registry';
-const LEGACY_STORAGE_KEY = ['big' + 'banana', 'model', 'registry'].join('_');
-const API_KEY_STORAGE_KEY = 'antsk_api_key';
+const STORAGE_KEY = 'egoric_studio_model_registry';
+const LEGACY_STORAGE_KEYS = [atob('YWlfbWFuZ2Ffc3R1ZGlvX21vZGVsX3JlZ2lzdHJ5')];
+const API_KEY_STORAGE_KEY = 'egoric_studio_api_key';
+const LEGACY_API_KEY_STORAGE_KEYS = [atob('YW50c2tfYXBpX2tleQ==')];
+const LEGACY_PROVIDER_ID = atob('YW50c2s=');
+const LEGACY_API_HOST = atob('YXBpLmdpdGNjLmNvbQ==');
 
 const normalizeBaseUrl = (url: string): string => url.trim().replace(/\/+$/, '').toLowerCase();
 
 let registryState: ModelRegistryState | null = null;
 
+const readFirstStoredValue = (keys: string[]): string | null => {
+  for (const key of keys) {
+    const value = localStorage.getItem(key);
+    if (value) return value;
+  }
+  return null;
+};
+
+const clearStoredValues = (keys: string[]): void => {
+  keys.forEach((key) => localStorage.removeItem(key));
+};
+
+const isLegacyProvider = (provider: Partial<ModelProvider>): boolean => {
+  if (provider.id === LEGACY_PROVIDER_ID || provider.id === 'egoric-gateway') return true;
+  try {
+    return new URL(provider.baseUrl || '').hostname === LEGACY_API_HOST;
+  } catch {
+    return false;
+  }
+};
+
+const cloneBuiltInProviders = (): ModelProvider[] =>
+  BUILTIN_PROVIDERS.map((provider) => ({ ...provider }));
+
+const cloneBuiltInModels = (): ModelDefinition[] =>
+  ALL_BUILTIN_MODELS.map((model) => ({ ...model, params: { ...model.params } } as ModelDefinition));
+
 const getDefaultState = (): ModelRegistryState => ({
-  providers: [...BUILTIN_PROVIDERS],
-  models: [...ALL_BUILTIN_MODELS],
+  providers: cloneBuiltInProviders(),
+  models: cloneBuiltInModels(),
   activeModels: { ...DEFAULT_ACTIVE_MODELS },
-  globalApiKey: localStorage.getItem(API_KEY_STORAGE_KEY) || undefined,
 });
 
 export const loadRegistry = (): ModelRegistryState => {
@@ -42,16 +75,36 @@ export const loadRegistry = (): ModelRegistryState => {
   }
 
   try {
-    const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY) || readFirstStoredValue(LEGACY_STORAGE_KEYS);
     if (stored) {
       const parsed = JSON.parse(stored) as ModelRegistryState;
-      // Hợp nhất nhà cung cấp tích hợp và ghi đè baseUrl/tên để loại bỏ dữ liệu cũ trong localStorage.
+      const legacyProviderIds = new Set(
+        (parsed.providers || []).filter(isLegacyProvider).map((provider) => provider.id)
+      );
+      legacyProviderIds.add(LEGACY_PROVIDER_ID);
+      legacyProviderIds.add('egoric-gateway');
+
+      parsed.providers = (parsed.providers || [])
+        .filter((provider) => !isLegacyProvider(provider))
+        .map((provider) => ({
+          ...provider,
+          protocol: provider.protocol || 'openai-compatible',
+          supportedModelTypes:
+            provider.supportedModelTypes ||
+            (['chat', 'image', 'video'] as ModelType[]),
+        }));
+      parsed.models = (parsed.models || []).filter(
+        (model) => !legacyProviderIds.has(model.providerId)
+      );
+      parsed.activeModels = parsed.activeModels || { ...DEFAULT_ACTIVE_MODELS };
+      // Đồng bộ toàn bộ metadata nhà cung cấp tích hợp nhưng giữ khóa người dùng đã nhập.
       BUILTIN_PROVIDERS.forEach(bp => {
         const idx = parsed.providers.findIndex(p => p.id === bp.id);
         if (idx === -1) {
-          parsed.providers.unshift(bp);
+          parsed.providers.unshift({ ...bp });
         } else {
-          parsed.providers[idx] = { ...parsed.providers[idx], baseUrl: bp.baseUrl, name: bp.name };
+          const apiKey = parsed.providers[idx].apiKey;
+          parsed.providers[idx] = { ...bp, apiKey };
         }
       });
 
@@ -69,7 +122,7 @@ export const loadRegistry = (): ModelRegistryState => {
         const existingIndex = parsed.models.findIndex(m => m.id === bm.id);
         if (existingIndex === -1) {
           // Thêm mô hình tích hợp còn thiếu.
-          parsed.models.push(bm);
+          parsed.models.push({ ...bm, params: { ...bm.params } } as ModelDefinition);
         } else {
           // Cập nhật tham số mô hình tích hợp nhưng giữ lựa chọn isEnabled của người dùng.
           const existing = parsed.models[existingIndex];
@@ -132,20 +185,23 @@ export const loadRegistry = (): ModelRegistryState => {
         parsed.activeModels.image = DEFAULT_IMAGE_MODEL_ID;
       }
 
-      if (parsed.activeModels.video === 'sora-2' || parsed.activeModels.video === 'doubao-seedance-2-0') {
-        parsed.activeModels.video = DEFAULT_VIDEO_MODEL_ID;
-      }
+      const activeFallbacks: ActiveModels = { ...DEFAULT_ACTIVE_MODELS };
+      (['chat', 'image', 'video'] as ModelType[]).forEach((type) => {
+        const activeId = parsed.activeModels[type];
+        const activeModel = parsed.models.find(
+          (model) => model.id === activeId && model.type === type && model.isEnabled
+        );
+        if (!activeModel) parsed.activeModels[type] = activeFallbacks[type];
+      });
 
-      parsed.models = parsed.models.filter(
-        (m) => !(m.isBuiltIn && m.id === 'doubao-seedance-2-0')
-      );
-      
-      // Đồng bộ API Key toàn cục.
-      parsed.globalApiKey = localStorage.getItem(API_KEY_STORAGE_KEY) || parsed.globalApiKey;
+      // Không chuyển khóa của cổng cũ sang nhà cung cấp mới vì khóa không tương thích.
+      delete parsed.globalApiKey;
+      localStorage.removeItem(API_KEY_STORAGE_KEY);
       
       registryState = parsed;
       saveRegistry(parsed);
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      clearStoredValues(LEGACY_STORAGE_KEYS);
+      clearStoredValues(LEGACY_API_KEY_STORAGE_KEYS);
       return parsed;
     }
   } catch (e) {
@@ -153,6 +209,8 @@ export const loadRegistry = (): ModelRegistryState => {
   }
 
   registryState = getDefaultState();
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  clearStoredValues(LEGACY_API_KEY_STORAGE_KEYS);
   return registryState;
 };
 
@@ -162,7 +220,7 @@ export const loadRegistry = (): ModelRegistryState => {
 export const saveRegistry = (state: ModelRegistryState): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    clearStoredValues(LEGACY_STORAGE_KEYS);
     registryState = state;
   } catch (e) {
     console.error('Lưu sổ đăng ký mô hình thất bại:', e);
@@ -182,7 +240,9 @@ export const getRegistryState = (): ModelRegistryState => {
 export const resetRegistry = (): void => {
   registryState = null;
   localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  clearStoredValues(LEGACY_STORAGE_KEYS);
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  clearStoredValues(LEGACY_API_KEY_STORAGE_KEYS);
   loadRegistry();
 };
 
@@ -354,7 +414,7 @@ export const setActiveModel = (type: ModelType, modelId: string): boolean => {
  * Đăng ký mô hình mới.
  * @param model - Định nghĩa mô hình (có thể có id tùy chỉnh, không gồm isBuiltIn).
  */
-export const registerModel = (model: Omit<ModelDefinition, 'isBuiltIn'> & { id?: string }): ModelDefinition => {
+export const registerModel = (model: Omit<ModelDefinition, 'id' | 'isBuiltIn'> & { id?: string }): ModelDefinition => {
   const state = loadRegistry();
   
   const providedId = (model as any).id?.trim();
@@ -443,29 +503,35 @@ export const toggleModelEnabled = (id: string, enabled: boolean): boolean => {
 // ============================================
 
 /**
- * Lấy API Key toàn cục.
+ * Tương thích ngược: khóa "toàn cục" nay là khóa OpenRouter.
+ * Mã mới nên dùng getProviderApiKey/setProviderApiKey.
  */
 export const getGlobalApiKey = (): string | undefined => {
-  return loadRegistry().globalApiKey || localStorage.getItem(API_KEY_STORAGE_KEY) || undefined;
+  return getProviderApiKey(OPENROUTER_PROVIDER_ID);
 };
 
-/**
- * Đặt API Key toàn cục.
- */
+/** Tương thích ngược với màn hình cũ; không phát tán khóa sang nhà cung cấp khác. */
 export const setGlobalApiKey = (apiKey: string): void => {
-  const state = loadRegistry();
-  state.globalApiKey = apiKey;
-  localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
-  saveRegistry(state);
+  setProviderApiKey(OPENROUTER_PROVIDER_ID, apiKey);
+};
+
+/** Lấy khóa đã lưu cho đúng nhà cung cấp. */
+export const getProviderApiKey = (providerId: string): string | undefined =>
+  getProviderById(providerId)?.apiKey;
+
+/** Lưu hoặc xóa khóa cho một nhà cung cấp. */
+export const setProviderApiKey = (providerId: string, apiKey: string): boolean => {
+  const normalizedKey = apiKey.trim();
+  return updateProvider(providerId, { apiKey: normalizedKey || undefined });
 };
 
 /**
  * Lấy API Key cho mô hình.
- * Ưu tiên: khóa riêng của mô hình > khóa nhà cung cấp > khóa toàn cục.
+ * Ưu tiên: khóa riêng của mô hình > khóa đúng nhà cung cấp.
  */
 export const getApiKeyForModel = (modelId: string): string | undefined => {
   const model = getModelById(modelId);
-  if (!model) return getGlobalApiKey();
+  if (!model) return undefined;
   
   // 1. Ưu tiên API Key riêng của mô hình.
   if (model.apiKey) {
@@ -478,45 +544,33 @@ export const getApiKeyForModel = (modelId: string): string | undefined => {
     return provider.apiKey;
   }
   
-  // 3. Cuối cùng dùng API Key toàn cục.
-  return getGlobalApiKey();
+  return undefined;
 };
 
-/** Dùng đường dẫn tương đối qua proxy Vite khi chạy cục bộ để tránh CORS. */
-const API_PROXY_PATH = '/api-proxy';
-
-/** Kiểm tra môi trường localhost/127.0.0.1 để quyết định định tuyến qua proxy. */
-function isLocalOrigin(): boolean {
-  if (typeof window === 'undefined') return false;
-  const o = window.location.origin;
-  return o.startsWith('http://localhost') || o.startsWith('http://127.0.0.1') || o.startsWith('https://localhost') || o.startsWith('https://127.0.0.1');
-}
-
-function isGitccApiBaseUrl(baseUrl: string): boolean {
-  try {
-    return new URL(baseUrl).hostname === 'api.gitcc.com';
-  } catch {
-    return false;
-  }
-}
+const BUILTIN_PROVIDER_PROXY_BASES: Record<string, string> = {
+  [OPENROUTER_PROVIDER_ID]: '/api-proxy/openrouter/api',
+  [GOOGLE_PROVIDER_ID]: '/api-proxy/google/v1beta/openai',
+  [REPLICATE_PROVIDER_ID]: '/api-proxy/replicate',
+};
 
 /**
- * Lấy URL API cơ sở cho mô hình.
- * Nhà cung cấp dùng GitCC (api.gitcc.com); định tuyến qua /api-proxy để tránh CORS.
- * - Khi phát triển cục bộ: proxy Vite chuyển tiếp đến GitCC.
- * - Khi triển khai: Nginx chuyển tiếp đến GitCC.
+ * Lấy địa chỉ API của nhà cung cấp. Ba nhà cung cấp tích hợp luôn đi qua proxy
+ * cùng miền để khóa không bị lộ cho một đích tùy ý và để tránh lỗi CORS.
+ */
+export const getApiBaseUrlForProvider = (providerId: string): string => {
+  const proxyBase = BUILTIN_PROVIDER_PROXY_BASES[providerId];
+  if (proxyBase) return proxyBase;
+  const provider = getProviderById(providerId) || getDefaultProvider();
+  return provider.baseUrl.replace(/\/+$/, '');
+};
+
+/**
+ * Lấy URL API cơ sở cho mô hình theo đúng nhà cung cấp của nó.
  */
 export const getApiBaseUrlForModel = (modelId: string): string => {
   const model = getModelById(modelId);
   const provider = model ? getProviderById(model.providerId) : BUILTIN_PROVIDERS[0];
-  let baseUrl = (provider?.baseUrl || BUILTIN_PROVIDERS[0].baseUrl).replace(/\/+$/, '');
-
-  // Luôn đi qua /api-proxy để trình duyệt không truy cập chéo miền trực tiếp.
-  if (isGitccApiBaseUrl(baseUrl)) {
-    return API_PROXY_PATH;
-  }
-
-  return baseUrl;
+  return getApiBaseUrlForProvider(provider?.id || DEFAULT_PROVIDER_ID);
 };
 
 // ============================================

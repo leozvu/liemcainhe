@@ -1,24 +1,25 @@
 # Egoric Studio
 
-> Xưởng sản xuất phim ngắn, motion comic và storyboard bằng AI của Egoric Agency.
+> Xưởng sản xuất phim ngắn, truyện tranh chuyển động và bảng phân cảnh bằng AI của Egoric Agency.
 
-Egoric Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu dự án, hình ảnh và cấu hình model được lưu cục bộ trong trình duyệt bằng IndexedDB.
+Egoric Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu dự án, hình ảnh và cấu hình mô hình được lưu cục bộ trong trình duyệt bằng IndexedDB.
 
 ## Quy trình sản xuất
 
-1. **Sáng tạo kịch bản** — phân tích cốt truyện, nhân vật, bối cảnh và storyboard.
+1. **Sáng tạo kịch bản** — phân tích cốt truyện, nhân vật, bối cảnh và bảng phân cảnh.
 2. **Nhân vật & bối cảnh** — tạo concept, biến thể trang phục và ảnh tham chiếu.
-3. **Xưởng AI** — sản xuất keyframe đầu/cuối và video cho từng cảnh quay.
+3. **Xưởng AI** — sản xuất khung hình chính đầu/cuối và video cho từng cảnh quay.
 4. **Sản xuất & xuất bản** — xem timeline, tải video và toàn bộ tài nguyên gốc.
-5. **Quản lý tài nguyên** — tìm kiếm và chỉnh prompt nhân vật, bối cảnh, keyframe và video.
+5. **Quản lý tài nguyên** — tìm kiếm và chỉnh câu lệnh nhân vật, bối cảnh, khung hình chính và video.
 
 ## Công nghệ
 
 - React 19, TypeScript và Vite 6
 - Tailwind CSS và Lucide icons
 - IndexedDB cho dữ liệu dự án cục bộ
-- API tương thích OpenAI cho model văn bản, hình ảnh và video
-- Electron cho bản desktop
+- OpenRouter và Google AI Studio cho mô hình hội thoại
+- Replicate cho mô hình hình ảnh và video
+- Electron cho bản máy tính
 - Docker và Nginx cho triển khai web
 
 ## Chạy cục bộ
@@ -32,14 +33,14 @@ npm run dev
 
 Mở địa chỉ Vite hiển thị trong terminal. Để dùng các tính năng AI, mở **Cấu hình mô hình** và nhập API Key.
 
-### Build production
+### Tạo bản phát hành
 
 ```bash
 npm run build
 npm run preview
 ```
 
-### Bản desktop
+### Bản máy tính
 
 ```bash
 npm run electron:dev
@@ -60,15 +61,15 @@ docker compose down
 
 ## Cấu hình API
 
-Mặc định dự án dùng một gateway tương thích OpenAI và chuyển tiếp yêu cầu qua `/api-proxy` để tránh lỗi CORS. Xem [hướng dẫn cấu hình model](./docs/MODEL_CONFIGURATION.vi.md) và [hướng dẫn thay gateway API](./docs/API_GATEWAY.vi.md).
+Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
 
-API Key chỉ được lưu trong bộ nhớ cục bộ của trình duyệt. Không commit API Key vào repository.
+Khóa API chỉ được lưu trong bộ nhớ cục bộ của trình duyệt. Không đưa khóa API vào lịch sử Git.
 
 ## Thương hiệu và nguồn mở
 
-Phiên bản này được Việt hóa và white-label thành **Egoric Studio**, một sản phẩm của **Egoric Agency**.
+Phiên bản này được Việt hóa và mang thương hiệu **Egoric Studio**, một sản phẩm của **Egoric Agency**.
 
-Dự án được phát triển từ mã nguồn mở [yuanzhongqiao/printfilm](https://github.com/yuanzhongqiao/printfilm), phân phối theo giấy phép MIT. Mọi thương hiệu và dịch vụ model của bên thứ ba thuộc về chủ sở hữu tương ứng.
+Dự án được phát triển từ mã nguồn mở [yuanzhongqiao/printfilm](https://github.com/yuanzhongqiao/printfilm), phân phối theo giấy phép MIT. Mọi thương hiệu và dịch vụ mô hình của bên thứ ba thuộc về chủ sở hữu tương ứng.
 
 ## Hỗ trợ
 

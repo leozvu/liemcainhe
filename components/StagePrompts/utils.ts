@@ -117,5 +117,5 @@ export const filterShots = (shots: Shot[], searchQuery: string): Shot[] => {
 };
 
 export const getDefaultVideoPrompt = (shot: Shot): string => {
-  return `${shot.actionSummary}\n\nChuyển động máy quay: ${shot.cameraMovement}\nModel: ${shot.videoModel || 'sora-2'}`;
+  return `${shot.actionSummary}\n\nChuyển động máy quay: ${shot.cameraMovement}\nMô hình: ${shot.videoModel || 'sora-2'}`;
 };

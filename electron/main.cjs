@@ -10,7 +10,11 @@ function getDistRoot() {
   return path.join(process.resourcesPath, 'app.asar.unpacked', 'dist');
 }
 
-const API_PROXY_TARGET = 'https://api.gitcc.com';
+const API_PROXY_TARGETS = [
+  { path: '/api-proxy/openrouter', target: 'https://openrouter.ai' },
+  { path: '/api-proxy/google', target: 'https://generativelanguage.googleapis.com' },
+  { path: '/api-proxy/replicate', target: 'https://api.replicate.com' },
+];
 const DEFAULT_PORT = 39628;
 
 let mainWindow = null;
@@ -64,19 +68,21 @@ async function startServer() {
   const distRoot = getDistRoot();
   const app = express();
 
-  app.use(
-    '/api-proxy',
-    createProxyMiddleware({
-      target: API_PROXY_TARGET,
-      changeOrigin: true,
-      pathRewrite: { '^/api-proxy': '' },
-      onError(err, req, res) {
-        console.error('Proxy error:', err.message);
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Proxy error', message: err.message }));
-      },
-    })
-  );
+  API_PROXY_TARGETS.forEach(({ path: proxyPath, target }) => {
+    app.use(
+      proxyPath,
+      createProxyMiddleware({
+        target,
+        changeOrigin: true,
+        pathRewrite: { [`^${proxyPath}`]: '' },
+        onError(err, req, res) {
+          console.error('Proxy error:', err.message);
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Proxy error', message: err.message }));
+        },
+      })
+    );
+  });
 
   app.use(express.static(distRoot, { index: false }));
   app.get('*', (req, res) => {

@@ -74,21 +74,21 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
           <button 
             onClick={onEditPrompt}
             className="p-1 text-yellow-400 hover:text-white transition-colors"
-            title="Xem trước/chỉnh prompt video"
+            title="Xem trước hoặc chỉnh câu lệnh video"
           >
             <Edit2 className="w-3 h-3" />
           </button>
         </h4>
         {shot.interval?.status === 'completed' && (
           <span className="text-[10px] text-green-500 font-mono flex items-center gap-1">
-            ● READY
+            ● SẴN SÀNG
           </span>
         )}
       </div>
       
       <div className="space-y-2">
         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">
-          Chọn model video
+          Chọn mô hình video
         </label>
         <select
           value={selectedModelId}
@@ -146,7 +146,7 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
             Chỉ tạo video từ văn bản (không dùng khung đầu)
           </span>
           <span className="block text-[9px] text-zinc-600 mt-0.5 leading-relaxed">
-            Không tải keyframe bắt đầu lên làm ảnh tham chiếu; video chỉ được tạo từ mô tả. Hữu ích khi khung đầu có nhân vật bị bộ lọc nội dung chặn.
+            Không tải khung hình đầu lên làm ảnh tham chiếu; video chỉ được tạo từ mô tả. Hữu ích khi khung đầu có nhân vật bị bộ lọc nội dung chặn.
           </span>
         </span>
       </label>
@@ -157,7 +157,7 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
         </div>
       ) : (
         <div className="w-full aspect-video bg-slate-950/55 rounded-2xl border border-dashed border-cyan-200/15 flex items-center justify-center">
-          <span className="text-xs text-zinc-600 font-mono">PREVIEW AREA</span>
+          <span className="text-xs text-zinc-600 font-mono">KHU VỰC XEM TRƯỚC</span>
         </div>
       )}
 
@@ -210,12 +210,12 @@ const VideoGenerator: React.FC<VideoGeneratorProps> = ({
       
       {!textToVideoOnly && !hasEndFrame && (
         <div className="text-[9px] text-zinc-500 text-center font-mono">
-          * Không có khung kết thúc; sẽ dùng chế độ một ảnh (Image-to-Video)
+          * Không có khung kết thúc; sẽ dùng chế độ tạo video từ một ảnh
         </div>
       )}
       {textToVideoOnly && (
         <div className="text-[9px] text-cyan-400/80 text-center font-mono">
-          * Chế độ văn bản: không tải khung đầu/cuối, chỉ gửi mô tả video
+          * Chế độ văn bản: không tải khung đầu hoặc cuối, chỉ gửi mô tả video
         </div>
       )}
     </div>

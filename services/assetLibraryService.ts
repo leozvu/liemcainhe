@@ -8,7 +8,7 @@ const generateId = (prefix: string): string => {
 const cloneCharacterVariation = (variation: Character['variations'][number]) => ({
   ...variation,
   id: generateId('var'),
-  status: variation.referenceImage ? 'completed' : 'pending'
+  status: variation.referenceImage ? 'completed' as const : 'pending' as const
 });
 
 export const createLibraryItemFromCharacter = (character: Character): AssetLibraryItem => {

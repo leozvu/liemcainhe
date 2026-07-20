@@ -59,7 +59,7 @@ export interface VideoInterval {
   motionStrength: number;
   videoUrl?: string;
   videoPrompt?: string;
-  /** 纯文生视频：不传首帧/尾帧参考图，用于规避上传图真人审核 */
+  /** Tạo video thuần văn bản, không gửi ảnh khung đầu hoặc khung cuối. */
   textToVideoOnly?: boolean;
   status: 'pending' | 'generating' | 'completed' | 'failed';
 }

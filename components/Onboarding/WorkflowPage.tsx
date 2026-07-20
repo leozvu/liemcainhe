@@ -11,12 +11,12 @@ const icons = [FileText, Users, Clapperboard, Film];
 const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
   return (
     <div className="flex flex-col items-center text-center">
-      {/* 标题 */}
+      {/* Tiêu đề */}
       <h2 className="text-2xl font-bold text-white mb-8">
         Hoàn thiện video chỉ trong 4 bước
       </h2>
 
-      {/* 流程图示意 */}
+      {/* Sơ đồ quy trình */}
       <div className="w-full max-w-md mb-10">
         <div className="flex items-center justify-between mb-6">
           {WORKFLOW_STEPS.map((step, index) => {
@@ -37,7 +37,7 @@ const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
           })}
         </div>
 
-        {/* 步骤说明列表 */}
+        {/* Danh sách các bước */}
         <div className="space-y-3 text-left">
           {WORKFLOW_STEPS.map((step, index) => (
             <div 
@@ -52,7 +52,7 @@ const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
         </div>
       </div>
 
-      {/* 主按钮 */}
+      {/* Hành động chính */}
       <button
         onClick={onNext}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"

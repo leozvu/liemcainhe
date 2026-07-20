@@ -47,7 +47,7 @@ const ShotRow: React.FC<Props> = ({
   onSaveAction,
   onCancelAction
 }) => {
-  // shot-1 / shot-1-1 需要映射为分鏡列表上的主鏡頭/子鏡頭編號。
+  // Chuyển mã cảnh quay thành số thứ tự cảnh chính hoặc cảnh phụ trong danh sách.
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {
@@ -227,13 +227,13 @@ const ShotRow: React.FC<Props> = ({
         <div className="xl:hidden pt-4 border-t border-white/10">
           <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2 flex items-center gap-2 justify-between">
             <span className="flex items-center gap-2">
-              <Aperture className="w-3 h-3" /> Prompt hình ảnh
+              <Aperture className="w-3 h-3" /> Câu lệnh hình ảnh
             </span>
             {editingShotId !== shot.id && (
               <button
                 onClick={() => onEditPrompt(shot.id, shot.keyframes[0]?.visualPrompt || '')}
                 className="p-1.5 bg-white/10 hover:bg-white/15 rounded-xl transition-colors"
-                title="Chỉnh sửa prompt"
+                title="Chỉnh sửa câu lệnh"
               >
                 <Edit2 className="w-3 h-3 text-zinc-400" />
               </button>
@@ -246,7 +246,7 @@ const ShotRow: React.FC<Props> = ({
             onChange={(val) => onEditPrompt(shot.id, val)}
             onSave={onSavePrompt}
             onCancel={onCancelPrompt}
-            placeholder="Nhập prompt hình ảnh..."
+            placeholder="Nhập câu lệnh hình ảnh..."
             rows={4}
             mono={true}
             showEditButton={false}
@@ -257,13 +257,13 @@ const ShotRow: React.FC<Props> = ({
       <div className="w-64 hidden xl:block pl-6 border-l border-white/10">
         <div className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest mb-2 flex items-center gap-2 justify-between">
           <span className="flex items-center gap-2">
-            <Aperture className="w-3 h-3" /> Prompt hình ảnh
+            <Aperture className="w-3 h-3" /> Câu lệnh hình ảnh
           </span>
           {editingShotId !== shot.id && (
             <button
               onClick={() => onEditPrompt(shot.id, shot.keyframes[0]?.visualPrompt || '')}
               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/10 rounded-xl"
-              title="Chỉnh sửa prompt"
+              title="Chỉnh sửa câu lệnh"
             >
               <Edit2 className="w-3 h-3 text-zinc-500 hover:text-white" />
             </button>
@@ -276,7 +276,7 @@ const ShotRow: React.FC<Props> = ({
           onChange={(val) => onEditPrompt(shot.id, val)}
           onSave={onSavePrompt}
           onCancel={onCancelPrompt}
-          placeholder="Nhập prompt hình ảnh..."
+          placeholder="Nhập câu lệnh hình ảnh..."
           rows={6}
           mono={true}
           showEditButton={false}

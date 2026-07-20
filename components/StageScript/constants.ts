@@ -1,7 +1,7 @@
 export const DURATION_OPTIONS = [
   { label: '30 giây (quảng cáo)', value: '30s' },
-  { label: '60 giây (trailer)', value: '60s' },
-  { label: '2 phút (teaser)', value: '120s' },
+  { label: '60 giây (phim giới thiệu)', value: '60s' },
+  { label: '2 phút (đoạn nhá hàng)', value: '120s' },
   { label: '5 phút (phim ngắn)', value: '300s' },
   { label: '15 phút (tập phim)', value: '900s' },
   { label: 'Tùy chỉnh', value: 'custom' }
@@ -9,20 +9,19 @@ export const DURATION_OPTIONS = [
 
 export const LANGUAGE_OPTIONS = [
   { label: 'Tiếng Việt', value: 'Vietnamese' },
-  { label: 'Tiếng Trung', value: 'Chinese' },
-  { label: 'English (US)', value: 'English' },
+  { label: 'Tiếng Anh (Mỹ)', value: 'English' },
   { label: 'Tiếng Nhật', value: 'Japanese' },
-  { label: 'Français (French)', value: 'French' },
-  { label: 'Español (Spanish)', value: 'Spanish' }
+  { label: 'Tiếng Pháp', value: 'French' },
+  { label: 'Tiếng Tây Ban Nha', value: 'Spanish' }
 ];
 
 export const VISUAL_STYLE_OPTIONS = [
   { label: 'Anime Nhật Bản', value: 'anime', desc: 'Phong cách anime Nhật với đường nét rõ' },
   { label: 'Hoạt hình 2D', value: '2d-animation', desc: 'Phong cách hoạt hình 2D kinh điển' },
   { label: 'Hoạt hình 3D', value: '3d-animation', desc: 'Phong cách phim hoạt hình 3D điện ảnh' },
-  { label: 'Cyberpunk', value: 'cyberpunk', desc: 'Thẩm mỹ cyberpunk công nghệ cao' },
+  { label: 'Viễn tưởng công nghệ', value: 'cyberpunk', desc: 'Thẩm mỹ tương lai với ánh sáng neon và công nghệ cao' },
   { label: 'Tranh sơn dầu', value: 'oil-painting', desc: 'Chất liệu nghệ thuật sơn dầu' },
-  { label: 'Live-action', value: 'live-action', desc: 'Phong cách phim điện ảnh siêu thực' },
+  { label: 'Phim người đóng', value: 'live-action', desc: 'Phong cách phim điện ảnh chân thực' },
   { label: 'Phong cách khác', value: 'custom', desc: 'Tự nhập phong cách mong muốn' }
 ];
 

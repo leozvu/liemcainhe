@@ -4,113 +4,113 @@ export interface CameraMovementGuide {
 }
 
 export const CAMERA_MOVEMENT_GUIDES: Record<string, CameraMovementGuide> = {
-  'horizontal left shot': {
-    start: 'Composition: Subject positioned on the right side of frame, with space on the left for movement.',
-    end: 'Composition: Subject moved to left side of frame, showing the journey from right to left.'
+  'lia máy ngang sang trái': {
+    start: 'Bố cục: chủ thể ở bên phải khung hình, chừa khoảng trống bên trái cho hướng di chuyển.',
+    end: 'Bố cục: chủ thể chuyển sang bên trái khung hình, thể hiện hành trình từ phải sang trái.'
   },
-  'horizontal right shot': {
-    start: 'Composition: Subject positioned on the left side of frame, with space on the right for movement.',
-    end: 'Composition: Subject moved to right side of frame, showing the journey from left to right.'
+  'lia máy ngang sang phải': {
+    start: 'Bố cục: chủ thể ở bên trái khung hình, chừa khoảng trống bên phải cho hướng di chuyển.',
+    end: 'Bố cục: chủ thể chuyển sang bên phải khung hình, thể hiện hành trình từ trái sang phải.'
   },
-  'pan left shot': {
-    start: 'Composition: Frame focused on right portion of scene, anticipating leftward pan.',
-    end: 'Composition: Frame reveals left portion of scene, completing the pan movement.'
+  'quét máy sang trái': {
+    start: 'Bố cục: khung hình tập trung vào phần bên phải của cảnh, chuẩn bị quét sang trái.',
+    end: 'Bố cục: khung hình mở ra phần bên trái của cảnh, hoàn tất chuyển động quét máy.'
   },
-  'pan right shot': {
-    start: 'Composition: Frame focused on left portion of scene, anticipating rightward pan.',
-    end: 'Composition: Frame reveals right portion of scene, completing the pan movement.'
+  'quét máy sang phải': {
+    start: 'Bố cục: khung hình tập trung vào phần bên trái của cảnh, chuẩn bị quét sang phải.',
+    end: 'Bố cục: khung hình mở ra phần bên phải của cảnh, hoàn tất chuyển động quét máy.'
   },
-  'zoom in shot': {
-    start: 'Composition: Wide establishing shot showing full scene context, subject smaller in frame.',
-    end: 'Composition: Tight close-up on subject, filling frame with detail and intimacy.'
+  'thu gần': {
+    start: 'Bố cục: toàn cảnh giới thiệu đầy đủ không gian, chủ thể nhỏ trong khung hình.',
+    end: 'Bố cục: cận cảnh chặt vào chủ thể, lấp đầy khung hình bằng chi tiết và cảm xúc.'
   },
-  'zoom out shot': {
-    start: 'Composition: Close-up on subject, emphasizing details and emotion.',
-    end: 'Composition: Wide pullback revealing surrounding environment and context.'
+  'thu xa': {
+    start: 'Bố cục: cận cảnh chủ thể, nhấn mạnh chi tiết và cảm xúc.',
+    end: 'Bố cục: mở rộng thành toàn cảnh để lộ môi trường và ngữ cảnh xung quanh.'
   },
-  'dolly shot': {
-    start: 'Composition: Initial framing with subject at specific distance and perspective.',
-    end: 'Composition: Changed perspective with subject closer/further, revealing depth and space.'
+  'máy trượt': {
+    start: 'Bố cục: khung hình ban đầu đặt chủ thể ở khoảng cách và phối cảnh xác định.',
+    end: 'Bố cục: phối cảnh thay đổi khi chủ thể gần hoặc xa hơn, làm rõ chiều sâu không gian.'
   },
-  'tilt up shot': {
-    start: 'Composition: Camera angle pointing downward or level, capturing lower portion of subject.',
-    end: 'Composition: Camera tilted upward, revealing height and vertical expanse above.'
+  'ngẩng máy lên': {
+    start: 'Bố cục: máy quay hướng xuống hoặc ngang, ghi phần thấp của chủ thể.',
+    end: 'Bố cục: máy quay ngẩng lên, bộc lộ chiều cao và không gian phía trên.'
   },
-  'tilt down shot': {
-    start: 'Composition: Camera angle pointing upward or level, emphasizing upper portion.',
-    end: 'Composition: Camera tilted downward, revealing lower elements and ground level.'
+  'hạ máy xuống': {
+    start: 'Bố cục: máy quay hướng lên hoặc ngang, nhấn mạnh phần trên.',
+    end: 'Bố cục: máy quay hạ xuống, bộc lộ các yếu tố thấp và mặt đất.'
   },
-  'vertical up shot': {
-    start: 'Composition: Lower vertical position, subject at bottom of frame or ground level.',
-    end: 'Composition: Elevated position, subject risen vertically showing upward movement.'
+  'máy đi lên': {
+    start: 'Bố cục: vị trí máy thấp, chủ thể ở đáy khung hình hoặc sát mặt đất.',
+    end: 'Bố cục: vị trí máy cao hơn, thể hiện chuyển động đi lên của chủ thể.'
   },
-  'vertical down shot': {
-    start: 'Composition: Elevated vertical position, subject higher in frame.',
-    end: 'Composition: Lower position, subject descended showing downward movement.'
+  'máy đi xuống': {
+    start: 'Bố cục: vị trí máy cao, chủ thể nằm ở phần trên khung hình.',
+    end: 'Bố cục: vị trí máy thấp hơn, thể hiện chuyển động đi xuống của chủ thể.'
   },
-  'tracking shot': {
-    start: 'Composition: Subject in frame with forward/lateral space for tracking movement.',
-    end: 'Composition: Subject tracked through space, maintaining visual relationship.'
+  'máy bám theo': {
+    start: 'Bố cục: chủ thể trong khung hình, chừa không gian phía trước hoặc bên cạnh để bám theo.',
+    end: 'Bố cục: máy bám theo chủ thể trong không gian và giữ quan hệ thị giác ổn định.'
   },
-  'circular shot': {
-    start: 'Composition: Subject centered, camera at initial angle of circular path.',
-    end: 'Composition: Subject still centered, camera at opposite side revealing new angle.'
+  'máy vòng quanh': {
+    start: 'Bố cục: chủ thể ở giữa, máy quay tại góc đầu của quỹ đạo vòng.',
+    end: 'Bố cục: chủ thể vẫn ở giữa, máy quay sang phía đối diện để lộ góc nhìn mới.'
   },
-  '360-degree circular shot': {
-    start: 'Composition: Subject centered, camera beginning 360° orbit.',
-    end: 'Composition: Subject centered, camera completing full revolution from different angle.'
+  'máy vòng 360 độ': {
+    start: 'Bố cục: chủ thể ở giữa, máy quay bắt đầu quỹ đạo 360 độ.',
+    end: 'Bố cục: chủ thể ở giữa, máy quay hoàn tất một vòng từ góc nhìn khác.'
   },
-  'low angle shot': {
-    start: 'Composition: Low camera angle looking upward, emphasizing height and power.',
-    end: 'Composition: Maintained low angle, subject towering with dramatic perspective.'
+  'góc máy thấp': {
+    start: 'Bố cục: góc máy thấp nhìn lên, nhấn mạnh chiều cao và sức mạnh.',
+    end: 'Bố cục: duy trì góc thấp, chủ thể cao lớn trong phối cảnh kịch tính.'
   },
-  'high angle shot': {
-    start: 'Composition: High camera angle looking downward, creating overview perspective.',
-    end: 'Composition: Maintained high angle, emphasizing scale and spatial relationships.'
+  'góc máy cao': {
+    start: 'Bố cục: góc máy cao nhìn xuống, tạo góc nhìn bao quát.',
+    end: 'Bố cục: duy trì góc cao, nhấn mạnh quy mô và quan hệ không gian.'
   },
-  "bird's eye view shot": {
-    start: 'Composition: Directly overhead view, showing layout and patterns from above.',
-    end: 'Composition: Continued overhead perspective, revealing changed spatial arrangement.'
+  'góc nhìn từ trên cao': {
+    start: 'Bố cục: nhìn thẳng từ trên xuống, thể hiện bố trí và hoa văn bên dưới.',
+    end: 'Bố cục: tiếp tục góc nhìn trên cao, bộc lộ sự thay đổi trong sắp xếp không gian.'
   },
-  'pov shot': {
-    start: "Composition: First-person perspective from character's viewpoint.",
-    end: 'Composition: Maintained POV, showing what character sees after movement/action.'
+  'góc nhìn chủ quan': {
+    start: 'Bố cục: góc nhìn thứ nhất từ mắt nhân vật.',
+    end: 'Bố cục: duy trì góc nhìn chủ quan, thể hiện điều nhân vật thấy sau chuyển động.'
   },
-  'over the shoulder shot': {
-    start: "Composition: Frame includes foreground character's shoulder, looking at subject.",
-    end: 'Composition: Maintained over-shoulder framing, possibly with shifted focus or angle.'
+  'góc qua vai': {
+    start: 'Bố cục: khung hình có vai nhân vật ở tiền cảnh nhìn về chủ thể.',
+    end: 'Bố cục: duy trì góc qua vai, có thể thay đổi điểm nét hoặc góc nhìn.'
   },
-  'handheld shot': {
-    start: 'Composition: Dynamic handheld framing with natural movement and energy.',
-    end: 'Composition: Continued handheld aesthetic with organic repositioning.'
+  'máy cầm tay': {
+    start: 'Bố cục: khung hình cầm tay năng động với chuyển động tự nhiên.',
+    end: 'Bố cục: tiếp tục thẩm mỹ cầm tay với sự thay đổi vị trí hữu cơ.'
   },
-  'static shot': {
-    start: 'Composition: Fixed camera position, stable framing throughout.',
-    end: 'Composition: Same camera position, only subject movement within frame.'
+  'máy tĩnh': {
+    start: 'Bố cục: máy quay cố định, khung hình ổn định xuyên suốt.',
+    end: 'Bố cục: máy quay giữ nguyên vị trí, chỉ chủ thể chuyển động trong khung hình.'
   },
-  'rotating shot': {
-    start: 'Composition: Subject in frame, camera beginning rotational movement.',
-    end: 'Composition: Subject with changed orientation due to camera rotation.'
+  'máy xoay': {
+    start: 'Bố cục: chủ thể trong khung hình, máy quay bắt đầu xoay.',
+    end: 'Bố cục: hướng của chủ thể thay đổi tương quan theo chuyển động xoay máy.'
   },
-  'slow motion shot': {
-    start: 'Composition: Action captured at beginning of slow-motion sequence.',
-    end: 'Composition: Action progressed, emphasizing graceful movement detail.'
+  'quay chậm': {
+    start: 'Bố cục: ghi lại hành động ở đầu chuỗi chuyển động chậm.',
+    end: 'Bố cục: hành động tiến triển, nhấn mạnh chi tiết chuyển động mềm mại.'
   },
-  'parallel tracking shot': {
-    start: 'Composition: Subject with camera tracking parallel alongside.',
-    end: 'Composition: Maintained parallel relationship, subject moved through space.'
+  'bám theo song song': {
+    start: 'Bố cục: máy quay bám song song bên cạnh chủ thể.',
+    end: 'Bố cục: duy trì quan hệ song song khi chủ thể di chuyển trong không gian.'
   },
-  'diagonal tracking shot': {
-    start: 'Composition: Subject with camera on diagonal tracking path.',
-    end: 'Composition: Diagonal perspective maintained, dynamic spatial progression.'
+  'bám theo đường chéo': {
+    start: 'Bố cục: máy quay bám chủ thể theo quỹ đạo đường chéo.',
+    end: 'Bố cục: duy trì phối cảnh chéo, tạo cảm giác tiến triển không gian năng động.'
   },
-  'canted shot': {
-    start: 'Composition: Tilted horizon line creating dutch angle, dynamic unease.',
-    end: 'Composition: Maintained or adjusted dutch angle, emphasizing disorientation.'
+  'góc máy nghiêng': {
+    start: 'Bố cục: đường chân trời nghiêng tạo cảm giác bất an năng động.',
+    end: 'Bố cục: duy trì hoặc điều chỉnh góc nghiêng, nhấn mạnh sự mất phương hướng.'
   },
-  'cinematic dolly zoom': {
-    start: 'Composition: Initial balanced framing before vertigo effect.',
-    end: 'Composition: Distorted perspective with foreground/background relationship altered.'
+  'trượt máy kết hợp thu phóng': {
+    start: 'Bố cục: khung hình cân bằng trước hiệu ứng biến dạng phối cảnh.',
+    end: 'Bố cục: phối cảnh biến đổi khi quan hệ giữa tiền cảnh và hậu cảnh thay đổi.'
   }
 };
 
@@ -127,6 +127,6 @@ export const getCameraMovementCompositionGuide = (
   }
   
   return frameType === 'start' 
-    ? 'Composition: Initial frame composition suited for the camera movement.'
-    : 'Composition: Final frame composition showing the result of camera movement.';
+    ? 'Bố cục: khung hình đầu phù hợp với chuyển động máy quay.'
+    : 'Bố cục: khung hình cuối thể hiện kết quả của chuyển động máy quay.';
 };

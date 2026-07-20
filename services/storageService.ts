@@ -1,10 +1,9 @@
-// Author: forsearch | Updated: 2026-04-30
 import { ProjectState, AssetLibraryItem } from '../types';
 import { migrateDeprecatedChatModelId } from '../types/model';
 
-const DB_NAME = 'AiMangaStudioDB';
-const LEGACY_DB_NAME = ['Big', 'Banana', 'DB'].join('');
-const DB_MIGRATION_KEY = 'ai_manga_studio_db_migrated';
+const DB_NAME = 'EgoricStudioDB';
+const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
+const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
 const DB_VERSION = 2;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
@@ -109,7 +108,7 @@ export const loadProjectFromDB = async (id: string): Promise<ProjectState> => {
     request.onsuccess = () => {
       if (request.result) {
         const project = request.result;
-        // 舊專案可能沒有 renderLogs，需要補齊以免後續渲染日誌寫入失敗。
+        // Bổ sung nhật ký kết xuất cho dự án cũ để tránh lỗi khi ghi dữ liệu mới.
         if (!project.renderLogs) {
           project.renderLogs = [];
         }
@@ -127,7 +126,7 @@ export const loadProjectFromDB = async (id: string): Promise<ProjectState> => {
         }
         resolve(project);
       }
-      else reject(new Error("Project not found"));
+      else reject(new Error('Không tìm thấy dự án'));
     };
     request.onerror = () => reject(request.error);
   });

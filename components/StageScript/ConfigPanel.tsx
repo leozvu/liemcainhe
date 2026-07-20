@@ -103,10 +103,10 @@ const ConfigPanel: React.FC<Props> = ({
             value={model}
             onChange={onModelChange}
             disabled={isProcessing}
-            label="Model tạo storyboard"
+            label="Mô hình tạo bảng phân cảnh"
           />
           <p className="text-[9px] text-slate-500">
-            Có sẵn GPT-5.2 / GPT-5.4; bạn có thể thêm model hội thoại trong <span className="text-cyan-300">Cấu hình mô hình</span>
+            Có sẵn GPT-5.2 / GPT-5.4; bạn có thể thêm mô hình hội thoại trong <span className="text-cyan-300">Cấu hình mô hình</span>
           </p>
         </div>
 
@@ -141,7 +141,7 @@ const ConfigPanel: React.FC<Props> = ({
           ) : (
             <>
               <Wand2 className="w-4 h-4" />
-              Tạo storyboard
+              Tạo bảng phân cảnh
             </>
           )}
         </button>

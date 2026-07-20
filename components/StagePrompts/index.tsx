@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState } from 'react';
 import { Search, Film } from 'lucide-react';
 import { ProjectState } from '../../types';
@@ -84,7 +83,7 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-white mb-1">Quản lý tài nguyên</h1>
-              <p className="text-sm text-slate-400">Xem và chỉnh sửa prompt, biến số của mọi tác vụ tạo nội dung</p>
+              <p className="text-sm text-slate-400">Xem và chỉnh sửa câu lệnh, biến số của mọi tác vụ tạo nội dung</p>
             </div>
           </div>
 
@@ -95,7 +94,7 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm prompt, nhân vật, bối cảnh..."
+                placeholder="Tìm câu lệnh, nhân vật, bối cảnh..."
                 className="w-full bg-white/[0.06] border border-white/10 text-white pl-10 pr-4 py-2 rounded-xl text-sm focus:border-cyan-300/40 focus:outline-none placeholder:text-slate-500"
               />
             </div>
@@ -107,7 +106,7 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
               <option value="all">Tất cả</option>
               <option value="characters">Nhân vật</option>
               <option value="scenes">Bối cảnh</option>
-              <option value="keyframes">Keyframe</option>
+              <option value="keyframes">Khung hình chính</option>
             </select>
           </div>
         </div>
@@ -159,8 +158,8 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
             <div className="text-center py-16">
               <div className="text-zinc-600 mb-4">
                 <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">Chưa có dữ liệu prompt</p>
-                <p className="text-sm mt-2">Hãy tạo nhân vật và bối cảnh ở Giai đoạn 01, hoặc tạo storyboard trong Xưởng AI.</p>
+                <p className="text-lg">Chưa có dữ liệu câu lệnh</p>
+                <p className="text-sm mt-2">Hãy tạo nhân vật và bối cảnh ở Giai đoạn 01, hoặc tạo bảng phân cảnh trong Xưởng AI.</p>
               </div>
             </div>
           )}

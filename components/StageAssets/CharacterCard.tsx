@@ -225,7 +225,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           <PromptEditor
             prompt={character.visualPrompt || ''}
             onSave={onPromptSave}
-            label="Prompt nhân vật"
+            label="Câu lệnh nhân vật"
             placeholder="Nhập mô tả hình ảnh nhân vật..."
           />
         </div>

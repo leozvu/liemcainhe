@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState, useEffect } from 'react';
 import { ProjectState } from '../../types';
 import { parseScriptToData, generateShotList, continueScript, continueScriptStream, rewriteScript, rewriteScriptStream } from '../../services/geminiService';
@@ -123,7 +122,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       return;
     }
     if (!finalModel) {
-      setError("Hãy chọn hoặc nhập tên model.");
+      setError('Hãy chọn hoặc nhập tên mô hình.');
       return;
     }
 
@@ -172,7 +171,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       return;
     }
     if (!finalModel) {
-      setError("Hãy chọn hoặc nhập tên model.");
+      setError('Hãy chọn hoặc nhập tên mô hình.');
       return;
     }
 

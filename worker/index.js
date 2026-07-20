@@ -1,13 +1,16 @@
-const API_PREFIX = '/api-proxy';
-const API_ORIGIN = 'https://api.gitcc.com';
+const API_TARGETS = {
+  '/api-proxy/openrouter': 'https://openrouter.ai',
+  '/api-proxy/google': 'https://generativelanguage.googleapis.com',
+  '/api-proxy/replicate': 'https://api.replicate.com',
+};
 
-function createUpstreamRequest(request, url) {
-  const upstreamUrl = new URL(url.pathname.slice(API_PREFIX.length) || '/', API_ORIGIN);
+function createUpstreamRequest(request, url, prefix, origin) {
+  const upstreamUrl = new URL(url.pathname.slice(prefix.length) || '/', origin);
   upstreamUrl.search = url.search;
 
   const headers = new Headers(request.headers);
-  headers.set('origin', API_ORIGIN);
-  headers.set('referer', `${API_ORIGIN}/`);
+  headers.set('origin', origin);
+  headers.set('referer', `${origin}/`);
   headers.delete('host');
 
   return new Request(upstreamUrl, {
@@ -32,8 +35,12 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
-      return fetch(createUpstreamRequest(request, url));
+    const target = Object.entries(API_TARGETS).find(
+      ([prefix]) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)
+    );
+    if (target) {
+      const [prefix, origin] = target;
+      return fetch(createUpstreamRequest(request, url, prefix, origin));
     }
 
     return serveApp(request, env);

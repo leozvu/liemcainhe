@@ -10,12 +10,12 @@ const HighlightPage: React.FC<HighlightPageProps> = ({ onNext }) => {
   const icons = [Frame, Shirt, Palette];
   return (
     <div className="flex flex-col items-center text-center">
-      {/* 标题 */}
+      {/* Tiêu đề */}
       <h2 className="text-2xl font-bold text-white mb-8">
         Hình ảnh liền mạch, nhân vật nhất quán
       </h2>
 
-      {/* 亮点说明 */}
+      {/* Điểm nổi bật */}
       <div className="w-full max-w-md space-y-4 mb-8">
         {HIGHLIGHTS.map((highlight, index) => {
           const Icon = icons[index];
@@ -32,14 +32,14 @@ const HighlightPage: React.FC<HighlightPageProps> = ({ onNext }) => {
         })}
       </div>
 
-      {/* 场景共鸣 */}
+      {/* Tình huống sử dụng */}
       <div className="bg-gradient-to-r from-cyan-300/10 via-sky-400/10 to-fuchsia-400/10 border border-cyan-200/20 rounded-2xl px-6 py-4 mb-10 max-w-md">
         <p className="text-zinc-300 text-sm italic">
           “Tạo một phim ngắn chuyển đổi trang phục mà không còn lo nhân vật bị biến dạng.”
         </p>
       </div>
 
-      {/* 主按钮 */}
+      {/* Hành động chính */}
       <button
         onClick={onNext}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"

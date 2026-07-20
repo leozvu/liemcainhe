@@ -20,7 +20,7 @@ export const calculateProgress = (project: ProjectState): number => {
 };
 
 export const formatTimestamp = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  return new Date(timestamp).toLocaleString('vi-VN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

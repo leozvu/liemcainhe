@@ -14,7 +14,7 @@ const ShotCard: React.FC<ShotCardProps> = ({ shot, index, isActive, onClick }) =
   const hasImage = !!sKf?.imageUrl;
   const hasVideo = !!shot.interval?.videoUrl;
 
-  // shot-1 / shot-1-1 需要映射为卡片上的主镜头/子镜头编号。
+  // Chuyển mã cảnh quay thành số thứ tự cảnh chính hoặc cảnh phụ trên thẻ.
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {

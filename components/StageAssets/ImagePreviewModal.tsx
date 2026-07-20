@@ -23,7 +23,7 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, onClose
       <div className="flex items-center justify-center p-8 w-full h-full">
         <img 
           src={imageUrl} 
-          alt="Preview" 
+          alt="Xem trước"
           className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         />

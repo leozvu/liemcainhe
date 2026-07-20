@@ -1,3 +1,5 @@
+import { localizeApiErrorMessage } from './apiErrorLocalization';
+
 export type ParsedApiError = { message?: string; type?: string; code?: string; param?: string };
 
 export function parseOpenAIStyleErrorBody(text: string): { error?: ParsedApiError } | null {
@@ -8,7 +10,7 @@ export function parseOpenAIStyleErrorBody(text: string): { error?: ParsedApiErro
   }
 }
 
-/** 从嵌套 JSON / error 对象中提取最内层 message（平台原文，不改写） */
+/** Lấy thông báo sâu nhất từ JSON hoặc đối tượng lỗi và giữ nguyên nội dung từ nền tảng. */
 export function extractInnermostErrorMessage(input: unknown, depth = 0): string {
   if (depth > 10 || input == null) return '';
 
@@ -20,7 +22,7 @@ export function extractInnermostErrorMessage(input: unknown, depth = 0): string 
         const inner = extractInnermostErrorMessage(JSON.parse(trimmed), depth + 1);
         if (inner) return inner;
       } catch {
-        /* 非 JSON，当作最终 message */
+        /* Chuỗi không phải JSON được xem là thông báo cuối cùng. */
       }
     }
     return trimmed;
@@ -48,18 +50,17 @@ function extractFromResponseBody(bodyText: string): string {
   return extractInnermostErrorMessage(parsed?.error ?? parsed ?? trimmed);
 }
 
-/** HTTP 请求失败：仅展示最内层 message */
+/** Lỗi yêu cầu HTTP: chỉ hiển thị thông báo sâu nhất. */
 export function formatVideoRequestErrorForUser(
   status: number,
   bodyText: string,
   _mode: 'sora' | 'veo' = 'sora'
 ): string {
   const inner = extractFromResponseBody(bodyText);
-  if (inner) return inner;
-  return `HTTP ${status}`;
+  return localizeApiErrorMessage(inner, status);
 }
 
-/** 轮询任务失败：仅展示最内层 message */
+/** Lỗi theo dõi tác vụ: chỉ hiển thị thông báo sâu nhất. */
 export function formatVideoTaskErrorForUser(
   err: unknown,
   fallbackMessage?: string,
@@ -68,7 +69,7 @@ export function formatVideoTaskErrorForUser(
   const inner =
     extractInnermostErrorMessage(err) ||
     extractInnermostErrorMessage(fallbackMessage);
-  return inner || 'Lỗi không xác định';
+  return localizeApiErrorMessage(inner || fallbackMessage);
 }
 
 export function throwFromVideoHttpError(status: number, bodyText: string, mode: 'sora' | 'veo' = 'sora'): never {

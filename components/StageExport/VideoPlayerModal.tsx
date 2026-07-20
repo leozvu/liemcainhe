@@ -123,7 +123,7 @@ const VideoPlayerModal: React.FC<Props> = ({
             onClick={onClose}
             className="px-4 py-2 bg-cyan-300 text-slate-950 hover:bg-cyan-200 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors"
           >
-            Close
+            Đóng
           </button>
         </div>
       </div>

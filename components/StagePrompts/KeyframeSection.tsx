@@ -34,7 +34,7 @@ const KeyframeSection: React.FC<Props> = ({
 
   return (
     <CollapsibleSection
-      title="Keyframe storyboard"
+      title="Khung hình chính của bảng phân cảnh"
       icon={<Film className="w-5 h-5" />}
       count={shots.length}
       isExpanded={isExpanded}
@@ -103,7 +103,7 @@ const KeyframeSection: React.FC<Props> = ({
                     <div className="mt-2 rounded-xl overflow-hidden border border-white/10">
                       <img 
                         src={keyframe.imageUrl} 
-                        alt={`Keyframe ${keyframe.type}`}
+                        alt={`Khung hình chính ${keyframe.type === 'start' ? 'bắt đầu' : 'kết thúc'}`}
                         className="w-full h-auto"
                       />
                     </div>
@@ -117,7 +117,7 @@ const KeyframeSection: React.FC<Props> = ({
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className={STYLES.badge.videoPrompt}>
-                          Prompt tạo video
+                          Câu lệnh tạo video
                         </span>
                         <StatusBadge status={shot.interval.status || 'idle'} />
                       </div>
@@ -148,7 +148,7 @@ const KeyframeSection: React.FC<Props> = ({
                             <span className="text-zinc-500">
                               {getDefaultVideoPrompt(shot)}
                               <span className="block mt-1 text-yellow-600/70">
-                                Lưu ý: video này không lưu prompt khi tạo; nội dung trên chỉ là suy luận
+                                Lưu ý: video này không lưu câu lệnh khi tạo; nội dung trên chỉ là suy luận
                               </span>
                             </span>
                           )}

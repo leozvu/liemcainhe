@@ -22,12 +22,12 @@ export const STYLES = {
 };
 
 export const VISUAL_STYLE_PROMPTS: Record<string, string> = {
-  'live-action': 'photorealistic, cinematic film quality, real human actors, professional cinematography, natural lighting, 8K resolution',
-  'anime': 'Japanese anime style, cel-shaded, vibrant colors, expressive eyes, dynamic poses, Studio Ghibli/Makoto Shinkai quality',
-  '2d-animation': 'classic 2D animation, hand-drawn style, Disney/Pixar quality, smooth lines, expressive characters, painterly backgrounds',
-  '3d-animation': 'high-quality 3D CGI animation, Pixar/DreamWorks style, subsurface scattering, detailed textures, stylized characters',
-  'cyberpunk': 'cyberpunk aesthetic, neon-lit, rain-soaked streets, holographic displays, high-tech low-life, Blade Runner style',
-  'oil-painting': 'oil painting style, visible brushstrokes, rich textures, classical art composition, museum quality fine art',
+  'live-action': 'hình ảnh chân thực, chất lượng phim điện ảnh, diễn viên người thật, quay phim chuyên nghiệp, ánh sáng tự nhiên, độ phân giải 8K',
+  'anime': 'phong cách hoạt hình Nhật Bản, đổ bóng theo mảng, màu sắc rực rỡ, đôi mắt biểu cảm, tư thế năng động, chất lượng điện ảnh',
+  '2d-animation': 'hoạt hình 2D cổ điển, nét vẽ tay, đường nét mượt mà, nhân vật giàu biểu cảm, phông nền như tranh vẽ',
+  '3d-animation': 'hoạt hình 3D CGI chất lượng cao, tán xạ dưới bề mặt, chất liệu chi tiết, nhân vật cách điệu',
+  'cyberpunk': 'thẩm mỹ tương lai công nghệ cao, ánh sáng neon, đường phố mưa ướt, màn hình ba chiều, tương phản mạnh',
+  'oil-painting': 'phong cách tranh sơn dầu, nét cọ rõ, chất liệu phong phú, bố cục mỹ thuật cổ điển, chất lượng trưng bày',
 };
 
 export const VIDEO_PROMPT_TEMPLATES = {
@@ -54,6 +54,6 @@ Ngôn ngữ lời thoại: {language}`
 };
 
 export const DEFAULTS = {
-  videoModel: 'doubao-seedance-2-0-fast' as const,
+  videoModel: 'replicate-seedance-1-pro' as const,
   batchGenerateDelay: 3000,
 };

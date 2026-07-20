@@ -12,7 +12,7 @@ interface PromptEditorProps {
 const PromptEditor: React.FC<PromptEditorProps> = ({
   prompt,
   onSave,
-  label = 'Prompt',
+  label = 'Câu lệnh',
   placeholder = 'Nhập mô tả hình ảnh...',
   maxHeight = 'max-h-[200px]',
 }) => {
@@ -45,7 +45,7 @@ const PromptEditor: React.FC<PromptEditorProps> = ({
           <button
             onClick={handleStartEdit}
             className="text-zinc-500 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-xl"
-            title="Chỉnh sửa prompt"
+            title="Chỉnh sửa câu lệnh"
           >
             <Edit3 className="w-3 h-3" />
           </button>
@@ -87,7 +87,7 @@ const PromptEditor: React.FC<PromptEditorProps> = ({
             <div className="flex items-start gap-2 text-zinc-600">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed">
-                Chưa có prompt. Nhấn nút chỉnh sửa để thêm mô tả hình ảnh.
+                Chưa có câu lệnh. Nhấn nút chỉnh sửa để thêm mô tả hình ảnh.
               </p>
             </div>
           )}
