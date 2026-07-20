@@ -31,7 +31,7 @@
   },
   "build": {
     "appId": "agency.egoric.studio",
-    "productName": "Egoric Studio",
+    "productName": "Egoric Film Studio",
     "directories": {
       "output": "release"
     },

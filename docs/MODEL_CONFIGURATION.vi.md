@@ -1,4 +1,4 @@
-# Cấu hình mô hình trong Egoric Studio
+# Cấu hình mô hình trong Egoric Film Studio
 
 ## Kết nối nhà cung cấp
 
@@ -12,7 +12,7 @@ Khóa của OpenRouter, Google AI Studio và Replicate được lưu tách biệ
 
 ## Chọn mô hình hoạt động
 
-Egoric Studio chia mô hình thành ba nhóm:
+Egoric Film Studio chia mô hình thành ba nhóm:
 
 - **Hội thoại**: phân tích kịch bản, tạo bảng phân cảnh và tối ưu câu lệnh.
 - **Hình ảnh**: tạo ý tưởng nhân vật, bối cảnh và khung hình chính.
@@ -29,7 +29,7 @@ Nhấn **Sử dụng** trên thẻ mô hình để đặt mô hình hoạt độ
 5. Chỉ nhập endpoint khi cần ghi đè đường dẫn mặc định.
 6. Để trống khóa riêng của mô hình để dùng khóa đã lưu trên thẻ nhà cung cấp.
 
-Với Replicate, dùng tên dạng `chủ-sở-hữu/tên-mô-hình`; Egoric Studio tự tạo endpoint dự đoán và kiểm tra trạng thái đến khi hoàn tất.
+Với Replicate, dùng tên dạng `chủ-sở-hữu/tên-mô-hình`; Egoric Film Studio tự tạo endpoint dự đoán và kiểm tra trạng thái đến khi hoàn tất.
 
 ## Dữ liệu và quyền riêng tư
 

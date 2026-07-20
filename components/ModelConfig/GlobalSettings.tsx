@@ -118,7 +118,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
           <div>
             <h3 className="text-base font-bold text-white">Kết nối nhà cung cấp AI</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
-              Mỗi nhà cung cấp dùng khóa riêng. Egoric Studio chỉ gửi khóa đến đúng dịch vụ bạn chọn
+              Mỗi nhà cung cấp dùng khóa riêng. Egoric Film Studio chỉ gửi khóa đến đúng dịch vụ bạn chọn
               và lưu cấu hình trong trình duyệt trên thiết bị này.
             </p>
           </div>

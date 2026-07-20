@@ -2,6 +2,7 @@ import React from 'react';
 import { Film, CheckCircle, BarChart3 } from 'lucide-react';
 import { ProjectState } from '../../types';
 import { STYLES } from './constants';
+import { getVoiceStats } from './utils';
 
 interface Props {
   project: ProjectState;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 const StatusPanel: React.FC<Props> = ({ project, progress, estimatedDuration }) => {
+  const voiceStats = getVoiceStats(project);
+
   return (
     <div className={STYLES.statusPanel.container}>
       <div className={STYLES.statusPanel.decoration.top}></div>
@@ -31,6 +34,11 @@ const StatusPanel: React.FC<Props> = ({ project, progress, estimatedDuration }) 
               <span className={STYLES.statusPanel.statValue}>{project.shots.length}</span>
             </div>
             <div className="w-px h-6 bg-white/10"></div>
+            <div className={STYLES.statusPanel.stat}>
+              <span className={STYLES.statusPanel.statLabel}>Lời thoại sẵn sàng</span>
+              <span className={STYLES.statusPanel.statValue}>{voiceStats.ready}/{voiceStats.required}</span>
+            </div>
+            <div className="hidden lg:block w-px h-6 bg-white/10"></div>
             <div className={STYLES.statusPanel.stat}>
               <span className={STYLES.statusPanel.statLabel}>Thời lượng dự kiến</span>
               <span className={STYLES.statusPanel.statValue}>~{estimatedDuration}s</span>

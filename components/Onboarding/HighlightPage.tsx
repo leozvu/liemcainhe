@@ -1,13 +1,13 @@
 import React from 'react';
 import { HIGHLIGHTS } from './constants';
-import { Frame, Shirt, Palette } from 'lucide-react';
+import { AudioLines, Frame, Shirt, Palette } from 'lucide-react';
 
 interface HighlightPageProps {
   onNext: () => void;
 }
 
 const HighlightPage: React.FC<HighlightPageProps> = ({ onNext }) => {
-  const icons = [Frame, Shirt, Palette];
+  const icons = [Frame, Shirt, Palette, AudioLines];
   return (
     <div className="flex flex-col items-center text-center">
       {/* Tiêu đề */}

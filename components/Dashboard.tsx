@@ -1,7 +1,37 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Loader2, Folder, ChevronRight, Calendar, AlertTriangle, X, HelpCircle, Cpu, Archive, Search, Users, MapPin, ExternalLink } from 'lucide-react';
-import { ProjectState, AssetLibraryItem, Character, Scene } from '../types';
-import { getAllProjectsMetadata, createNewProjectState, deleteProjectFromDB, getAllAssetLibraryItems, deleteAssetFromLibrary, loadProjectFromDB, saveProjectToDB } from '../services/storageService';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Archive,
+  ArrowUpRight,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  Clapperboard,
+  Clock3,
+  Cpu,
+  ExternalLink,
+  Film,
+  FolderOpen,
+  HelpCircle,
+  Image as ImageIcon,
+  Loader2,
+  MapPin,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  UsersRound,
+  X,
+} from 'lucide-react';
+import { AssetLibraryItem, Character, ProjectState, Scene } from '../types';
+import {
+  createNewProjectState,
+  deleteAssetFromLibrary,
+  deleteProjectFromDB,
+  getAllAssetLibraryItems,
+  getAllProjectsMetadata,
+  loadProjectFromDB,
+  saveProjectToDB,
+} from '../services/storageService';
 import { applyLibraryItemToProject } from '../services/assetLibraryService';
 import { useAlert } from './GlobalAlert';
 
@@ -11,95 +41,72 @@ interface Props {
   onShowModelConfig?: () => void;
 }
 
+const STAGE_META: Record<ProjectState['stage'], { label: string; step: number }> = {
+  script: { label: 'Kịch bản', step: 1 },
+  assets: { label: 'Tài nguyên', step: 2 },
+  voice: { label: 'Giọng thoại', step: 3 },
+  director: { label: 'Xưởng dựng', step: 4 },
+  export: { label: 'Xuất bản', step: 5 },
+  prompts: { label: 'Kho sáng tạo', step: 4 },
+};
+
+const formatDate = (timestamp: number) => new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit', month: 'short', year: 'numeric',
+}).format(timestamp);
+
+const getProjectPreview = (project: ProjectState) => {
+  const character = project.scriptData?.characters.find((item) => item.referenceImage)?.referenceImage;
+  const scene = project.scriptData?.scenes.find((item) => item.referenceImage)?.referenceImage;
+  const keyframe = project.shots.flatMap((shot) => shot.keyframes).find((item) => item.imageUrl)?.imageUrl;
+  return keyframe || scene || character;
+};
+
 const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowModelConfig }) => {
   const { showAlert } = useAlert();
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [showGroupQr, setShowGroupQr] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [libraryItems, setLibraryItems] = useState<AssetLibraryItem[]>([]);
-  const [isLibraryLoading, setIsLibraryLoading] = useState(true);
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'character' | 'scene'>('all');
   const [assetToUse, setAssetToUse] = useState<AssetLibraryItem | null>(null);
-  const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   const loadProjects = async () => {
     setIsLoading(true);
     try {
-      const list = await getAllProjectsMetadata();
-      setProjects(list);
-    } catch (e) {
-      console.error('Không thể tải danh sách dự án', e);
+      setProjects(await getAllProjectsMetadata());
+    } catch (error) {
+      console.error('Không thể tải danh sách dự án', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadLibrary = async () => {
-    setIsLibraryLoading(true);
-    try {
-      const items = await getAllAssetLibraryItems();
-      setLibraryItems(items);
-    } catch (e) {
-      console.error('Không thể tải thư viện tài nguyên', e);
-    } finally {
-      setIsLibraryLoading(false);
-    }
-  };
+  useEffect(() => { void loadProjects(); }, []);
 
   useEffect(() => {
-    loadProjects();
-  }, []);
+    if (!showLibrary) return;
+    setLibraryLoading(true);
+    getAllAssetLibraryItems()
+      .then(setLibraryItems)
+      .catch((error) => console.error('Không thể tải thư viện tài nguyên', error))
+      .finally(() => setLibraryLoading(false));
+  }, [showLibrary]);
 
-  useEffect(() => {
-    if (showLibraryModal) {
-      loadLibrary();
-    }
-  }, [showLibraryModal]);
+  const handleCreate = () => onOpenProject(createNewProjectState());
 
-  const handleCreate = () => {
-    const newProject = createNewProjectState();
-    onOpenProject(newProject);
-  };
-
-  const requestDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setDeleteConfirmId(id);
-  };
-
-  const cancelDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeleteConfirmId(null);
-  };
-
-  const confirmDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    
+  const confirmDelete = async (event: React.MouseEvent, id: string) => {
+    event.stopPropagation();
     try {
-        await deleteProjectFromDB(id);
-        await loadProjects();
+      await deleteProjectFromDB(id);
+      await loadProjects();
     } catch (error) {
-        console.error("Không thể xóa dự án:", error);
-        showAlert(`Không thể xóa dự án: ${error instanceof Error ? error.message : 'Lỗi không xác định'}\n\nVui lòng kiểm tra console trình duyệt để xem chi tiết.`, { type: 'error' });
+      showAlert(`Không thể xóa dự án: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
     } finally {
-        setDeleteConfirmId(null);
+      setDeleteConfirmId(null);
     }
-  };
-
-  const handleDeleteLibraryItem = (itemId: string) => {
-    showAlert('Bạn có chắc muốn xóa tài nguyên này khỏi thư viện?', {
-      type: 'warning',
-      showCancel: true,
-      onConfirm: async () => {
-        try {
-          await deleteAssetFromLibrary(itemId);
-          setLibraryItems((prev) => prev.filter((item) => item.id !== itemId));
-        } catch (error) {
-          showAlert(`Không thể xóa tài nguyên: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
-        }
-      }
-    });
   };
 
   const handleUseAsset = async (projectId: string) => {
@@ -108,412 +115,201 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
       const project = await loadProjectFromDB(projectId);
       const updated = applyLibraryItemToProject(project, assetToUse);
       await saveProjectToDB(updated);
-      onOpenProject(updated);
       setAssetToUse(null);
+      setShowLibrary(false);
+      onOpenProject(updated);
     } catch (error) {
       showAlert(`Nhập tài nguyên thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
     }
   };
 
-  const formatDate = (ts: number) => {
-    return new Date(ts).toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const deleteLibraryItem = (id: string) => {
+    showAlert('Xóa tài nguyên này khỏi thư viện Egoric?', {
+      type: 'warning',
+      showCancel: true,
+      onConfirm: async () => {
+        try {
+          await deleteAssetFromLibrary(id);
+          setLibraryItems((current) => current.filter((item) => item.id !== id));
+        } catch (error) {
+          showAlert(error instanceof Error ? error.message : 'Không thể xóa tài nguyên', { type: 'error' });
+        }
+      },
+    });
   };
 
-  const filteredLibraryItems = libraryItems.filter((item) => {
+  const filteredLibrary = useMemo(() => libraryItems.filter((item) => {
     if (libraryFilter !== 'all' && item.type !== libraryFilter) return false;
-    if (!libraryQuery.trim()) return true;
-    const query = libraryQuery.trim().toLowerCase();
-    return item.name.toLowerCase().includes(query);
-  });
+    return !libraryQuery.trim() || item.name.toLowerCase().includes(libraryQuery.trim().toLowerCase());
+  }), [libraryItems, libraryFilter, libraryQuery]);
+
+  const completedProjects = projects.filter((project) => project.stage === 'export').length;
+  const generatedShots = projects.reduce((sum, project) => sum + project.shots.length, 0);
+  const readyVoiceLines = projects.reduce((sum, project) => sum + (project.voiceStudio?.takes.filter((take) => take.status === 'ready').length || 0), 0);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(217,70,239,0.16),_transparent_30%),linear-gradient(135deg,_#07111f_0%,_#120b1f_48%,_#07130f_100%)] text-slate-200 p-6 md:p-10 font-sans selection:bg-cyan-300/25">
-      <div className="max-w-7xl mx-auto flex gap-8">
-        <aside className="w-64 flex-shrink-0 hidden md:flex flex-col justify-between rounded-[2rem] border border-white/10 bg-slate-950/50 p-5 backdrop-blur-2xl shadow-2xl shadow-cyan-950/20">
-          <div>
-            <div className="text-[10px] text-cyan-200/60 font-mono tracking-[0.3em] uppercase mb-3">
-              EGORIC STUDIO
+    <div className="eg-app-shell min-h-[100dvh] text-[var(--eg-text)]">
+      <header className="sticky top-0 z-40 border-b eg-divider bg-[rgba(7,9,12,.82)] backdrop-blur-2xl">
+        <div className="mx-auto flex min-h-[76px] max-w-[1600px] items-center justify-between gap-4 px-4 md:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[.035]">
+              <img src="/egoric-agency-icon.png" alt="Egoric Agency" className="h-8 w-8 object-contain" />
             </div>
-            <h1 className="text-3xl font-semibold text-white tracking-tight mb-3 flex items-center gap-2">
-              Thư viện dự án
-            </h1>
-            <div className="text-xs text-slate-400 leading-relaxed mb-8">
-              Quản lý tập trung dự án phim ngắn và tài nguyên hình ảnh tái sử dụng, từ bản thảo đến bản xuất cuối.
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-white">Egoric Film Studio</div>
+              <div className="mt-0.5 hidden font-mono text-[9px] uppercase tracking-[.2em] text-zinc-600 sm:block">Production workspace · Vietnam</div>
             </div>
-
-            <nav className="space-y-2">
-              <button
-                onClick={handleCreate}
-                className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 hover:from-cyan-200 hover:to-sky-300 transition-all text-[11px] font-bold tracking-widest uppercase rounded-2xl shadow-lg shadow-cyan-500/20"
-              >
-                <span className="flex items-center gap-2">
-                  <Plus className="w-3.5 h-3.5" />
-                  Tạo dự án
-                </span>
-              </button>
-
-              <button
-                onClick={() => setShowLibraryModal(true)}
-                className="w-full flex items-center justify-between px-4 py-3 text-[11px] font-medium tracking-widest uppercase border border-white/10 text-slate-400 hover:text-white hover:border-cyan-300/30 hover:bg-white/5 transition-colors rounded-2xl"
-              >
-                <span className="flex items-center gap-2">
-                  <Archive className="w-3.5 h-3.5" />
-                  Thư viện tài nguyên
-                </span>
-              </button>
-
-              {onShowModelConfig && (
-                <button
-                  onClick={onShowModelConfig}
-                  className="w-full flex items-center justify-between px-4 py-3 text-[11px] font-medium tracking-widest uppercase border border-white/10 text-slate-400 hover:text-white hover:border-cyan-300/30 hover:bg-white/5 transition-colors rounded-2xl"
-                >
-                  <span className="flex items-center gap-2">
-                    <Cpu className="w-3.5 h-3.5" />
-                    Cấu hình mô hình
-                  </span>
-                </button>
-              )}
-
-              {onShowOnboarding && (
-                <button
-                  onClick={onShowOnboarding}
-                  className="w-full flex items-center justify-between px-4 py-3 text-[11px] font-medium tracking-widest uppercase border border-white/10 text-slate-400 hover:text-white hover:border-cyan-300/30 hover:bg-white/5 transition-colors rounded-2xl"
-                >
-                  <span className="flex items-center gap-2">
-                    <HelpCircle className="w-3.5 h-3.5" />
-                    Hướng dẫn
-                  </span>
-                </button>
-              )}
-
-              <button
-                onClick={() => setShowGroupQr(true)}
-                className="w-full flex items-center justify-between px-4 py-3 text-[11px] font-medium tracking-widest uppercase border border-white/10 text-slate-400 hover:text-white hover:border-cyan-300/30 hover:bg-white/5 transition-colors rounded-2xl"
-              >
-                <span className="flex items-center gap-2">
-                  <Users className="w-3.5 h-3.5" />
-                  Hỗ trợ
-                </span>
-              </button>
-            </nav>
           </div>
+          <nav className="flex items-center gap-2" aria-label="Công cụ ứng dụng">
+            {onShowOnboarding && (
+              <button type="button" onClick={onShowOnboarding} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Hướng dẫn sử dụng" title="Hướng dẫn"><HelpCircle className="h-4 w-4" /></button>
+            )}
+            {onShowModelConfig && (
+              <button type="button" onClick={onShowModelConfig} className="eg-button-secondary hidden items-center justify-center gap-2 px-4 text-xs font-semibold sm:inline-flex"><Cpu className="h-4 w-4" /> Mô hình và API</button>
+            )}
+            <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-4 text-xs font-bold"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">Dự án mới</span></button>
+          </nav>
+        </div>
+      </header>
 
-          <div className="pt-6 border-t border-white/10 text-[10px] text-slate-500 font-mono leading-relaxed">
-            <p>Một không gian sáng tạo AI được phát triển bởi Egoric Agency.</p>
-          </div>
-        </aside>
-
-        <main className="flex-1">
-          <div className="md:hidden mb-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold text-white tracking-tight">Thư viện dự án</h1>
-                <div className="text-[11px] text-cyan-200/60 font-mono tracking-widest uppercase mt-1">
-                  EGORIC STUDIO
-                </div>
+      <main className="mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10">
+        <section className="relative overflow-hidden rounded-[28px] border border-white/[.08] bg-[linear-gradient(120deg,rgba(18,24,33,.98),rgba(9,13,18,.94))] p-6 shadow-2xl shadow-black/20 md:p-9">
+          <div className="pointer-events-none absolute -right-16 -top-28 h-72 w-72 rounded-full bg-cyan-200/[.08] blur-3xl" />
+          <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(420px,.9fr)] xl:items-end">
+            <div>
+              <div className="eg-kicker">Phòng sản xuất Egoric</div>
+              <h1 className="mt-3 max-w-3xl text-3xl font-semibold leading-tight tracking-[-.035em] text-white md:text-[42px] md:leading-[1.12]">
+                Mọi ý tưởng, nhân vật và cảnh quay trong một nhịp sản xuất.
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400">
+                Bắt đầu từ kịch bản, khóa hình ảnh nhất quán, dựng giọng Việt và hoàn thiện bản phim mà không rời khỏi workspace.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold"><Sparkles className="h-4 w-4" /> Bắt đầu tác phẩm mới</button>
+                <button type="button" onClick={() => setShowLibrary(true)} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-5 text-xs font-semibold"><Archive className="h-4 w-4" /> Mở thư viện tài nguyên</button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={handleCreate}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 hover:from-cyan-200 hover:to-sky-300 transition-colors text-[11px] font-bold tracking-widest uppercase rounded-2xl"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Tạo dự án
-              </button>
-              <button
-                onClick={() => setShowLibraryModal(true)}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-2 px-4 py-2 border border-white/10 text-slate-400 hover:text-white hover:border-cyan-300/30 transition-colors text-[11px] font-medium tracking-widest uppercase rounded-2xl bg-white/5"
-              >
-                <Archive className="w-3.5 h-3.5" />
-                Thư viện tài nguyên
-              </button>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+              {[
+                { label: 'Dự án', value: projects.length, icon: FolderOpen },
+                { label: 'Đã xuất bản', value: completedProjects, icon: Film },
+                { label: 'Cảnh quay', value: generatedShots, icon: Clapperboard },
+                { label: 'Bản thoại', value: readyVoiceLines, icon: Check },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-2xl border border-white/[.08] bg-black/20 p-4">
+                  <div className="flex items-center justify-between"><stat.icon className="h-4 w-4 text-cyan-200/70" /><span className="font-mono text-[9px] uppercase tracking-widest text-zinc-700">Live</span></div>
+                  <div className="mt-4 font-mono text-2xl font-semibold tabular-nums text-white">{stat.value}</div>
+                  <div className="mt-1 text-[11px] text-zinc-500">{stat.label}</div>
+                </div>
+              ))}
             </div>
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="eg-kicker">Gần đây</div>
+              <h2 className="mt-1 text-xl font-semibold text-white">Các dự án đang sản xuất</h2>
+            </div>
+            <p className="text-xs text-zinc-600">Sắp xếp theo lần chỉnh sửa gần nhất</p>
           </div>
 
           {isLoading ? (
-            <div className="flex justify-center py-20">
-              <Loader2 className="w-6 h-6 text-zinc-600 animate-spin" />
-            </div>
+            <div className="eg-panel flex min-h-72 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-cyan-200" /><span className="ml-3 text-xs text-zinc-500">Đang mở phòng dự án…</span></div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            
-            <div 
-              onClick={handleCreate}
-              className="group cursor-pointer border border-dashed border-cyan-200/20 hover:border-cyan-200/50 bg-white/[0.04] hover:bg-cyan-300/[0.08] backdrop-blur-xl flex flex-col items-center justify-center min-h-[240px] transition-all rounded-[1.75rem] shadow-xl shadow-slate-950/20"
-            >
-              <div className="w-14 h-14 border border-cyan-200/20 bg-cyan-300/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-cyan-300/20 transition-colors">
-                <Plus className="w-5 h-5 text-cyan-100 group-hover:text-white" />
-              </div>
-              <span className="text-cyan-100/60 font-mono text-[10px] uppercase tracking-widest group-hover:text-cyan-50">Tạo dự án mới</span>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              <button type="button" onClick={handleCreate} className="group flex min-h-[310px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/[.12] bg-white/[.018] p-6 text-center transition-colors hover:border-cyan-200/35 hover:bg-cyan-200/[.035]">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-200/[.07] text-cyan-100 transition-transform group-hover:scale-105"><Plus className="h-5 w-5" /></span>
+                <span className="mt-5 text-sm font-semibold text-white">Tạo dự án mới</span>
+                <span className="mt-2 max-w-[220px] text-xs leading-5 text-zinc-600">Mở workspace trống với quy trình sản xuất năm giai đoạn.</span>
+              </button>
+
+              {projects.map((project) => {
+                const stage = STAGE_META[project.stage] || STAGE_META.script;
+                const preview = getProjectPreview(project);
+                const voiceReady = project.voiceStudio?.takes.filter((take) => take.status === 'ready').length || 0;
+                return (
+                  <article key={project.id} className="eg-card eg-card-interactive group relative min-h-[310px] cursor-pointer overflow-hidden" onClick={() => onOpenProject(project)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpenProject(project); }} role="button" tabIndex={0} aria-label={`Mở dự án ${project.title}`}>
+                    {deleteConfirmId === project.id && (
+                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[rgba(7,9,12,.96)] p-6 text-center backdrop-blur-xl" onClick={(event) => event.stopPropagation()}>
+                        <Trash2 className="h-5 w-5 text-rose-300" />
+                        <h3 className="mt-4 text-sm font-semibold text-white">Xóa “{project.title}”?</h3>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">Ảnh, video, bản thoại và lịch sử kết xuất trong dự án sẽ bị xóa khỏi thiết bị.</p>
+                        <div className="mt-5 flex w-full gap-2">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConfirmId(null); }} className="eg-button-secondary flex-1 px-3 text-xs font-semibold">Giữ lại</button>
+                          <button type="button" onClick={(event) => void confirmDelete(event, project.id)} className="min-h-11 flex-1 rounded-xl border border-rose-300/20 bg-rose-300/10 px-3 text-xs font-semibold text-rose-200 hover:bg-rose-300/15">Xóa dự án</button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="relative h-32 overflow-hidden border-b eg-divider bg-[var(--eg-surface-2)]">
+                      {preview ? <img src={preview} alt="" className="h-full w-full object-cover opacity-70 transition duration-300 group-hover:scale-[1.025] group-hover:opacity-85" /> : (
+                        <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(121,230,223,.08),transparent_55%)]"><Clapperboard className="h-8 w-8 text-cyan-100/20" /></div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#10161e] via-transparent to-transparent" />
+                      <span className="absolute bottom-3 left-3 eg-chip border-cyan-200/20 bg-black/55 text-cyan-100 backdrop-blur-lg">{stage.label} · {stage.step}/5</span>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConfirmId(project.id); }} className="eg-icon-button absolute right-3 top-3 flex h-11 w-11 items-center justify-center bg-black/55 opacity-0 backdrop-blur-lg transition-opacity group-hover:opacity-100 focus:opacity-100" aria-label={`Xóa dự án ${project.title}`}><Trash2 className="h-4 w-4" /></button>
+                    </div>
+
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="line-clamp-1 text-sm font-semibold text-white">{project.title}</h3>
+                        <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-700 transition-colors group-hover:text-cyan-200" />
+                      </div>
+                      <p className="mt-2 line-clamp-2 min-h-10 text-[11px] leading-5 text-zinc-600">{project.scriptData?.logline || 'Một tác phẩm đang chờ được phát triển trong Egoric Film Studio.'}</p>
+                      <div className="mt-4 grid grid-cols-3 gap-2 border-t eg-divider pt-4 text-center">
+                        <div><div className="font-mono text-xs text-zinc-300">{project.scriptData?.characters.length || 0}</div><div className="mt-1 text-[9px] text-zinc-700">Nhân vật</div></div>
+                        <div><div className="font-mono text-xs text-zinc-300">{project.shots.length}</div><div className="mt-1 text-[9px] text-zinc-700">Cảnh quay</div></div>
+                        <div><div className="font-mono text-xs text-zinc-300">{voiceReady}</div><div className="mt-1 text-[9px] text-zinc-700">Bản thoại</div></div>
+                      </div>
+                    </div>
+                    <footer className="flex items-center justify-between border-t eg-divider bg-black/10 px-5 py-3 font-mono text-[9px] text-zinc-700"><span className="flex items-center gap-1.5"><CalendarDays className="h-3 w-3" />{formatDate(project.lastModified)}</span><ChevronRight className="h-3.5 w-3.5" /></footer>
+                  </article>
+                );
+              })}
             </div>
-
-            {projects.map((proj) => (
-              <div 
-                key={proj.id}
-                onClick={() => onOpenProject(proj)}
-                className="group bg-slate-950/55 border border-white/10 hover:border-cyan-200/35 p-0 flex flex-col cursor-pointer transition-all relative overflow-hidden h-[240px] rounded-[1.75rem] backdrop-blur-xl shadow-xl shadow-slate-950/25 hover:-translate-y-1 hover:shadow-cyan-950/30"
-              >
-                  {deleteConfirmId === proj.id && (
-                    <div 
-                        className="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-6 space-y-4 animate-in fade-in duration-200 backdrop-blur-xl"
-                        onClick={(e) => e.stopPropagation()} 
-                    >
-                        <div className="w-10 h-10 bg-red-900/20 flex items-center justify-center rounded-full">
-                           <AlertTriangle className="w-5 h-5 text-red-500" />
-                        </div>
-                        <div className="text-center space-y-2">
-                            <p className="text-white font-bold text-xs uppercase tracking-widest">Xóa dự án?</p>
-                            <p className="text-zinc-500 text-[10px] font-mono">Thao tác này không thể hoàn tác</p>
-                            <div className="text-[9px] text-zinc-600 space-y-1 pt-2 border-t border-zinc-900">
-                              <p>Các tài nguyên sau cũng sẽ bị xóa:</p>
-                              <p className="text-zinc-700 font-mono">· Ảnh tham chiếu nhân vật và bối cảnh</p>
-                              <p className="text-zinc-700 font-mono">· Toàn bộ khung hình chính</p>
-                              <p className="text-zinc-700 font-mono">· Toàn bộ video đã tạo</p>
-                              <p className="text-zinc-700 font-mono">· Lịch sử kết xuất</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2 w-full pt-2">
-                            <button 
-                                onClick={cancelDelete}
-                                className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/10 rounded-xl"
-                            >
-                                Hủy
-                            </button>
-                            <button 
-                                onClick={(e) => confirmDelete(e, proj.id)}
-                                className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-300 hover:text-red-100 text-[10px] font-bold uppercase tracking-wider transition-colors border border-red-400/20 rounded-xl"
-                            >
-                                Xóa vĩnh viễn
-                            </button>
-                        </div>
-                    </div>
-                  )}
-
-                  <div className="flex-1 p-6 relative flex flex-col">
-                     <button 
-                        onClick={(e) => requestDelete(e, proj.id)}
-                        className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-2 hover:bg-white/10 text-slate-500 hover:text-red-300 transition-all rounded-xl z-10"
-                        title="Xóa dự án"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-
-                     <div className="flex-1">
-                        <Folder className="w-9 h-9 text-cyan-300/25 mb-6 group-hover:text-cyan-200/70 transition-colors" />
-                        <h3 className="text-sm font-bold text-white mb-2 line-clamp-1 tracking-wide">{proj.title}</h3>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                            <span className="text-[9px] font-mono text-cyan-100/70 border border-cyan-200/15 bg-cyan-300/10 px-2 py-1 uppercase tracking-wider rounded-full">
-                              {proj.stage === 'script' ? 'Sáng tạo kịch bản' :
-                               proj.stage === 'assets' ? 'Nhân vật & bối cảnh' :
-                               proj.stage === 'director' ? 'Xưởng AI' :
-                               proj.stage === 'export' ? 'Sản xuất & xuất bản' :
-                               proj.stage === 'prompts' ? 'Quản lý tài nguyên' : 'Không xác định'}
-                            </span>
-                        </div>
-                        {proj.scriptData?.logline && (
-                            <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed font-mono border-l border-cyan-200/20 pl-2">
-                            {proj.scriptData.logline}
-                            </p>
-                        )}
-                     </div>
-                  </div>
-
-                  <div className="px-6 py-3 border-t border-white/10 flex items-center justify-between bg-white/[0.03]">
-                    <div className="flex items-center gap-2 text-[9px] text-slate-500 font-mono uppercase tracking-widest">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(proj.lastModified)}
-                    </div>
-                    <ChevronRight className="w-3 h-3 text-cyan-200/30 group-hover:text-cyan-100 transition-colors" />
-                  </div>
-              </div>
-            ))}
-          </div>
           )}
-        </main>
-      </div>
+        </section>
 
-      {showGroupQr && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-6 backdrop-blur-xl" onClick={() => setShowGroupQr(false)}>
-          <div
-            className="relative w-full max-w-md bg-slate-950/90 border border-cyan-200/15 p-6 md:p-8 rounded-[1.75rem] shadow-2xl shadow-cyan-950/30"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setShowGroupQr(false)}
-              className="absolute right-4 top-4 p-2 text-slate-500 hover:text-white hover:bg-white/10 transition-colors rounded-xl"
-              title="Đóng"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="space-y-4 text-center">
-              <img src="/egoric-agency-logo.png" alt="Egoric Agency" className="w-56 max-w-full h-auto mx-auto object-contain" />
-              <div className="text-white text-sm font-bold tracking-widest uppercase">Hỗ trợ từ Egoric Agency</div>
-              <div className="text-xs text-cyan-100/60">Gửi yêu cầu hỗ trợ hoặc phản hồi trực tiếp cho đội ngũ sản phẩm.</div>
-              <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 py-3 text-xs font-bold text-slate-950 transition-colors hover:bg-cyan-200">
-                Mở yêu cầu hỗ trợ <ExternalLink className="h-4 w-4" />
-              </a>
+        <section className="mt-10 grid gap-4 lg:grid-cols-3">
+          <button type="button" onClick={() => setShowLibrary(true)} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Archive className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Thư viện tài nguyên</span><span className="mt-1 block text-xs text-zinc-600">Tái sử dụng nhân vật và bối cảnh giữa dự án.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
+          {onShowModelConfig && <button type="button" onClick={onShowModelConfig} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-amber-200"><Cpu className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Mô hình và API</span><span className="mt-1 block text-xs text-zinc-600">Kết nối model hội thoại, hình ảnh và video.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
+          <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-violet-200"><HelpCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Hỗ trợ sản phẩm</span><span className="mt-1 block text-xs text-zinc-600">Gửi lỗi hoặc đề xuất cho đội ngũ Egoric.</span></span><ExternalLink className="h-4 w-4 text-zinc-700" /></a>
+        </section>
+      </main>
+
+      {showLibrary && (
+        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/75 p-3 backdrop-blur-xl" onClick={() => setShowLibrary(false)}>
+          <div className="eg-panel flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
+            <header className="flex items-start justify-between gap-4 border-b eg-divider px-5 py-5 md:px-7">
+              <div><div className="eg-kicker">Egoric Assets</div><h2 className="mt-1 text-xl font-semibold text-white">Thư viện tài nguyên</h2><p className="mt-1 text-xs text-zinc-500">Nhân vật và bối cảnh đã khóa hình ảnh, sẵn sàng dùng lại.</p></div>
+              <button type="button" onClick={() => setShowLibrary(false)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Đóng thư viện"><X className="h-4 w-4" /></button>
+            </header>
+            <div className="flex flex-col gap-3 border-b eg-divider p-4 md:flex-row md:items-center md:justify-between md:px-7">
+              <div className="relative min-w-0 flex-1 md:max-w-md"><Search className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-zinc-600" /><input value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} className="eg-input pl-10 pr-4 text-xs" placeholder="Tìm tên tài nguyên…" /></div>
+              <div className="flex gap-2">{(['all', 'character', 'scene'] as const).map((filter) => <button key={filter} type="button" onClick={() => setLibraryFilter(filter)} className={`min-h-11 rounded-xl border px-3 text-[11px] font-semibold ${libraryFilter === filter ? 'border-cyan-200/30 bg-cyan-200/10 text-cyan-100' : 'border-white/[.08] text-zinc-500 hover:text-white'}`}>{filter === 'all' ? 'Tất cả' : filter === 'character' ? 'Nhân vật' : 'Bối cảnh'}</button>)}</div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showLibraryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-6 backdrop-blur-xl" onClick={() => setShowLibraryModal(false)}>
-          <div
-            className="relative w-full max-w-6xl bg-slate-950/90 border border-cyan-200/15 p-6 md:p-8 rounded-[1.75rem] shadow-2xl shadow-cyan-950/30"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setShowLibraryModal(false)}
-              className="absolute right-4 top-4 p-2 text-slate-500 hover:text-white hover:bg-white/10 transition-colors rounded-xl"
-              title="Đóng"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="flex items-end justify-between border-b border-white/10 pb-6 mb-6">
-              <div>
-                <h2 className="text-lg text-white flex items-center gap-2">
-                  <Archive className="w-4 h-4 text-cyan-300" />
-                  Thư viện tài nguyên
-                  <span className="text-cyan-100/40 text-xs font-mono uppercase tracking-widest">TÀI NGUYÊN EGORIC</span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-2">
-                  Thêm nội dung từ mục “Nhân vật & bối cảnh” để tái sử dụng giữa các dự án.
-                </p>
-              </div>
-              <div className="text-[10px] text-cyan-100/50 font-mono uppercase tracking-widest">
-                {libraryItems.length} tài nguyên
-              </div>
+            <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">
+              {libraryLoading ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-cyan-200" /></div> : filteredLibrary.length === 0 ? (
+                <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-white/[.08] text-center"><ImageIcon className="h-6 w-6 text-zinc-700" /><p className="mt-3 text-sm text-zinc-500">Chưa có tài nguyên phù hợp</p><p className="mt-1 text-xs text-zinc-700">Lưu nhân vật hoặc bối cảnh từ một dự án để tái sử dụng.</p></div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{filteredLibrary.map((item) => {
+                  const preview = item.type === 'character' ? (item.data as Character).referenceImage : (item.data as Scene).referenceImage;
+                  return <article key={item.id} className="eg-card overflow-hidden"><div className="aspect-video bg-black/30">{preview ? <img src={preview} alt={item.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-zinc-700">{item.type === 'character' ? <UsersRound className="h-6 w-6" /> : <MapPin className="h-6 w-6" />}</div>}</div><div className="p-4"><div className="eg-kicker">{item.type === 'character' ? 'Nhân vật' : 'Bối cảnh'}</div><h3 className="mt-1 truncate text-sm font-semibold text-white">{item.name}</h3><div className="mt-4 flex gap-2"><button type="button" onClick={() => setAssetToUse(item)} className="eg-button-primary flex-1 px-3 text-[11px] font-bold">Dùng trong dự án</button><button type="button" onClick={() => deleteLibraryItem(item.id)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label={`Xóa ${item.name}`}><Trash2 className="h-4 w-4" /></button></div></div></article>;
+                })}</div>
+              )}
             </div>
-
-            <div className="flex flex-wrap items-center gap-3 mb-6">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="w-4 h-4 text-cyan-100/40 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  value={libraryQuery}
-                  onChange={(e) => setLibraryQuery(e.target.value)}
-                  placeholder="Tìm theo tên tài nguyên..."
-                  className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-300/40"
-                />
-              </div>
-              <div className="flex gap-2">
-                {(['all', 'character', 'scene'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setLibraryFilter(type)}
-                    className={`px-3 py-2 text-[10px] font-bold uppercase tracking-widest border rounded ${
-                      libraryFilter === type
-                        ? 'bg-cyan-300 text-slate-950 border-cyan-300'
-                        : 'bg-white/5 text-slate-400 border-white/10 hover:text-white hover:border-cyan-300/30'
-                    }`}
-                  >
-                    {type === 'all' ? 'Tất cả' : type === 'character' ? 'Nhân vật' : 'Bối cảnh'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {isLibraryLoading ? (
-              <div className="flex justify-center py-10">
-                <Loader2 className="w-5 h-5 text-zinc-600 animate-spin" />
-              </div>
-            ) : filteredLibraryItems.length === 0 ? (
-                <div className="border border-dashed border-cyan-200/15 rounded-2xl p-10 text-center text-slate-500 text-sm">
-                Chưa có tài nguyên. Hãy thêm từ mục “Nhân vật & bối cảnh” trong dự án.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredLibraryItems.map((item) => {
-                  const preview =
-                    item.type === 'character'
-                      ? (item.data as Character).referenceImage
-                      : (item.data as Scene).referenceImage;
-                  return (
-                    <div
-                      key={item.id}
-                      className="bg-white/[0.04] border border-white/10 hover:border-cyan-200/35 transition-colors rounded-2xl overflow-hidden backdrop-blur"
-                    >
-                      <div className="aspect-video bg-slate-950/70">
-                        {preview ? (
-                          <img src={preview} alt={item.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-zinc-700">
-                            {item.type === 'character' ? (
-                              <Users className="w-8 h-8 opacity-30" />
-                            ) : (
-                              <MapPin className="w-8 h-8 opacity-30" />
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div>
-                          <div className="text-sm text-white font-bold line-clamp-1">{item.name}</div>
-                          <div className="text-[10px] text-cyan-100/50 font-mono uppercase tracking-widest mt-1">
-                            {item.type === 'character' ? 'Nhân vật' : 'Bối cảnh'}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setAssetToUse(item)}
-                            className="flex-1 py-2 bg-cyan-300 text-slate-950 hover:bg-cyan-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors"
-                          >
-                            Dùng trong dự án
-                          </button>
-                          <button
-                            onClick={() => handleDeleteLibraryItem(item.id)}
-                            className="p-2 border border-white/10 text-slate-500 hover:text-red-300 hover:border-red-400/40 rounded-xl transition-colors"
-                            title="Xóa"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
       )}
 
       {assetToUse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-6 backdrop-blur-xl" onClick={() => setAssetToUse(null)}>
-          <div
-            className="relative w-full max-w-2xl bg-slate-950/90 border border-cyan-200/15 p-6 md:p-8 rounded-[1.75rem] shadow-2xl shadow-cyan-950/30"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setAssetToUse(null)}
-              className="absolute right-4 top-4 p-2 text-slate-500 hover:text-white hover:bg-white/10 transition-colors rounded-xl"
-              title="Đóng"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="space-y-4">
-              <div className="text-white text-sm font-bold tracking-widest uppercase">Chọn dự án sử dụng</div>
-              <div className="text-[10px] text-cyan-100/55 font-mono">
-                Nhập tài nguyên “{assetToUse.name}” vào một dự án bên dưới
-              </div>
-              {projects.length === 0 ? (
-                <div className="text-zinc-600 text-sm">Chưa có dự án phù hợp</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {projects.map((proj) => (
-                    <button
-                      key={proj.id}
-                      onClick={() => handleUseAsset(proj.id)}
-                      className="p-4 text-left border border-white/10 hover:border-cyan-300/30 bg-white/[0.04] hover:bg-white/[0.07] transition-colors rounded-2xl"
-                    >
-                      <div className="text-sm text-white font-bold line-clamp-1">{proj.title}</div>
-                      <div className="text-[10px] text-zinc-500 font-mono mt-1">Cập nhật lần cuối: {formatDate(proj.lastModified)}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setAssetToUse(null)}>
+          <div className="eg-panel w-full max-w-2xl p-6 md:p-7" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4"><div><div className="eg-kicker">Chèn tài nguyên</div><h2 className="mt-1 text-lg font-semibold text-white">Chọn dự án đích</h2><p className="mt-1 text-xs text-zinc-500">Đưa “{assetToUse.name}” vào một workspace đang có.</p></div><button type="button" onClick={() => setAssetToUse(null)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Đóng"><X className="h-4 w-4" /></button></div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">{projects.length ? projects.map((project) => <button key={project.id} type="button" onClick={() => void handleUseAsset(project.id)} className="eg-card eg-card-interactive min-h-24 p-4 text-left"><span className="block truncate text-sm font-semibold text-white">{project.title}</span><span className="mt-2 flex items-center gap-2 text-[10px] text-zinc-600"><Clock3 className="h-3 w-3" />{formatDate(project.lastModified)}</span></button>) : <p className="col-span-full py-8 text-center text-sm text-zinc-600">Chưa có dự án để nhận tài nguyên.</p>}</div>
           </div>
         </div>
       )}

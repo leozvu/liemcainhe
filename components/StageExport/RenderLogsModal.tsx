@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { Clock, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { RenderLog } from '../../types';
 import { STYLES } from './constants';
 import { 
@@ -34,14 +34,14 @@ const RenderLogsModal: React.FC<Props> = ({
             <Clock className="w-5 h-5 text-cyan-300" />
             <h3 className="text-xl font-bold text-white">Nhật ký kết xuất</h3>
             <span className="px-2 py-0.5 bg-cyan-300/10 border border-cyan-200/15 text-cyan-100/65 text-[10px] rounded-full uppercase font-mono tracking-wider">
-              {logs.length} Events
+              {logs.length} sự kiện
             </span>
           </div>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/15 text-zinc-400 hover:text-white transition-colors"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -82,7 +82,7 @@ const RenderLogsModal: React.FC<Props> = ({
                     onClick={() => onToggleExpand(log.id)}
                   >
                     <div className="flex items-start gap-3">
-                      <span className="text-2xl mt-0.5">{typeIcon}</span>
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[.08] bg-white/[.04] font-mono text-[9px] font-bold tracking-wider text-cyan-200">{typeIcon}</span>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="text-sm font-bold text-white">{log.resourceName}</h4>

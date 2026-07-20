@@ -23,6 +23,21 @@ export default defineConfig(() => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/replicate/, ''),
           },
+          '/api-proxy/fpt': {
+            target: 'https://api.fpt.ai',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/fpt/, ''),
+          },
+          '/api-proxy/viettel': {
+            target: 'https://viettelai.vn',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/viettel/, ''),
+          },
+          '/api-proxy/elevenlabs': {
+            target: 'https://api.elevenlabs.io',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/elevenlabs/, ''),
+          },
         },
       },
       preview: {
@@ -43,6 +58,21 @@ export default defineConfig(() => {
             target: 'https://api.replicate.com',
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/replicate/, ''),
+          },
+          '/api-proxy/fpt': {
+            target: 'https://api.fpt.ai',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/fpt/, ''),
+          },
+          '/api-proxy/viettel': {
+            target: 'https://viettelai.vn',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/viettel/, ''),
+          },
+          '/api-proxy/elevenlabs': {
+            target: 'https://api.elevenlabs.io',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/elevenlabs/, ''),
           },
         },
       },

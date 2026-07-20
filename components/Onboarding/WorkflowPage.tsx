@@ -1,23 +1,23 @@
 import React from 'react';
-import { FileText, Users, Clapperboard, Film, ArrowRight } from 'lucide-react';
+import { FileText, Users, AudioLines, Clapperboard, Film, ArrowRight } from 'lucide-react';
 import { WORKFLOW_STEPS } from './constants';
 
 interface WorkflowPageProps {
   onNext: () => void;
 }
 
-const icons = [FileText, Users, Clapperboard, Film];
+const icons = [FileText, Users, AudioLines, Clapperboard, Film];
 
 const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
   return (
     <div className="flex flex-col items-center text-center">
       {/* Tiêu đề */}
       <h2 className="text-2xl font-bold text-white mb-8">
-        Hoàn thiện video chỉ trong 4 bước
+        Hoàn thiện tác phẩm trong 5 giai đoạn
       </h2>
 
       {/* Sơ đồ quy trình */}
-      <div className="w-full max-w-md mb-10">
+      <div className="w-full max-w-lg mb-10">
         <div className="flex items-center justify-between mb-6">
           {WORKFLOW_STEPS.map((step, index) => {
             const Icon = icons[index];

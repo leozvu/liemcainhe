@@ -78,6 +78,48 @@ export interface Shot {
   videoModel?: 'veo' | 'sora-2' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait';
 }
 
+export type VoiceProviderId = 'fpt' | 'viettel' | 'elevenlabs' | 'vbee' | 'human';
+export type VoiceRegion = 'north' | 'central' | 'south' | 'international';
+export type VoiceTakeStatus = 'draft' | 'generating' | 'processing' | 'ready' | 'error';
+
+export interface VoiceProfile {
+  id: string;
+  characterId: string;
+  providerId: VoiceProviderId;
+  voiceId: string;
+  voiceName: string;
+  region: VoiceRegion;
+  speed: number;
+  style?: string;
+}
+
+export interface VoiceTake {
+  id: string;
+  shotId: string;
+  characterId?: string;
+  text: string;
+  source: 'synthetic' | 'human';
+  providerId: VoiceProviderId;
+  voiceId?: string;
+  voiceName?: string;
+  status: VoiceTakeStatus;
+  audioUrl?: string;
+  duration?: number;
+  fileName?: string;
+  notes?: string;
+  error?: string;
+  createdAt: number;
+}
+
+export interface VoiceStudioState {
+  defaultProviderId: VoiceProviderId;
+  profiles: VoiceProfile[];
+  takes: VoiceTake[];
+  selectedTakeByShot: Record<string, string>;
+  outputFormat: 'mp3' | 'wav';
+  normalizeLoudness: boolean;
+}
+
 export interface ScriptData {
   title: string;
   genre: string;
@@ -94,7 +136,7 @@ export interface ScriptData {
 export interface RenderLog {
   id: string;
   timestamp: number;
-  type: 'character' | 'character-variation' | 'scene' | 'keyframe' | 'video' | 'script-parsing';
+  type: 'character' | 'character-variation' | 'scene' | 'keyframe' | 'video' | 'voice' | 'script-parsing';
   resourceId: string;
   resourceName: string;
   status: 'success' | 'failed';
@@ -112,7 +154,7 @@ export interface ProjectState {
   title: string;
   createdAt: number;
   lastModified: number;
-  stage: 'script' | 'assets' | 'director' | 'export' | 'prompts';
+  stage: 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
   
   rawScript: string;
   targetDuration: string;
@@ -124,6 +166,7 @@ export interface ProjectState {
   shots: Shot[];
   isParsingScript: boolean;
   renderLogs: RenderLog[];
+  voiceStudio?: VoiceStudioState;
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';

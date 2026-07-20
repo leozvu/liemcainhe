@@ -1,16 +1,18 @@
-# Egoric Studio
+# Egoric Film Studio
 
 > Xưởng sản xuất phim ngắn, truyện tranh chuyển động và bảng phân cảnh bằng AI của Egoric Agency.
 
-Egoric Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu dự án, hình ảnh và cấu hình mô hình được lưu cục bộ trong trình duyệt bằng IndexedDB.
+Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu dự án, hình ảnh, bản thoại và cấu hình mô hình được lưu cục bộ trên thiết bị.
 
 ## Quy trình sản xuất
 
 1. **Sáng tạo kịch bản** — phân tích cốt truyện, nhân vật, bối cảnh và bảng phân cảnh.
 2. **Nhân vật & bối cảnh** — tạo concept, biến thể trang phục và ảnh tham chiếu.
-3. **Xưởng AI** — sản xuất khung hình chính đầu/cuối và video cho từng cảnh quay.
-4. **Sản xuất & xuất bản** — xem timeline, tải video và toàn bộ tài nguyên gốc.
-5. **Quản lý tài nguyên** — tìm kiếm và chỉnh câu lệnh nhân vật, bối cảnh, khung hình chính và video.
+3. **Voice Studio** — casting giọng Việt, tổng hợp bản nháp hoặc duyệt nhiều take của diễn viên thật.
+4. **Xưởng dựng** — sản xuất khung hình chính đầu/cuối và video cho từng cảnh quay.
+5. **Xuất bản** — xem timeline, tải video và toàn bộ tài nguyên gốc.
+
+Kho sáng tạo là khu vực nâng cao để tìm kiếm và chỉnh câu lệnh nhân vật, bối cảnh, khung hình chính và video.
 
 ## Công nghệ
 
@@ -19,6 +21,7 @@ Egoric Studio biến ý tưởng hoặc kịch bản thành một quy trình s�
 - IndexedDB cho dữ liệu dự án cục bộ
 - OpenRouter và Google AI Studio cho mô hình hội thoại
 - Replicate cho mô hình hình ảnh và video
+- FPT.AI, Viettel AI và ElevenLabs cho bản nháp giọng nói; tệp âm thanh cho diễn viên thật
 - Electron cho bản máy tính
 - Docker và Nginx cho triển khai web
 
@@ -47,7 +50,7 @@ npm run electron:dev
 npm run electron:build:win
 ```
 
-Bộ cài Windows được tạo trong thư mục `release/` với tên **Egoric Studio**.
+Bộ cài Windows được tạo trong thư mục `release/` với tên **Egoric Film Studio**.
 
 ### Docker
 
@@ -61,13 +64,13 @@ docker compose down
 
 ## Cấu hình API
 
-Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
+Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; FPT.AI, Viettel AI và ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Voice Studio](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
 
 Khóa API chỉ được lưu trong bộ nhớ cục bộ của trình duyệt. Không đưa khóa API vào lịch sử Git.
 
 ## Thương hiệu và nguồn mở
 
-Phiên bản này được Việt hóa và mang thương hiệu **Egoric Studio**, một sản phẩm của **Egoric Agency**.
+Phiên bản này được Việt hóa và mang thương hiệu **Egoric Film Studio**, một sản phẩm của **Egoric Agency**.
 
 Dự án được phát triển từ mã nguồn mở [yuanzhongqiao/printfilm](https://github.com/yuanzhongqiao/printfilm), phân phối theo giấy phép MIT. Mọi thương hiệu và dịch vụ mô hình của bên thứ ba thuộc về chủ sở hữu tương ứng.
 

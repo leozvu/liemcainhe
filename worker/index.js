@@ -2,6 +2,9 @@ const API_TARGETS = {
   '/api-proxy/openrouter': 'https://openrouter.ai',
   '/api-proxy/google': 'https://generativelanguage.googleapis.com',
   '/api-proxy/replicate': 'https://api.replicate.com',
+  '/api-proxy/fpt': 'https://api.fpt.ai',
+  '/api-proxy/viettel': 'https://viettelai.vn',
+  '/api-proxy/elevenlabs': 'https://api.elevenlabs.io',
 };
 
 function createUpstreamRequest(request, url, prefix, origin) {
@@ -21,14 +24,29 @@ function createUpstreamRequest(request, url, prefix, origin) {
   });
 }
 
+async function injectSiteOrigin(response, requestUrl) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/html')) return response;
+
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  const origin = new URL(requestUrl).origin;
+  const html = (await response.text()).replaceAll('__EGORIC_ORIGIN__', origin);
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function serveApp(request, env) {
   const response = await env.ASSETS.fetch(request);
   if (response.status !== 404 || request.method !== 'GET') {
-    return response;
+    return injectSiteOrigin(response, request.url);
   }
 
   const fallbackUrl = new URL('/index.html', request.url);
-  return env.ASSETS.fetch(new Request(fallbackUrl, request));
+  return injectSiteOrigin(await env.ASSETS.fetch(new Request(fallbackUrl, request)), request.url);
 }
 
 export default {

@@ -112,6 +112,9 @@ export const loadProjectFromDB = async (id: string): Promise<ProjectState> => {
         if (!project.renderLogs) {
           project.renderLogs = [];
         }
+        if (!project.voiceStudio) {
+          project.voiceStudio = createDefaultVoiceStudioState();
+        }
         const migratedModel = migrateDeprecatedChatModelId(project.shotGenerationModel);
         if (project.shotGenerationModel !== migratedModel) {
           project.shotGenerationModel = migratedModel;
@@ -254,5 +257,15 @@ Bao giờ cơn mưa này mới dừng?`,
     shots: [],
     isParsingScript: false,
     renderLogs: [],
+    voiceStudio: createDefaultVoiceStudioState(),
   };
 };
+
+export const createDefaultVoiceStudioState = () => ({
+  defaultProviderId: 'fpt' as const,
+  profiles: [],
+  takes: [],
+  selectedTakeByShot: {},
+  outputFormat: 'mp3' as const,
+  normalizeLoudness: true,
+});

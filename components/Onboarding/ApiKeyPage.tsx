@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Image, KeyRound, MessageSquareText, Video } from 'lucide-react';
+import { AudioLines, ExternalLink, Image, KeyRound, MessageSquareText, Video } from 'lucide-react';
 
 interface ApiKeyPageProps {
   onNext: () => void;
@@ -25,6 +25,12 @@ const providers = [
     href: 'https://aistudio.google.com/apikey',
     icon: Image,
   },
+  {
+    name: 'FPT.AI Voice Maker',
+    description: 'Giọng Việt ba miền cho bản nháp thoại và thuyết minh.',
+    href: 'https://console.fpt.ai/',
+    icon: AudioLines,
+  },
 ];
 
 const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => (
@@ -35,7 +41,7 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => (
 
     <h2 className="text-2xl font-bold text-white">Chọn dịch vụ AI của bạn</h2>
     <p className="mb-5 mt-2 max-w-md text-sm leading-relaxed text-zinc-500">
-      Egoric Studio không khóa bạn vào một cổng duy nhất. Bạn có thể cấu hình một hoặc nhiều nhà cung cấp sau khi hoàn tất hướng dẫn.
+      Egoric Film Studio không khóa bạn vào một cổng duy nhất. Bạn có thể cấu hình một hoặc nhiều nhà cung cấp sau khi hoàn tất hướng dẫn.
     </p>
 
     <div className="grid w-full gap-2 text-left">

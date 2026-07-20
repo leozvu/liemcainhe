@@ -33,7 +33,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onNext, onSkip }) => {
 
       {/* Mô tả */}
       <p className="text-sm text-zinc-500 mb-10 max-w-xs">
-        Chỉ cần một kịch bản, Egoric Studio và AI sẽ hỗ trợ phần còn lại
+        Chỉ cần một kịch bản, Egoric Film Studio sẽ kết nối toàn bộ quy trình còn lại
       </p>
 
       {/* Hành động chính */}

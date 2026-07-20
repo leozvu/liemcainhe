@@ -163,7 +163,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
         <div className="flex items-center gap-4">
           <h2 className={STYLES.header.title}>
             <Film className="w-5 h-5 text-cyan-300" />
-            Sản xuất & xuất bản
+            Xuất bản
             <span className={STYLES.header.subtitle}>KẾT XUẤT VÀ XUẤT BẢN</span>
           </h2>
         </div>
@@ -184,7 +184,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
               estimatedDuration={estimatedDuration}
             />
             
-            <TimelineVisualizer shots={project.shots} />
+            <TimelineVisualizer project={project} />
             
             <ActionButtons
               completedShotsCount={completedShots.length}

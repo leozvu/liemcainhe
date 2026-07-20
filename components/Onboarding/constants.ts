@@ -15,22 +15,27 @@ export const TOTAL_PAGES = 5;
 // Các bước trong quy trình.
 export const WORKFLOW_STEPS = [
   {
-    number: '①',
+    number: '01',
     title: 'Sáng tạo kịch bản',
     description: 'AI tự động trích xuất nhân vật và bối cảnh',
   },
   {
-    number: '②',
+    number: '02',
     title: 'Định hình nhân vật',
     description: 'Tạo ảnh ý tưởng nhân vật chỉ với một thao tác',
   },
   {
-    number: '③',
+    number: '03',
+    title: 'Casting giọng thoại',
+    description: 'Dựng giọng Việt hoặc duyệt bản thu diễn viên thật',
+  },
+  {
+    number: '04',
     title: 'Dựng bảng phân cảnh',
     description: 'Tạo video theo hệ thống khung hình chính',
   },
   {
-    number: '④',
+    number: '05',
     title: 'Xuất thành phẩm',
     description: 'Ghép và xuất phim ngắn hoàn chỉnh',
   },
@@ -49,6 +54,10 @@ export const HIGHLIGHTS = [
   {
     title: 'Phong cách nhất quán',
     description: 'Chọn phim người đóng, hoạt hình hoặc 3D và duy trì nhất quán toàn phim',
+  },
+  {
+    title: 'Voice Studio tiếng Việt',
+    description: 'Casting ba miền, nhiều take và luồng duyệt bản thu người thật',
   },
 ] as const;
 

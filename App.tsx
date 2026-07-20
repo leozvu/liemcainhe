@@ -6,38 +6,24 @@ import StageAssets from './components/StageAssets';
 import StageDirector from './components/StageDirector';
 import StageExport from './components/StageExport';
 import StagePrompts from './components/StagePrompts';
+import StageVoice from './components/StageVoice';
 import Dashboard from './components/Dashboard';
 import Onboarding, { shouldShowOnboarding, resetOnboarding } from './components/Onboarding';
 import ModelConfigModal from './components/ModelConfig';
 import { ProjectState } from './types';
-import { Save, CheckCircle, X } from 'lucide-react';
+import { Save, CheckCircle } from 'lucide-react';
 import { saveProjectToDB } from './services/storageService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
-const LOGO_URL = '/egoric-agency-logo.png';
 
 function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [showSaveStatus, setShowSaveStatus] = useState(false);
-  const [showQrCode, setShowQrCode] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showModelConfig, setShowModelConfig] = useState(false);
   
   const saveTimeoutRef = useRef<any>(null);
   const hideStatusTimeoutRef = useRef<any>(null);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 1024;
-      setIsMobile(isMobileDevice);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   useEffect(() => {
     if (shouldShowOnboarding()) {
@@ -160,7 +146,7 @@ function App() {
     });
   };
 
-  const setStage = (stage: 'script' | 'assets' | 'director' | 'export' | 'prompts') => {
+  const setStage = (stage: 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts') => {
     updateProject({ stage });
   };
 
@@ -182,6 +168,8 @@ function App() {
         return <StageScript project={project} updateProject={updateProject} />;
       case 'assets':
         return <StageAssets project={project} updateProject={updateProject} />;
+      case 'voice':
+        return <StageVoice project={project} updateProject={updateProject} />;
       case 'director':
         return <StageDirector project={project} updateProject={updateProject} />;
       case 'export':
@@ -192,30 +180,6 @@ function App() {
         return <div className="text-white">Giai đoạn không xác định</div>;
     }
   };
-
-  if (isMobile) {
-    return (
-      <div className="h-screen bg-[#050505] flex items-center justify-center p-6">
-        <div className="max-w-md text-center space-y-6">
-          <img src={LOGO_URL} alt="Egoric Agency" className="w-64 max-w-full h-auto mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Egoric Studio</h1>
-          <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-8">
-            <p className="text-zinc-400 text-base leading-relaxed mb-4">
-              Để có trải nghiệm tốt nhất, vui lòng truy cập bằng trình duyệt trên máy tính.
-            </p>
-            <p className="text-zinc-600 text-sm">
-              Ứng dụng cần không gian màn hình lớn và môi trường trình duyệt desktop để hoạt động ổn định.
-            </p>
-          </div>
-          <div className="text-xs text-zinc-700">
-            <a href="https://github.com/leozvu/liemcainhe" target="_blank" rel="noreferrer" className="hover:text-indigo-400 transition-colors">
-              Tìm hiểu thêm về Egoric Studio
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (!project) {
     return (
@@ -240,7 +204,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(168,85,247,0.16),_transparent_34%),linear-gradient(135deg,_#07111f_0%,_#120b1f_48%,_#07130f_100%)] font-sans text-slate-100 selection:bg-cyan-400/25">
+    <div className="eg-app-shell flex h-[100dvh] font-sans text-slate-100">
       <Sidebar 
         currentStage={project.stage} 
         setStage={setStage} 
@@ -250,12 +214,11 @@ function App() {
         onShowModelConfig={() => setShowModelConfig(true)}
       />
       
-      <main className="ml-72 flex-1 h-screen overflow-hidden relative">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,_transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,_transparent_1px)] bg-[size:48px_48px] opacity-25" />
+      <main className="eg-stage-main flex-1">
         {renderStage()}
         
         {showSaveStatus && (
-          <div className="absolute top-4 right-6 pointer-events-none flex items-center gap-2 text-xs font-mono text-cyan-100 bg-slate-950/60 border border-cyan-300/20 px-3 py-1.5 rounded-full backdrop-blur-xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 shadow-lg shadow-cyan-500/10">
+          <div className="pointer-events-none absolute right-5 top-4 z-[90] flex min-h-9 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 font-mono text-[10px] text-zinc-300 shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
              {saveStatus === 'saving' ? (
                <>
                  <Save className="w-3 h-3 animate-pulse" />

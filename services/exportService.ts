@@ -1,14 +1,33 @@
-import { ProjectState } from '../types';
+import { ProjectState, VoiceTake } from '../types';
+
+const safeName = (value: string) => value.replace(/[\/\\?%*:|"<>]/g, '_').trim() || 'untitled';
+
+const getSelectedVoiceTakes = (project: ProjectState): VoiceTake[] => {
+  const studio = project.voiceStudio;
+  if (!studio) return [];
+  return project.shots.flatMap((shot) => {
+    const take = studio.takes.find((item) => item.id === studio.selectedTakeByShot[shot.id]);
+    return take?.status === 'ready' && take.audioUrl ? [take] : [];
+  });
+};
+
+const voiceFileExtension = (take: VoiceTake) => {
+  const fromName = take.fileName?.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+  if (fromName) return fromName;
+  if (take.audioUrl?.startsWith('data:audio/wav')) return 'wav';
+  return 'mp3';
+};
 
 async function downloadFile(urlOrBase64: string): Promise<Blob> {
-  if (urlOrBase64.startsWith('data:video/')) {
-    const base64Data = urlOrBase64.split(',')[1];
-    const binaryString = atob(base64Data);
+  if (urlOrBase64.startsWith('data:')) {
+    const [header, payload = ''] = urlOrBase64.split(',', 2);
+    const mimeType = header.match(/^data:([^;,]+)/)?.[1] || 'application/octet-stream';
+    const binaryString = header.includes(';base64') ? atob(payload) : decodeURIComponent(payload);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    return new Blob([bytes], { type: 'video/mp4' });
+    return new Blob([bytes], { type: mimeType });
   }
   
   const response = await fetch(urlOrBase64);
@@ -24,6 +43,7 @@ export async function downloadMasterVideo(
 ): Promise<void> {
   try {
     const completedShots = project.shots.filter(shot => shot.interval?.videoUrl);
+    const selectedVoiceTakes = getSelectedVoiceTakes(project);
     
     if (completedShots.length === 0) {
       throw new Error('Không có đoạn video nào để xuất');
@@ -36,24 +56,65 @@ export async function downloadMasterVideo(
 
     onProgress?.('Đang tải các đoạn video...', 10);
 
+    const totalAssets = completedShots.length + selectedVoiceTakes.length;
+    let processedAssets = 0;
+
     for (let i = 0; i < completedShots.length; i++) {
       const shot = completedShots[i];
+      const projectShotIndex = project.shots.findIndex((item) => item.id === shot.id);
       const videoUrl = shot.interval!.videoUrl!;
-      const shotNum = String(i + 1).padStart(3, '0');
-      const fileName = `shot_${shotNum}.mp4`;
+      const shotNum = String(projectShotIndex + 1).padStart(3, '0');
+      const fileName = `video/shot_${shotNum}.mp4`;
       
       try {
         const videoBlob = await downloadFile(videoUrl);
         zip.file(fileName, videoBlob);
-        
-        const progress = 10 + Math.round((i + 1) / completedShots.length * 75);
-        onProgress?.(`Đang tải (${i + 1}/${completedShots.length})...`, progress);
+        processedAssets += 1;
+        const progress = 10 + Math.round(processedAssets / totalAssets * 70);
+        onProgress?.(`Đang tải tư liệu (${processedAssets}/${totalAssets})...`, progress);
       } catch (err) {
         console.error(`Tải đoạn video ${i + 1} thất bại:`, err);
       }
     }
 
-    onProgress?.('Đang tạo tệp ZIP...', 85);
+    for (const take of selectedVoiceTakes) {
+      const projectShotIndex = project.shots.findIndex((shot) => shot.id === take.shotId);
+      const shotNum = String(projectShotIndex + 1).padStart(3, '0');
+      const extension = voiceFileExtension(take);
+      try {
+        zip.file(`audio/shot_${shotNum}_${take.source === 'human' ? 'human' : 'voice'}.${extension}`, await downloadFile(take.audioUrl!));
+        processedAssets += 1;
+        const progress = 10 + Math.round(processedAssets / totalAssets * 70);
+        onProgress?.(`Đang tải tư liệu (${processedAssets}/${totalAssets})...`, progress);
+      } catch (err) {
+        console.error(`Tải bản thoại cho cảnh ${projectShotIndex + 1} thất bại:`, err);
+      }
+    }
+
+    const manifest = project.shots.map((shot, index) => {
+      const take = selectedVoiceTakes.find((item) => item.shotId === shot.id);
+      const extension = take ? voiceFileExtension(take) : undefined;
+      return {
+        shot: index + 1,
+        shotId: shot.id,
+        action: shot.actionSummary,
+        dialogue: shot.dialogue || '',
+        durationSeconds: shot.interval?.duration || 10,
+        videoFile: shot.interval?.videoUrl ? `video/shot_${String(index + 1).padStart(3, '0')}.mp4` : null,
+        audioFile: take ? `audio/shot_${String(index + 1).padStart(3, '0')}_${take.source === 'human' ? 'human' : 'voice'}.${extension}` : null,
+        voiceSource: take?.source || null,
+        voiceName: take?.voiceName || null,
+      };
+    });
+    zip.file('timeline.json', JSON.stringify({
+      product: 'Egoric Film Studio',
+      project: project.scriptData?.title || project.title,
+      exportedAt: new Date().toISOString(),
+      timeline: manifest,
+    }, null, 2));
+    zip.file('HUONG-DAN.txt', 'Gói dựng Egoric Film Studio\n\n1. Thư mục video chứa từng cảnh quay.\n2. Thư mục audio chứa bản thoại đã chọn trong Voice Studio.\n3. timeline.json giữ thứ tự cảnh, thời lượng và ánh xạ âm thanh để dựng trong Premiere, DaVinci Resolve hoặc phần mềm NLE khác.');
+
+    onProgress?.('Đang tạo gói dựng ZIP...', 85);
 
     const zipBlob = await zip.generateAsync(
       { type: 'blob' },
@@ -68,7 +129,7 @@ export async function downloadMasterVideo(
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${project.scriptData?.title || project.title || 'master'}_videos.zip`;
+    a.download = `${safeName(project.scriptData?.title || project.title || 'du-an')}_egoric_edit_package.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -155,6 +216,20 @@ export async function downloadSourceAssets(
       }
     }
 
+    if (project.voiceStudio) {
+      for (const take of project.voiceStudio.takes) {
+        if (take.status !== 'ready' || !take.audioUrl) continue;
+        const shotIndex = project.shots.findIndex((shot) => shot.id === take.shotId);
+        const shotNum = String(shotIndex + 1).padStart(3, '0');
+        const selected = project.voiceStudio.selectedTakeByShot[take.shotId] === take.id ? '_selected' : '';
+        const baseFileName = safeName((take.fileName || take.id).replace(/\.[a-z0-9]{2,5}$/i, ''));
+        assets.push({
+          url: take.audioUrl,
+          path: `voices/shot_${shotNum}/${baseFileName}${selected}.${voiceFileExtension(take)}`,
+        });
+      }
+    }
+
     if (assets.length === 0) {
       throw new Error('Không có tài nguyên để tải xuống');
     }
@@ -187,7 +262,7 @@ export async function downloadSourceAssets(
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${project.scriptData?.title || project.title || 'project'}_source_assets.zip`;
+    a.download = `${safeName(project.scriptData?.title || project.title || 'du-an')}_egoric_source_assets.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

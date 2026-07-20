@@ -50,7 +50,7 @@ const ActionButtons: React.FC<Props> = ({
         ) : (
           <Download className="w-4 h-4" />
         )}
-        {isDownloading ? `${phase} ${downloadProgress}%` : 'Tải bản chính (.mp4)'}
+        {isDownloading ? `${phase} ${downloadProgress}%` : 'Tải gói dựng (.zip)'}
       </button>
       
       <button 

@@ -1,4 +1,4 @@
-// Egoric Studio desktop runtime by Egoric Agency
+// Egoric Film Studio desktop runtime by Egoric Agency
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const http = require('http');
@@ -14,6 +14,9 @@ const API_PROXY_TARGETS = [
   { path: '/api-proxy/openrouter', target: 'https://openrouter.ai' },
   { path: '/api-proxy/google', target: 'https://generativelanguage.googleapis.com' },
   { path: '/api-proxy/replicate', target: 'https://api.replicate.com' },
+  { path: '/api-proxy/fpt', target: 'https://api.fpt.ai' },
+  { path: '/api-proxy/viettel', target: 'https://viettelai.vn' },
+  { path: '/api-proxy/elevenlabs', target: 'https://api.elevenlabs.io' },
 ];
 const DEFAULT_PORT = 39628;
 

@@ -159,7 +159,7 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
               <div className="text-zinc-600 mb-4">
                 <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p className="text-lg">Chưa có dữ liệu câu lệnh</p>
-                <p className="text-sm mt-2">Hãy tạo nhân vật và bối cảnh ở Giai đoạn 01, hoặc tạo bảng phân cảnh trong Xưởng AI.</p>
+                <p className="text-sm mt-2">Hãy tạo nhân vật và bối cảnh ở Giai đoạn 02, hoặc tạo bảng phân cảnh trong Xưởng dựng.</p>
               </div>
             </div>
           )}
