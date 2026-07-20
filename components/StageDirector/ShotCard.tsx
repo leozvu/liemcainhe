@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image as ImageIcon, Video } from 'lucide-react';
+import { AlertTriangle, Image as ImageIcon, Video } from 'lucide-react';
 import { Shot } from '../../types';
 
 interface ShotCardProps {
@@ -13,16 +13,17 @@ const ShotCard: React.FC<ShotCardProps> = ({ shot, index, isActive, onClick }) =
   const sKf = shot.keyframes?.find(k => k.type === 'start');
   const hasImage = !!sKf?.imageUrl;
   const hasVideo = !!shot.interval?.videoUrl;
+  const needsRefresh = Boolean(shot.workflow?.keyframesStale || shot.workflow?.videoStale);
 
   // Chuyển mã cảnh quay thành số thứ tự cảnh chính hoặc cảnh phụ trên thẻ.
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}`;
+      return `CẢNH ${String(idParts[0]).padStart(3, '0')}`;
     } else if (idParts.length === 2) {
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
+      return `CẢNH ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
     } else {
-      return `SHOT ${String(index + 1).padStart(3, '0')}`;
+      return `CẢNH ${String(index + 1).padStart(3, '0')}`;
     }
   };
 
@@ -57,12 +58,12 @@ const ShotCard: React.FC<ShotCardProps> = ({ shot, index, isActive, onClick }) =
         )}
         
         <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-          {hasVideo && (
-            <div className="px-2 py-1 bg-green-500 text-white rounded-full text-[9px] font-bold uppercase flex items-center gap-1 shadow-lg">
-              <Video className="w-2.5 h-2.5" />
-              VIDEO
+          {hasVideo && !shot.workflow?.videoStale && (
+            <div className="px-2 py-1 bg-emerald-500 text-white rounded-full text-[9px] font-bold uppercase flex items-center gap-1 shadow-lg">
+              <Video className="w-2.5 h-2.5" /> Sẵn sàng
             </div>
           )}
+          {needsRefresh && <div className="flex items-center gap-1 rounded-full border border-amber-200/30 bg-black/75 px-2 py-1 text-[9px] font-bold uppercase text-amber-100 shadow-lg"><AlertTriangle className="h-2.5 w-2.5" /> Cần tạo lại</div>}
         </div>
 
         {!isActive && !hasImage && (

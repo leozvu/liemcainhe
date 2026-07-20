@@ -25,6 +25,15 @@ import ShotWorkbench from './ShotWorkbench';
 import ImagePreviewModal from './ImagePreviewModal';
 import { useAlert } from '../GlobalAlert';
 import { getDefaultAspectRatio } from '../../services/modelRegistry';
+import {
+  addProductionJob,
+  clearShotStaleFlag,
+  createProductionJob,
+  createProjectCheckpoint,
+  markShotWorkflowStale,
+  patchProductionJob,
+  setProductionJobStatus,
+} from '../../services/workflowService';
 
 interface Props {
   project: ProjectState;
@@ -54,7 +63,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
   const activeShot = project.shots[activeShotIndex];
   
   const allStartFramesGenerated = project.shots.length > 0 && 
-    project.shots.every(s => s.keyframes?.find(k => k.type === 'start')?.imageUrl);
+    project.shots.every(s => s.keyframes?.find(k => k.type === 'start')?.imageUrl && !s.workflow?.keyframesStale);
 
   // Khôi phục tác vụ bị gián đoạn để người dùng có thể tạo lại sau khi mở trang.
   useEffect(() => {
@@ -89,7 +98,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     }));
   };
 
-  const handleGenerateKeyframe = async (shot: Shot, type: 'start' | 'end') => {
+  const handleGenerateKeyframe = async (shot: Shot, type: 'start' | 'end'): Promise<boolean> => {
     const existingKf = shot.keyframes?.find(k => k.type === type);
     const kfId = existingKf?.id || generateId(`kf-${shot.id}-${type}`);
     
@@ -127,9 +136,10 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         ...prevProject,
         shots: prevProject.shots.map(s => {
           if (s.id !== shot.id) return s;
-          return updateKeyframeInShot(s, type, createKeyframe(kfId, type, prompt, url, 'completed'));
+          return markShotWorkflowStale(updateKeyframeInShot(s, type, createKeyframe(kfId, type, prompt, url, 'completed')), 'keyframe');
         })
       }));
+      return true;
     } catch (e: any) {
       console.error(e);
       updateProject((prevProject: ProjectState) => ({
@@ -140,8 +150,9 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         })
       }));
       
-      if (onApiKeyError && onApiKeyError(e)) return;
+      if (onApiKeyError && onApiKeyError(e)) return false;
       showAlert(`Tạo nội dung thất bại: ${e.message}`, { type: 'error' });
+      return false;
     }
   };
 
@@ -169,7 +180,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
           shots: prevProject.shots.map(s => {
             if (s.id !== shot.id) return s;
             const visualPrompt = existingKf?.visualPrompt || shot.actionSummary;
-            return updateKeyframeInShot(s, type, createKeyframe(kfId, type, visualPrompt, base64Url, 'completed'));
+            return markShotWorkflowStale(updateKeyframeInShot(s, type, createKeyframe(kfId, type, visualPrompt, base64Url, 'completed')), 'keyframe');
           })
         }));
       } catch (error) {
@@ -184,8 +195,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     const sKf = shot.keyframes?.find(k => k.type === 'start');
     const eKf = shot.keyframes?.find(k => k.type === 'end');
     const intervalId = shot.interval?.id || generateId(`int-${shot.id}`);
-
-    updateShot(shot.id, (s) => ({
+    updateShot(shot.id, (s) => markShotWorkflowStale({
       ...s,
       interval: s.interval
         ? { ...s.interval, textToVideoOnly: enabled }
@@ -198,7 +208,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
             textToVideoOnly: enabled,
             status: 'pending',
           },
-    }));
+    }, 'video'));
   };
 
   const handleGenerateVideo = async (
@@ -228,6 +238,15 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     );
     
     const intervalId = shot.interval?.id || generateId(`int-${shot.id}`);
+    const job = createProductionJob({
+      kind: 'video',
+      stage: 'director',
+      label: `Tạo video cảnh ${project.shots.findIndex((item) => item.id === shot.id) + 1}`,
+      totalUnits: 1,
+      resourceId: shot.id,
+      detail: `Đang gửi yêu cầu tới ${selectedModel}.`,
+    });
+    updateProject((previous) => setProductionJobStatus(addProductionJob(previous, job), job.id, 'running'));
     
     updateShot(shot.id, (s) => ({
       ...s,
@@ -254,7 +273,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         duration
       );
 
-      updateShot(shot.id, (s) => ({
+      updateShot(shot.id, (s) => clearShotStaleFlag({
         ...s,
         interval: s.interval ? { ...s.interval, videoUrl, status: 'completed', textToVideoOnly } : {
           id: intervalId,
@@ -267,13 +286,15 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
           videoUrl,
           status: 'completed'
         }
-      }));
+      }, 'video'));
+      updateProject((previous) => setProductionJobStatus(previous, job.id, 'completed'));
     } catch (e: any) {
       console.error(e);
       updateShot(shot.id, (s) => ({
         ...s,
         interval: s.interval ? { ...s.interval, status: 'failed', textToVideoOnly } : undefined
       }));
+      updateProject((previous) => setProductionJobStatus(previous, job.id, 'failed', e.message || 'Tạo video thất bại'));
       
       if (onApiKeyError && onApiKeyError(e)) return;
       showAlert(e.message || 'Tạo video thất bại', { type: 'error' });
@@ -289,10 +310,10 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     setIsAIGenerating(true);
     try {
       const optimized = await rewritePromptForModeration(activeShot.interval.videoPrompt);
-      updateShot(activeShot.id, (s) => ({
+      updateShot(activeShot.id, (s) => markShotWorkflowStale({
         ...s,
         interval: s.interval ? { ...s.interval, videoPrompt: optimized, status: 'pending' } : undefined
-      }));
+      }, 'video'));
       showAlert('Đã tự động tối ưu mô tả. Hãy nhấn “Bắt đầu tạo video” để thử lại.', { type: 'success' });
     } catch (e: any) {
       if (onApiKeyError && onApiKeyError(e)) return;
@@ -317,11 +338,11 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     const newStartKfId = existingStartKf?.id || generateId(`kf-${activeShot.id}-start`);
     
     updateShot(activeShot.id, (s) => {
-      return updateKeyframeInShot(
+      return markShotWorkflowStale(updateKeyframeInShot(
         s, 
         'start', 
         createKeyframe(newStartKfId, 'start', previousEndKf.visualPrompt, previousEndKf.imageUrl, 'completed')
-      );
+      ), 'keyframe');
     });
   };
 
@@ -340,11 +361,11 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     const newEndKfId = existingEndKf?.id || generateId(`kf-${activeShot.id}-end`);
     
     updateShot(activeShot.id, (s) => {
-      return updateKeyframeInShot(
+      return markShotWorkflowStale(updateKeyframeInShot(
         s, 
         'end', 
         createKeyframe(newEndKfId, 'end', nextStartKf.visualPrompt, nextStartKf.imageUrl, 'completed')
-      );
+      ), 'keyframe');
     });
   };
 
@@ -363,7 +384,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
       });
       return;
     } else {
-      shotsToProcess = project.shots.filter(s => !s.keyframes?.find(k => k.type === 'start')?.imageUrl);
+      shotsToProcess = project.shots.filter(s => !s.keyframes?.find(k => k.type === 'start')?.imageUrl || s.workflow?.keyframesStale);
     }
     
     if (shotsToProcess.length === 0) return;
@@ -371,12 +392,26 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
   };
 
   const executeBatchGenerate = async (shotsToProcess: any[], isRegenerate: boolean) => {
+    const job = createProductionJob({
+      kind: 'keyframe-image',
+      stage: 'director',
+      label: `Tạo ${shotsToProcess.length} khung bắt đầu`,
+      totalUnits: shotsToProcess.length,
+      detail: 'Tạo lần lượt, giữ liên kết nhân vật và bối cảnh của từng cảnh.',
+    });
+    updateProject((previous) => {
+      const protectedProject = isRegenerate
+        ? createProjectCheckpoint(previous, 'Trước khi tạo lại toàn bộ khung bắt đầu')
+        : previous;
+      return setProductionJobStatus(addProductionJob(protectedProject, job), job.id, 'running');
+    });
     setBatchProgress({ 
       current: 0, 
       total: shotsToProcess.length, 
       message: isRegenerate ? "Đang tạo lại tất cả khung bắt đầu..." : "Đang tạo hàng loạt các khung bắt đầu còn thiếu..."
     });
 
+    let failures = 0;
     for (let i = 0; i < shotsToProcess.length; i++) {
       if (i > 0) await delay(DEFAULTS.batchGenerateDelay);
       
@@ -388,17 +423,30 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
       });
       
       try {
-        await handleGenerateKeyframe(shot, 'start');
+        const success = await handleGenerateKeyframe(shot, 'start');
+        if (!success) failures += 1;
+        updateProject((previous) => patchProductionJob(previous, job.id, {
+          progress: Math.round(((i + 1) / shotsToProcess.length) * 100),
+          completedUnits: i + 1,
+          detail: failures ? `${failures} khung lỗi · tiếp tục các cảnh còn lại` : `Đã hoàn tất ${i + 1}/${shotsToProcess.length} khung`,
+        }));
       } catch (e: any) {
         console.error(`Không thể tạo nội dung cho cảnh quay ${shot.id}`, e);
         if (onApiKeyError && onApiKeyError(e)) {
           setBatchProgress(null);
+          updateProject((previous) => setProductionJobStatus(previous, job.id, 'failed', e.message || 'Batch khung hình bị gián đoạn'));
           return;
         }
       }
     }
 
     setBatchProgress(null);
+    updateProject((previous) => setProductionJobStatus(
+      previous,
+      job.id,
+      failures ? 'failed' : 'completed',
+      failures ? `${failures}/${shotsToProcess.length} khung không tạo được.` : undefined,
+    ));
   };
 
   const handleSaveEdit = () => {
@@ -406,23 +454,23 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     
     switch (editModal.type) {
       case 'action':
-        updateShot(activeShot.id, (s) => ({ ...s, actionSummary: editModal.value }));
+        updateShot(activeShot.id, (s) => markShotWorkflowStale({ ...s, actionSummary: editModal.value }, 'visual'));
         break;
       case 'keyframe':
-        updateShot(activeShot.id, (s) => ({
+        updateShot(activeShot.id, (s) => markShotWorkflowStale({
           ...s,
           keyframes: s.keyframes?.map(kf => 
             kf.type === editModal.frameType 
               ? { ...kf, visualPrompt: editModal.value }
               : kf
           ) || []
-        }));
+        }, 'visual'));
         break;
       case 'video':
-        updateShot(activeShot.id, (s) => ({
+        updateShot(activeShot.id, (s) => markShotWorkflowStale({
           ...s,
           interval: s.interval ? { ...s.interval, videoPrompt: editModal.value } : undefined
-        }));
+        }, 'video'));
         break;
     }
     
@@ -747,19 +795,19 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
             onEditActionSummary={() => setEditModal({ type: 'action', value: activeShot.actionSummary })}
             onGenerateAIAction={handleGenerateAIAction}
             onSplitShot={() => handleSplitShot(activeShot)}
-            onAddCharacter={(charId) => updateShot(activeShot.id, s => ({ ...s, characters: [...s.characters, charId] }))}
-            onRemoveCharacter={(charId) => updateShot(activeShot.id, s => ({
+            onAddCharacter={(charId) => updateShot(activeShot.id, s => markShotWorkflowStale({ ...s, characters: [...s.characters, charId] }, 'casting'))}
+            onRemoveCharacter={(charId) => updateShot(activeShot.id, s => markShotWorkflowStale({
               ...s,
               characters: s.characters.filter(id => id !== charId),
               characterVariations: Object.fromEntries(
                 Object.entries(s.characterVariations || {}).filter(([k]) => k !== charId)
               )
-            }))}
-            onVariationChange={(charId, varId) => updateShot(activeShot.id, s => ({
+            }, 'casting'))}
+            onVariationChange={(charId, varId) => updateShot(activeShot.id, s => markShotWorkflowStale({
               ...s,
               characterVariations: { ...(s.characterVariations || {}), [charId]: varId }
-            }))}
-            onSceneChange={(sceneId) => updateShot(activeShot.id, s => ({ ...s, sceneId }))}
+            }, 'visual'))}
+            onSceneChange={(sceneId) => updateShot(activeShot.id, s => markShotWorkflowStale({ ...s, sceneId }, 'visual'))}
             onGenerateKeyframe={(type) => handleGenerateKeyframe(activeShot, type)}
             onUploadKeyframe={(type) => handleUploadKeyframeImage(activeShot, type)}
             onEditKeyframePrompt={(type, prompt) => setEditModal({ type: 'keyframe', value: prompt, frameType: type })}

@@ -7,6 +7,14 @@ import { migrateDeprecatedChatModelId } from '../../types/model';
 import ConfigPanel from './ConfigPanel';
 import ScriptEditor from './ScriptEditor';
 import SceneBreakdown from './SceneBreakdown';
+import {
+  addProductionJob,
+  createProductionJob,
+  createProjectCheckpoint,
+  markShotWorkflowStale,
+  patchProductionJob,
+  setProductionJobStatus,
+} from '../../services/workflowService';
 
 interface Props {
   project: ProjectState;
@@ -72,18 +80,37 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
 
     setIsProcessing(true);
     setError(null);
+    const job = createProductionJob({
+      kind: 'script-analysis',
+      stage: 'script',
+      label: project.scriptData ? 'Phân tích lại kịch bản' : 'Phân tích kịch bản',
+      totalUnits: 2,
+      detail: 'Tách dữ liệu sản xuất và dựng danh sách cảnh quay.',
+    });
     try {
-      updateProject({
-        title: localTitle,
-        rawScript: localScript,
-        targetDuration: finalDuration,
-        language: localLanguage,
-        visualStyle: finalVisualStyle,
-        shotGenerationModel: finalModel,
-        isParsingScript: true
+      updateProject((previous) => {
+        const protectedProject = previous.scriptData || previous.shots.length
+          ? createProjectCheckpoint(previous, 'Trước khi phân tích lại kịch bản')
+          : previous;
+        const running = setProductionJobStatus(addProductionJob(protectedProject, job), job.id, 'running');
+        return {
+          ...running,
+          title: localTitle,
+          rawScript: localScript,
+          targetDuration: finalDuration,
+          language: localLanguage,
+          visualStyle: finalVisualStyle,
+          shotGenerationModel: finalModel,
+          isParsingScript: true,
+        };
       });
 
       const scriptData = await parseScriptToData(localScript, localLanguage, finalModel, finalVisualStyle);
+      updateProject((previous) => patchProductionJob(previous, job.id, {
+        progress: 50,
+        completedUnits: 1,
+        detail: 'Đã tách cấu trúc. Đang dựng danh sách cảnh quay…',
+      }));
       
       scriptData.targetDuration = finalDuration;
       scriptData.language = localLanguage;
@@ -96,19 +123,20 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
 
       const shots = await generateShotList(scriptData, finalModel);
 
-      updateProject({ 
-        scriptData, 
-        shots, 
+      updateProject((previous) => setProductionJobStatus({
+        ...previous,
+        scriptData,
+        shots,
         isParsingScript: false,
-        title: scriptData.title 
-      });
+        title: scriptData.title,
+      }, job.id, 'completed'));
       
       setActiveTab('script');
 
     } catch (err: any) {
       console.error(err);
       setError(`Lỗi: ${err.message || "Không thể kết nối AI"}`);
-      updateProject({ isParsingScript: false });
+      updateProject((previous) => setProductionJobStatus({ ...previous, isParsingScript: false }, job.id, 'failed', err.message || 'Không thể kết nối AI'));
     } finally {
       setIsProcessing(false);
     }
@@ -223,12 +251,11 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       c.id === charId ? { ...c, visualPrompt: prompt } : c
     );
     
-    updateProject({
-      scriptData: {
-        ...project.scriptData,
-        characters: updatedCharacters
-      }
-    });
+    updateProject((previous) => ({
+      ...previous,
+      scriptData: previous.scriptData ? { ...previous.scriptData, characters: updatedCharacters } : previous.scriptData,
+      shots: previous.shots.map((shot) => shot.characters.includes(charId) ? markShotWorkflowStale(shot, 'visual') : shot),
+    }));
     
     setEditingCharacterId(null);
     setEditingCharacterPrompt('');
@@ -249,12 +276,12 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     
     const updatedShots = project.shots.map(shot => {
       if (shot.id === editingShotId && shot.keyframes.length > 0) {
-        return {
+        return markShotWorkflowStale({
           ...shot,
           keyframes: shot.keyframes.map((kf, idx) => 
             idx === 0 ? { ...kf, visualPrompt: editingShotPrompt } : kf
           )
-        };
+        }, 'visual');
       }
       return shot;
     });
@@ -276,7 +303,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
   const handleAddCharacterToShot = (shotId: string, characterId: string) => {
     const updatedShots = project.shots.map(shot => {
       if (shot.id === shotId && !shot.characters.includes(characterId)) {
-        return { ...shot, characters: [...shot.characters, characterId] };
+        return markShotWorkflowStale({ ...shot, characters: [...shot.characters, characterId] }, 'casting');
       }
       return shot;
     });
@@ -286,7 +313,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
   const handleRemoveCharacterFromShot = (shotId: string, characterId: string) => {
     const updatedShots = project.shots.map(shot => {
       if (shot.id === shotId) {
-        return { ...shot, characters: shot.characters.filter(cid => cid !== characterId) };
+        return markShotWorkflowStale({ ...shot, characters: shot.characters.filter(cid => cid !== characterId) }, 'casting');
       }
       return shot;
     });
@@ -308,11 +335,14 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     
     const updatedShots = project.shots.map(shot => {
       if (shot.id === editingShotActionId) {
-        return {
+        let updatedShot = {
           ...shot,
           actionSummary: editingShotActionText,
           dialogue: editingShotDialogueText.trim() || undefined
         };
+        if (shot.actionSummary !== editingShotActionText) updatedShot = markShotWorkflowStale(updatedShot, 'visual');
+        if ((shot.dialogue || '') !== editingShotDialogueText.trim()) updatedShot = markShotWorkflowStale(updatedShot, 'dialogue');
+        return updatedShot;
       }
       return shot;
     });

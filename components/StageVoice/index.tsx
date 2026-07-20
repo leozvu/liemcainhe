@@ -38,6 +38,14 @@ import { audioFileToDataUrl, generateVoice } from '../../services/voiceService';
 import { useAlert } from '../GlobalAlert';
 import VoicePlayer from './VoicePlayer';
 import VoiceSettingsModal from './VoiceSettingsModal';
+import {
+  addProductionJob,
+  clearShotStaleFlag,
+  createProductionJob,
+  markShotWorkflowStale,
+  patchProductionJob,
+  setProductionJobStatus,
+} from '../../services/workflowService';
 
 interface Props {
   project: ProjectState;
@@ -136,13 +144,23 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   };
 
   const patchTake = (takeId: string, updates: Partial<VoiceTake>) => {
-    updateStudio((current) => ({
-      ...current,
-      takes: current.takes.map((take) => take.id === takeId ? { ...take, ...updates } : take),
-      selectedTakeByShot: updates.status === 'ready'
-        ? { ...current.selectedTakeByShot, [current.takes.find((take) => take.id === takeId)?.shotId || '']: takeId }
-        : current.selectedTakeByShot,
-    }));
+    updateProject((previous) => {
+      const current = previous.voiceStudio || createDefaultVoiceStudioState();
+      const shotId = current.takes.find((take) => take.id === takeId)?.shotId;
+      return {
+        ...previous,
+        voiceStudio: {
+          ...current,
+          takes: current.takes.map((take) => take.id === takeId ? { ...take, ...updates } : take),
+          selectedTakeByShot: updates.status === 'ready' && shotId
+            ? { ...current.selectedTakeByShot, [shotId]: takeId }
+            : current.selectedTakeByShot,
+        },
+        shots: updates.status === 'ready' && shotId
+          ? previous.shots.map((shot) => shot.id === shotId ? clearShotStaleFlag(shot, 'voice') : shot)
+          : previous.shots,
+      };
+    });
   };
 
   const openSettings = (providerId: VoiceProviderId) => {
@@ -150,7 +168,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
     setSettingsOpen(true);
   };
 
-  const handleGenerate = async (shot: Shot) => {
+  const handleGenerate = async (shot: Shot): Promise<boolean> => {
     const characterId = getSpeakerId(shot);
     const profile = getProfile(characterId);
     const provider = getVoiceProvider(profile.providerId);
@@ -161,16 +179,16 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       } else {
         showAlert('Vbee cần máy chủ callback công khai. Hiện hãy tạo âm thanh ở Vbee rồi nhập bản thu vào dự án.', { type: 'warning' });
       }
-      return;
+      return false;
     }
     if (!isVoiceProviderConfigured(profile.providerId)) {
       openSettings(profile.providerId);
-      return;
+      return false;
     }
     if (!profile.voiceId.trim()) {
       showAlert('Hãy chọn giọng hoặc nhập Voice ID cho nhân vật trước khi tạo.', { type: 'warning' });
       setSelectedCharacterId(characterId);
-      return;
+      return false;
     }
 
     const takeId = `voice_take_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -203,8 +221,10 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         fileName: result.fileName,
         error: undefined,
       });
+      return true;
     } catch (error) {
       patchTake(takeId, { status: 'error', error: error instanceof Error ? error.message : 'Không thể tạo bản thoại' });
+      return false;
     }
   };
 
@@ -232,6 +252,10 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         takes: [take, ...current.takes],
         selectedTakeByShot: { ...current.selectedTakeByShot, [shot.id]: take.id },
       }));
+      updateProject((previous) => ({
+        ...previous,
+        shots: previous.shots.map((item) => item.id === shot.id ? clearShotStaleFlag(item, 'voice') : item),
+      }));
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể nhập bản thu', { type: 'error' });
     }
@@ -256,19 +280,23 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       ...current,
       selectedTakeByShot: { ...current.selectedTakeByShot, [take.shotId]: take.id },
     }));
+    updateProject((previous) => ({
+      ...previous,
+      shots: previous.shots.map((shot) => shot.id === take.shotId ? clearShotStaleFlag(shot, 'voice') : shot),
+    }));
   };
 
   const changeSpeaker = (shotId: string, characterId: string) => {
     updateProject((previous) => ({
       ...previous,
       shots: previous.shots.map((shot) => shot.id === shotId
-        ? { ...shot, characters: [characterId, ...shot.characters.filter((id) => id !== characterId)] }
+        ? markShotWorkflowStale({ ...shot, characters: [characterId, ...shot.characters.filter((id) => id !== characterId)] }, 'casting')
         : shot),
     }));
   };
 
   const renderAll = () => {
-    const pending = dialogueShots.filter((shot) => !getSelectedTake(shot.id)?.audioUrl);
+    const pending = dialogueShots.filter((shot) => !getSelectedTake(shot.id)?.audioUrl || shot.workflow?.voiceStale);
     if (!pending.length) {
       showAlert('Tất cả câu thoại đã có bản được chọn.', { type: 'success' });
       return;
@@ -277,9 +305,32 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       type: 'warning',
       showCancel: true,
       onConfirm: async () => {
+        const job = createProductionJob({
+          kind: 'voice',
+          stage: 'voice',
+          label: `Tạo ${pending.length} câu thoại`,
+          totalUnits: pending.length,
+          detail: 'Tạo lần lượt theo cấu hình giọng của từng nhân vật.',
+        });
+        updateProject((previous) => setProductionJobStatus(addProductionJob(previous, job), job.id, 'running'));
         setBatchRendering(true);
-        for (const shot of pending) await handleGenerate(shot);
+        let failures = 0;
+        for (let index = 0; index < pending.length; index += 1) {
+          const success = await handleGenerate(pending[index]);
+          if (!success) failures += 1;
+          updateProject((previous) => patchProductionJob(previous, job.id, {
+            progress: Math.round(((index + 1) / pending.length) * 100),
+            completedUnits: index + 1,
+            detail: failures ? `${failures} câu lỗi · đang tiếp tục` : `Đã hoàn tất ${index + 1}/${pending.length} câu`,
+          }));
+        }
         setBatchRendering(false);
+        updateProject((previous) => setProductionJobStatus(
+          previous,
+          job.id,
+          failures ? 'failed' : 'completed',
+          failures ? `${failures}/${pending.length} câu chưa tạo được.` : undefined,
+        ));
       },
     });
   };
@@ -287,14 +338,14 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const selectedCharacter = getCharacter(selectedCharacterId) || characters[0];
   const selectedProfile = getProfile(selectedCharacter?.id || 'narrator');
   const selectedProvider = getVoiceProvider(selectedProfile.providerId);
-  const totalReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.status === 'ready').length;
+  const totalReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.status === 'ready' && !shot.workflow?.voiceStale).length;
   const humanReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.source === 'human').length;
   const totalDuration = dialogueShots.reduce((sum, shot) => sum + (getSelectedTake(shot.id)?.duration || 0), 0);
 
   const filteredShots = dialogueShots.filter((shot) => {
     const take = getSelectedTake(shot.id);
-    if (lineFilter === 'pending' && take?.status === 'ready') return false;
-    if (lineFilter === 'ready' && take?.status !== 'ready') return false;
+    if (lineFilter === 'pending' && take?.status === 'ready' && !shot.workflow?.voiceStale) return false;
+    if (lineFilter === 'ready' && (take?.status !== 'ready' || shot.workflow?.voiceStale)) return false;
     if (lineFilter === 'human' && take?.source !== 'human') return false;
     if (query.trim()) {
       const speaker = getCharacter(getSpeakerId(shot))?.name || '';
@@ -502,7 +553,8 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                               </select>
                               <span className="eg-chip">{provider.shortName} · {profile.voiceName}</span>
                               {selectedTake?.source === 'human' && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><UsersRound className="h-3 w-3" /> Người thật</span>}
-                              {selectedTake?.status === 'ready' && <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100"><Check className="h-3 w-3" /> Đã chọn</span>}
+                            {selectedTake?.status === 'ready' && <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100"><Check className="h-3 w-3" /> Đã chọn</span>}
+                            {shot.workflow?.voiceStale && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><AlertCircle className="h-3 w-3" /> Thoại đã thay đổi · cần tạo lại</span>}
                             </div>
                             <p className="mt-1 truncate text-[10px] text-zinc-600">{scene?.location || shot.actionSummary || 'Cảnh chưa đặt tên'}</p>
                           </div>

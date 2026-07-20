@@ -7,6 +7,8 @@ import {
   ChevronRight,
   Clapperboard,
   Clock3,
+  Cloud,
+  CloudDownload,
   Cpu,
   ExternalLink,
   Film,
@@ -34,6 +36,7 @@ import {
 } from '../services/storageService';
 import { applyLibraryItemToProject } from '../services/assetLibraryService';
 import { useAlert } from './GlobalAlert';
+import { CloudProjectMetadata, deleteCloudProject, listCloudProjects, loadCloudProject } from '../services/cloudSyncService';
 
 interface Props {
   onOpenProject: (project: ProjectState) => void;
@@ -72,6 +75,10 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'character' | 'scene'>('all');
   const [assetToUse, setAssetToUse] = useState<AssetLibraryItem | null>(null);
+  const [showCloud, setShowCloud] = useState(false);
+  const [cloudProjects, setCloudProjects] = useState<CloudProjectMetadata[]>([]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [restoringCloudId, setRestoringCloudId] = useState<string | null>(null);
 
   const loadProjects = async () => {
     setIsLoading(true);
@@ -96,6 +103,54 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
   }, [showLibrary]);
 
   const handleCreate = () => onOpenProject(createNewProjectState());
+
+  const openCloudProjects = async () => {
+    setShowCloud(true);
+    setCloudLoading(true);
+    try {
+      setCloudProjects(await listCloudProjects());
+    } catch (error) {
+      setCloudProjects([]);
+      showAlert(
+        typeof window !== 'undefined' && !window.location.hostname.endsWith('.chatgpt.site')
+          ? 'Dự án cloud chỉ hoạt động trên bản đã deploy và đăng nhập ChatGPT.'
+          : error instanceof Error ? error.message : 'Không thể tải dự án cloud',
+        { type: 'warning' },
+      );
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const restoreCloudProject = async (projectId: string) => {
+    setRestoringCloudId(projectId);
+    try {
+      const cloudProject = await loadCloudProject(projectId);
+      await saveProjectToDB(cloudProject);
+      await loadProjects();
+      setShowCloud(false);
+      onOpenProject(cloudProject);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể khôi phục dự án cloud', { type: 'error' });
+    } finally {
+      setRestoringCloudId(null);
+    }
+  };
+
+  const removeCloudProject = (projectId: string, title: string) => {
+    showAlert(`Xóa bản sao cloud “${title}”? Dữ liệu trên thiết bị không bị ảnh hưởng.`, {
+      type: 'warning',
+      showCancel: true,
+      onConfirm: async () => {
+        try {
+          await deleteCloudProject(projectId);
+          setCloudProjects((current) => current.filter((project) => project.id !== projectId));
+        } catch (error) {
+          showAlert(error instanceof Error ? error.message : 'Không thể xóa bản sao cloud', { type: 'error' });
+        }
+      },
+    });
+  };
 
   const confirmDelete = async (event: React.MouseEvent, id: string) => {
     event.stopPropagation();
@@ -157,7 +212,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
             </div>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-white">Egoric Film Studio</div>
-              <div className="mt-0.5 hidden font-mono text-[9px] uppercase tracking-[.2em] text-zinc-600 sm:block">Production workspace · Vietnam</div>
+            <div className="mt-0.5 hidden font-mono text-[9px] uppercase tracking-[.2em] text-zinc-600 sm:block">Không gian sản xuất · Việt Nam</div>
             </div>
           </div>
           <nav className="flex items-center gap-2" aria-label="Công cụ ứng dụng">
@@ -167,6 +222,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
             {onShowModelConfig && (
               <button type="button" onClick={onShowModelConfig} className="eg-button-secondary hidden items-center justify-center gap-2 px-4 text-xs font-semibold sm:inline-flex"><Cpu className="h-4 w-4" /> Mô hình và API</button>
             )}
+            <button type="button" onClick={() => void openCloudProjects()} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Dự án cloud" title="Dự án cloud"><Cloud className="h-4 w-4" /></button>
             <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-4 text-xs font-bold"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">Dự án mới</span></button>
           </nav>
         </div>
@@ -182,7 +238,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
                 Mọi ý tưởng, nhân vật và cảnh quay trong một nhịp sản xuất.
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400">
-                Bắt đầu từ kịch bản, khóa hình ảnh nhất quán, dựng giọng Việt và hoàn thiện bản phim mà không rời khỏi workspace.
+                Bắt đầu từ kịch bản, khóa hình ảnh nhất quán, dựng giọng Việt và hoàn thiện bản phim mà không rời khỏi không gian sản xuất.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold"><Sparkles className="h-4 w-4" /> Bắt đầu tác phẩm mới</button>
@@ -198,7 +254,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
                 { label: 'Bản thoại', value: readyVoiceLines, icon: Check },
               ].map((stat) => (
                 <div key={stat.label} className="rounded-2xl border border-white/[.08] bg-black/20 p-4">
-                  <div className="flex items-center justify-between"><stat.icon className="h-4 w-4 text-cyan-200/70" /><span className="font-mono text-[9px] uppercase tracking-widest text-zinc-700">Live</span></div>
+                  <div className="flex items-center justify-between"><stat.icon className="h-4 w-4 text-cyan-200/70" /><span className="font-mono text-[9px] uppercase tracking-widest text-zinc-700">Trực tiếp</span></div>
                   <div className="mt-4 font-mono text-2xl font-semibold tabular-nums text-white">{stat.value}</div>
                   <div className="mt-1 text-[11px] text-zinc-500">{stat.label}</div>
                 </div>
@@ -223,7 +279,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
               <button type="button" onClick={handleCreate} className="group flex min-h-[310px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/[.12] bg-white/[.018] p-6 text-center transition-colors hover:border-cyan-200/35 hover:bg-cyan-200/[.035]">
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-200/[.07] text-cyan-100 transition-transform group-hover:scale-105"><Plus className="h-5 w-5" /></span>
                 <span className="mt-5 text-sm font-semibold text-white">Tạo dự án mới</span>
-                <span className="mt-2 max-w-[220px] text-xs leading-5 text-zinc-600">Mở workspace trống với quy trình sản xuất năm giai đoạn.</span>
+                <span className="mt-2 max-w-[220px] text-xs leading-5 text-zinc-600">Mở không gian trống với quy trình sản xuất năm giai đoạn.</span>
               </button>
 
               {projects.map((project) => {
@@ -273,18 +329,45 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
           )}
         </section>
 
-        <section className="mt-10 grid gap-4 lg:grid-cols-3">
+        <section className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <button type="button" onClick={() => setShowLibrary(true)} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Archive className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Thư viện tài nguyên</span><span className="mt-1 block text-xs text-zinc-600">Tái sử dụng nhân vật và bối cảnh giữa dự án.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
+          <button type="button" onClick={() => void openCloudProjects()} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-sky-200"><CloudDownload className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Dự án cloud</span><span className="mt-1 block text-xs text-zinc-600">Khôi phục dự án trên thiết bị khác.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
           {onShowModelConfig && <button type="button" onClick={onShowModelConfig} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-amber-200"><Cpu className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Mô hình và API</span><span className="mt-1 block text-xs text-zinc-600">Kết nối model hội thoại, hình ảnh và video.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
           <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-violet-200"><HelpCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Hỗ trợ sản phẩm</span><span className="mt-1 block text-xs text-zinc-600">Gửi lỗi hoặc đề xuất cho đội ngũ Egoric.</span></span><ExternalLink className="h-4 w-4 text-zinc-700" /></a>
         </section>
       </main>
 
+      {showCloud && (
+        <div className="fixed inset-0 z-[185] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setShowCloud(false)}>
+          <div className="eg-panel flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
+            <header className="flex items-start justify-between gap-4 border-b eg-divider p-5 md:p-7">
+              <div><div className="eg-kicker">Egoric Cloud</div><h2 className="mt-1 text-xl font-semibold text-white">Dự án đã sao lưu</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Dữ liệu tách theo tài khoản ChatGPT đang đăng nhập. Khôi phục sẽ tạo hoặc cập nhật bản local.</p></div>
+              <button type="button" onClick={() => setShowCloud(false)} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng dự án cloud"><X className="h-4 w-4" /></button>
+            </header>
+            <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">
+              {cloudLoading ? (
+                <div className="flex min-h-56 items-center justify-center gap-3 text-xs text-zinc-500"><Loader2 className="h-5 w-5 animate-spin text-cyan-200" /> Đang tải bản sao cloud…</div>
+              ) : cloudProjects.length === 0 ? (
+                <div className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-white/[.08] p-6 text-center"><Cloud className="h-7 w-7 text-zinc-700" /><h3 className="mt-4 text-sm font-semibold text-zinc-300">Chưa có dự án cloud</h3><p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Mở một dự án, vào Trung tâm sản xuất rồi chọn “Sao lưu cloud”.</p></div>
+              ) : (
+                <div className="space-y-3">{cloudProjects.map((cloudProject) => (
+                  <article key={cloudProject.id} className="eg-card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-200/15 bg-sky-200/[.06] text-sky-100"><Cloud className="h-4 w-4" /></div>
+                    <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-white">{cloudProject.title}</h3><p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600">Cập nhật {formatDate(cloudProject.updatedAt)}</p></div>
+                    <div className="flex gap-2"><button type="button" onClick={() => void restoreCloudProject(cloudProject.id)} disabled={restoringCloudId !== null} className="eg-button-primary inline-flex flex-1 items-center justify-center gap-2 px-4 text-xs font-bold sm:flex-none">{restoringCloudId === cloudProject.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />} Khôi phục</button><button type="button" onClick={() => removeCloudProject(cloudProject.id, cloudProject.title)} className="eg-icon-button flex h-11 w-11 items-center justify-center text-zinc-600 hover:text-rose-200" aria-label={`Xóa bản sao cloud ${cloudProject.title}`}><Trash2 className="h-4 w-4" /></button></div>
+                  </article>
+                ))}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLibrary && (
         <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/75 p-3 backdrop-blur-xl" onClick={() => setShowLibrary(false)}>
           <div className="eg-panel flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b eg-divider px-5 py-5 md:px-7">
-              <div><div className="eg-kicker">Egoric Assets</div><h2 className="mt-1 text-xl font-semibold text-white">Thư viện tài nguyên</h2><p className="mt-1 text-xs text-zinc-500">Nhân vật và bối cảnh đã khóa hình ảnh, sẵn sàng dùng lại.</p></div>
+              <div><div className="eg-kicker">Tài nguyên Egoric</div><h2 className="mt-1 text-xl font-semibold text-white">Thư viện tài nguyên</h2><p className="mt-1 text-xs text-zinc-500">Nhân vật và bối cảnh đã khóa hình ảnh, sẵn sàng dùng lại.</p></div>
               <button type="button" onClick={() => setShowLibrary(false)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Đóng thư viện"><X className="h-4 w-4" /></button>
             </header>
             <div className="flex flex-col gap-3 border-b eg-divider p-4 md:flex-row md:items-center md:justify-between md:px-7">
@@ -308,7 +391,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
       {assetToUse && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setAssetToUse(null)}>
           <div className="eg-panel w-full max-w-2xl p-6 md:p-7" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4"><div><div className="eg-kicker">Chèn tài nguyên</div><h2 className="mt-1 text-lg font-semibold text-white">Chọn dự án đích</h2><p className="mt-1 text-xs text-zinc-500">Đưa “{assetToUse.name}” vào một workspace đang có.</p></div><button type="button" onClick={() => setAssetToUse(null)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Đóng"><X className="h-4 w-4" /></button></div>
+            <div className="flex items-start justify-between gap-4"><div><div className="eg-kicker">Chèn tài nguyên</div><h2 className="mt-1 text-lg font-semibold text-white">Chọn dự án đích</h2><p className="mt-1 text-xs text-zinc-500">Đưa “{assetToUse.name}” vào một không gian làm việc đang có.</p></div><button type="button" onClick={() => setAssetToUse(null)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Đóng"><X className="h-4 w-4" /></button></div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">{projects.length ? projects.map((project) => <button key={project.id} type="button" onClick={() => void handleUseAsset(project.id)} className="eg-card eg-card-interactive min-h-24 p-4 text-left"><span className="block truncate text-sm font-semibold text-white">{project.title}</span><span className="mt-2 flex items-center gap-2 text-[10px] text-zinc-600"><Clock3 className="h-3 w-3" />{formatDate(project.lastModified)}</span></button>) : <p className="col-span-full py-8 text-center text-sm text-zinc-600">Chưa có dự án để nhận tài nguyên.</p>}</div>
           </div>
         </div>

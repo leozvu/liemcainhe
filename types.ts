@@ -76,6 +76,16 @@ export interface Shot {
   keyframes: Keyframe[];
   interval?: VideoInterval;
   videoModel?: 'veo' | 'sora-2' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait';
+  workflow?: ShotWorkflowState;
+}
+
+export interface ShotWorkflowState {
+  keyframesStale?: boolean;
+  voiceStale?: boolean;
+  videoStale?: boolean;
+  approved?: boolean;
+  locked?: boolean;
+  updatedAt?: number;
 }
 
 export type VoiceProviderId = 'fpt' | 'viettel' | 'elevenlabs' | 'vbee' | 'human';
@@ -149,12 +159,63 @@ export interface RenderLog {
   duration?: number;
 }
 
+export type ProjectStage = 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
+export type CoreStage = 'script' | 'assets' | 'voice' | 'director' | 'export';
+export type ProductionJobKind = 'script-analysis' | 'asset-image' | 'keyframe-image' | 'video' | 'voice' | 'cloud-sync' | 'export';
+export type ProductionJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
+
+export interface ProductionJob {
+  id: string;
+  kind: ProductionJobKind;
+  stage: CoreStage;
+  label: string;
+  status: ProductionJobStatus;
+  progress: number;
+  completedUnits?: number;
+  totalUnits?: number;
+  resourceId?: string;
+  detail?: string;
+  error?: string;
+  attempts: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectSnapshot {
+  title: string;
+  stage: ProjectStage;
+  rawScript: string;
+  targetDuration: string;
+  language: string;
+  visualStyle: string;
+  shotGenerationModel: string;
+  scriptData: ScriptData | null;
+  shots: Shot[];
+  voiceStudio?: VoiceStudioState;
+}
+
+export interface ProjectCheckpoint {
+  id: string;
+  label: string;
+  createdAt: number;
+  stage: ProjectStage;
+  snapshot: ProjectSnapshot;
+}
+
+export interface ProjectWorkflowState {
+  jobs: ProductionJob[];
+  checkpoints: ProjectCheckpoint[];
+  lastCloudSyncAt?: number;
+  cloudSyncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
+  cloudSyncError?: string;
+}
+
 export interface ProjectState {
   id: string;
   title: string;
   createdAt: number;
   lastModified: number;
-  stage: 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
+  stage: ProjectStage;
   
   rawScript: string;
   targetDuration: string;
@@ -167,6 +228,7 @@ export interface ProjectState {
   isParsingScript: boolean;
   renderLogs: RenderLog[];
   voiceStudio?: VoiceStudioState;
+  workflow?: ProjectWorkflowState;
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';

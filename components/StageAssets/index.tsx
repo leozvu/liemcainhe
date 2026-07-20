@@ -23,6 +23,14 @@ import { AspectRatioSelector } from '../AspectRatioSelector';
 import { getDefaultAspectRatio, getImageModels, getActiveImageModel, getModelById } from '../../services/modelRegistry';
 import ModelSelector from '../ModelSelector';
 import { ImageModelDefinition, DEFAULT_IMAGE_MODEL_ID } from '../../types/model';
+import {
+  addProductionJob,
+  createProductionJob,
+  createProjectCheckpoint,
+  markShotWorkflowStale,
+  patchProductionJob,
+  setProductionJobStatus,
+} from '../../services/workflowService';
 
 interface Props {
   project: ProjectState;
@@ -52,6 +60,37 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   const language = getProjectLanguage(project.language, project.scriptData?.language);
   const visualStyle = getProjectVisualStyle(project.visualStyle, project.scriptData?.visualStyle);
   const genre = project.scriptData?.genre || DEFAULTS.genre;
+
+  const markDependentShotsStale = (state: ProjectState, type: 'character' | 'scene', id: string): ProjectState => ({
+    ...state,
+    shots: state.shots.map((shot) => {
+      const affected = type === 'character'
+        ? shot.characters.some((characterId) => compareIds(characterId, id))
+        : compareIds(shot.sceneId, id);
+      return affected ? markShotWorkflowStale(shot, 'visual') : shot;
+    }),
+  });
+
+  const patchAssetInProject = (
+    state: ProjectState,
+    type: 'character' | 'scene',
+    id: string,
+    updates: Record<string, unknown>,
+  ): ProjectState => {
+    if (!state.scriptData) return state;
+    return {
+      ...state,
+      scriptData: {
+        ...state.scriptData,
+        characters: type === 'character'
+          ? state.scriptData.characters.map((character) => compareIds(character.id, id) ? { ...character, ...updates } : character)
+          : state.scriptData.characters,
+        scenes: type === 'scene'
+          ? state.scriptData.scenes.map((scene) => compareIds(scene.id, id) ? { ...scene, ...updates } : scene)
+          : state.scriptData.scenes,
+      },
+    };
+  };
 
   // Khôi phục tác vụ bị gián đoạn để người dùng có thể tạo lại sau khi mở trang.
   useEffect(() => {
@@ -112,18 +151,8 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     setShowLibraryModal(true);
   };
 
-  const handleGenerateAsset = async (type: 'character' | 'scene', id: string) => {
-    if (project.scriptData) {
-      const newData = { ...project.scriptData };
-      if (type === 'character') {
-        const c = newData.characters.find(c => compareIds(c.id, id));
-        if (c) c.status = 'generating';
-      } else {
-        const s = newData.scenes.find(s => compareIds(s.id, id));
-        if (s) s.status = 'generating';
-      }
-      updateProject({ scriptData: newData });
-    }
+  const handleGenerateAsset = async (type: 'character' | 'scene', id: string): Promise<boolean> => {
+    updateProject((previous) => patchAssetInProject(previous, type, id, { status: 'generating' }));
     try {
       let prompt = "";
       
@@ -136,15 +165,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             const prompts = await generateVisualPrompts('character', char, genre, DEFAULTS.modelVersion, visualStyle, language);
             prompt = prompts.visualPrompt;
             
-            if (project.scriptData) {
-              const newData = { ...project.scriptData };
-              const c = newData.characters.find(c => compareIds(c.id, id));
-              if (c) {
-                c.visualPrompt = prompts.visualPrompt;
-                c.negativePrompt = prompts.negativePrompt;
-              }
-              updateProject({ scriptData: newData });
-            }
+            updateProject((previous) => patchAssetInProject(previous, type, id, {
+              visualPrompt: prompts.visualPrompt,
+              negativePrompt: prompts.negativePrompt,
+            }));
           }
         }
       } else {
@@ -156,15 +180,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             const prompts = await generateVisualPrompts('scene', scene, genre, DEFAULTS.modelVersion, visualStyle, language);
             prompt = prompts.visualPrompt;
             
-            if (project.scriptData) {
-              const newData = { ...project.scriptData };
-              const s = newData.scenes.find(s => compareIds(s.id, id));
-              if (s) {
-                s.visualPrompt = prompts.visualPrompt;
-                s.negativePrompt = prompts.negativePrompt;
-              }
-              updateProject({ scriptData: newData });
-            }
+            updateProject((previous) => patchAssetInProject(previous, type, id, {
+              visualPrompt: prompts.visualPrompt,
+              negativePrompt: prompts.negativePrompt,
+            }));
           }
         }
       }
@@ -174,40 +193,19 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
 
       const imageUrl = await generateImage(enhancedPrompt, [], aspectRatio);
 
-      if (project.scriptData) {
-        const newData = { ...project.scriptData };
-        if (type === 'character') {
-          const c = newData.characters.find(c => compareIds(c.id, id));
-          if (c) {
-            c.referenceImage = imageUrl;
-            c.status = 'completed';
-          }
-        } else {
-          const s = newData.scenes.find(s => compareIds(s.id, id));
-          if (s) {
-            s.referenceImage = imageUrl;
-            s.status = 'completed';
-          }
-        }
-        updateProject({ scriptData: newData });
-      }
-
+      updateProject((previous) => markDependentShotsStale(
+        patchAssetInProject(previous, type, id, { referenceImage: imageUrl, status: 'completed' }),
+        type,
+        id,
+      ));
+      return true;
     } catch (e: any) {
       console.error(e);
-      if (project.scriptData) {
-        const newData = { ...project.scriptData };
-        if (type === 'character') {
-          const c = newData.characters.find(c => compareIds(c.id, id));
-          if (c) c.status = 'failed';
-        } else {
-          const s = newData.scenes.find(s => compareIds(s.id, id));
-          if (s) s.status = 'failed';
-        }
-        updateProject({ scriptData: newData });
-      }
+      updateProject((previous) => patchAssetInProject(previous, type, id, { status: 'failed' }));
       if (onApiKeyError && onApiKeyError(e)) {
-        return;
+        return false;
       }
+      return false;
     }
   };
 
@@ -226,7 +224,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         type: 'warning',
         showCancel: true,
         onConfirm: async () => {
-          await executeBatchGenerate(items, type);
+          await executeBatchGenerate(items, type, true);
         }
       });
       return;
@@ -235,17 +233,44 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     await executeBatchGenerate(itemsToGen, type);
   };
 
-  const executeBatchGenerate = async (targetItems: any[], type: 'character' | 'scene') => {
+  const executeBatchGenerate = async (targetItems: any[], type: 'character' | 'scene', protectExisting = false) => {
+    if (!targetItems.length) return;
+    const job = createProductionJob({
+      kind: 'asset-image',
+      stage: 'assets',
+      label: `Tạo ${targetItems.length} ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'}`,
+      totalUnits: targetItems.length,
+      detail: 'Tạo tuần tự để giới hạn lỗi rate-limit và theo dõi được từng mục.',
+    });
+    updateProject((previous) => {
+      const protectedProject = protectExisting
+        ? createProjectCheckpoint(previous, `Trước khi tạo lại ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'}`)
+        : previous;
+      return setProductionJobStatus(addProductionJob(protectedProject, job), job.id, 'running');
+    });
     setBatchProgress({ current: 0, total: targetItems.length });
+    let failures = 0;
 
     for (let i = 0; i < targetItems.length; i++) {
       if (i > 0) await delay(DEFAULTS.batchGenerateDelay);
       
-      await handleGenerateAsset(type, targetItems[i].id);
+      const success = await handleGenerateAsset(type, targetItems[i].id);
+      if (!success) failures += 1;
       setBatchProgress({ current: i + 1, total: targetItems.length });
+      updateProject((previous) => patchProductionJob(previous, job.id, {
+        progress: Math.round(((i + 1) / targetItems.length) * 100),
+        completedUnits: i + 1,
+        detail: failures ? `${failures} mục lỗi · tiếp tục các mục còn lại` : `Đã hoàn tất ${i + 1}/${targetItems.length} mục`,
+      }));
     }
 
     setBatchProgress(null);
+    updateProject((previous) => setProductionJobStatus(
+      previous,
+      job.id,
+      failures ? 'failed' : 'completed',
+      failures ? `${failures}/${targetItems.length} ảnh không tạo được. Có thể mở công đoạn để chạy lại.` : undefined,
+    ));
   };
 
   const handleUploadCharacterImage = async (charId: string, file: File) => {
@@ -258,7 +283,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         if (char) {
           char.referenceImage = base64;
         }
-        updateProject({ scriptData: newData });
+        updateProject((previous) => markDependentShotsStale({ ...previous, scriptData: newData }, 'character', charId));
       }
     } catch (e: any) {
       showAlert(e.message, { type: 'error' });
@@ -275,7 +300,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         if (scene) {
           scene.referenceImage = base64;
         }
-        updateProject({ scriptData: newData });
+        updateProject((previous) => markDependentShotsStale({ ...previous, scriptData: newData }, 'scene', sceneId));
       }
     } catch (e: any) {
       showAlert(e.message, { type: 'error' });
@@ -520,7 +545,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
 
     const newVar: CharacterVariation = {
       id: generateId('var'),
-      name: name || "New Outfit",
+      name: name || "Trang phục mới",
       visualPrompt: prompt || char.visualPrompt || "",
       referenceImage: undefined
     };

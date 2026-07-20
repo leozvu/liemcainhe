@@ -1,27 +1,33 @@
 import React from 'react';
 import {
   AudioLines,
+  AlertTriangle,
   BookOpenText,
+  CheckCircle2,
   ChevronLeft,
   Clapperboard,
   Cpu,
   Film,
   HelpCircle,
   LibraryBig,
+  ListTodo,
   UsersRound,
 } from 'lucide-react';
+import { CoreStage, ProjectStage } from '../types';
 
 const LOGO_URL = '/egoric-agency-icon.png';
 
-type StageId = 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
-
 interface SidebarProps {
   currentStage: string;
-  setStage: (stage: StageId) => void;
+  setStage: (stage: ProjectStage) => void;
   onExit: () => void;
   projectName?: string;
   onShowOnboarding?: () => void;
   onShowModelConfig?: () => void;
+  workflowProgress?: number;
+  stageStatuses?: Partial<Record<CoreStage, 'ready' | 'attention' | 'blocked'>>;
+  activeJobCount?: number;
+  onOpenProductionCenter?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -40,9 +46,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   projectName,
   onShowOnboarding,
   onShowModelConfig,
+  workflowProgress = 0,
+  stageStatuses = {},
+  activeJobCount = 0,
+  onOpenProductionCenter,
 }) => {
-  const currentCoreIndex = Math.max(0, NAV_ITEMS.filter((item) => item.core).findIndex((item) => item.id === currentStage));
-
   return (
     <aside className="eg-sidebar select-none" aria-label="Quy trình sản xuất">
       <div className="eg-sidebar-brand">
@@ -61,19 +69,24 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      <div className="eg-sidebar-project border-y eg-divider px-5 py-4">
+      <button type="button" onClick={onOpenProductionCenter} className="eg-sidebar-project w-full border-y eg-divider px-5 py-4 text-left transition-colors hover:bg-white/[.025]" title="Mở Trung tâm sản xuất">
         <div className="eg-sidebar-copy">
           <div className="eg-kicker">Đang sản xuất</div>
           <div className="mt-1 truncate text-xs font-semibold text-zinc-200" title={projectName}>{projectName || 'Dự án chưa đặt tên'}</div>
-          <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[.06]" aria-label={`Tiến độ ${currentCoreIndex + 1} trên 5`}>
-            <div className="h-full rounded-full bg-[var(--eg-accent)] transition-[width] duration-300" style={{ width: `${((currentCoreIndex + 1) / 5) * 100}%` }} />
+          <div className="mt-3 flex items-center justify-between font-mono text-[9px] uppercase tracking-wider text-zinc-600">
+            <span>Trung tâm sản xuất</span><span>{workflowProgress}%</span>
           </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[.06]" aria-label={`Tiến độ sản xuất ${workflowProgress}%`}>
+            <div className="h-full rounded-full bg-[var(--eg-accent)] transition-[width] duration-300" style={{ width: `${workflowProgress}%` }} />
+          </div>
+          {activeJobCount > 0 && <div className="mt-2 flex items-center gap-1.5 text-[9px] font-medium text-cyan-100/70"><ListTodo className="h-3 w-3" /> {activeJobCount} tác vụ đang chạy</div>}
         </div>
-      </div>
+      </button>
 
       <nav className="eg-sidebar-nav eg-safe-scroll flex-1 space-y-1 overflow-y-auto p-3">
         {NAV_ITEMS.map((item) => {
           const active = currentStage === item.id;
+          const status = item.core ? stageStatuses[item.id as CoreStage] : undefined;
           return (
             <button
               key={item.id}
@@ -94,7 +107,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="eg-sidebar-item-name block truncate text-xs font-semibold">{item.label}</span>
                 <span className="eg-sidebar-item-detail mt-0.5 block truncate text-[9px] text-zinc-600 group-hover:text-zinc-500">{item.detail}</span>
               </span>
-              <span className={`eg-sidebar-copy font-mono text-[9px] ${active ? 'text-cyan-100/70' : 'text-zinc-700'}`}>{item.number}</span>
+              <span className="eg-sidebar-copy flex shrink-0 items-center gap-1.5">
+                {status === 'ready' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" aria-label="Sẵn sàng" />}
+                {status === 'blocked' && <AlertTriangle className="h-3.5 w-3.5 text-rose-300" aria-label="Bị chặn" />}
+                {status === 'attention' && <span className="h-2 w-2 rounded-full border border-amber-200/60" aria-label="Cần xử lý" />}
+                <span className={`font-mono text-[9px] ${active ? 'text-cyan-100/70' : 'text-zinc-700'}`}>{item.number}</span>
+              </span>
             </button>
           );
         })}

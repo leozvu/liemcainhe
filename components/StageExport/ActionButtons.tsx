@@ -1,7 +1,6 @@
 import React from 'react';
 import { Play, Download, FileVideo, Loader2 } from 'lucide-react';
 import { STYLES, DownloadState } from './constants';
-import { useAlert } from '../GlobalAlert';
 
 interface Props {
   completedShotsCount: number;
@@ -10,6 +9,7 @@ interface Props {
   downloadState: DownloadState;
   onPreview: () => void;
   onDownloadMaster: () => void;
+  onExportTimeline: () => void;
 }
 
 const ActionButtons: React.FC<Props> = ({
@@ -18,9 +18,9 @@ const ActionButtons: React.FC<Props> = ({
   progress,
   downloadState,
   onPreview,
-  onDownloadMaster
+  onDownloadMaster,
+  onExportTimeline,
 }) => {
-  const { showAlert } = useAlert();
   const { isDownloading, phase, progress: downloadProgress } = downloadState;
 
   return (
@@ -55,10 +55,10 @@ const ActionButtons: React.FC<Props> = ({
       
       <button 
         className={STYLES.button.tertiary}
-        onClick={() => showAlert('Tính năng đang được phát triển', { type: 'info', title: 'Thông báo' })}
+        onClick={onExportTimeline}
       >
         <FileVideo className="w-4 h-4" />
-        Xuất EDL / XML
+        Xuất EDL / XML / SRT
       </button>
     </div>
   );

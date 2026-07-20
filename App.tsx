@@ -1,19 +1,29 @@
 // Phiên bản thương hiệu Egoric Agency
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
-import StageScript from './components/StageScript';
-import StageAssets from './components/StageAssets';
-import StageDirector from './components/StageDirector';
-import StageExport from './components/StageExport';
-import StagePrompts from './components/StagePrompts';
-import StageVoice from './components/StageVoice';
 import Dashboard from './components/Dashboard';
 import Onboarding, { shouldShowOnboarding, resetOnboarding } from './components/Onboarding';
 import ModelConfigModal from './components/ModelConfig';
-import { ProjectState } from './types';
-import { Save, CheckCircle } from 'lucide-react';
+import { CoreStage, ProjectStage, ProjectState } from './types';
+import { Save, CheckCircle, Gauge } from 'lucide-react';
 import { saveProjectToDB } from './services/storageService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
+import { getWorkflowReadiness, normalizeWorkflowState } from './services/workflowService';
+
+const StageScript = React.lazy(() => import('./components/StageScript'));
+const StageAssets = React.lazy(() => import('./components/StageAssets'));
+const StageVoice = React.lazy(() => import('./components/StageVoice'));
+const StageDirector = React.lazy(() => import('./components/StageDirector'));
+const StageExport = React.lazy(() => import('./components/StageExport'));
+const StagePrompts = React.lazy(() => import('./components/StagePrompts'));
+const ProductionCenter = React.lazy(() => import('./components/ProductionCenter'));
+
+const WorkspaceLoader = () => (
+  <div className="flex h-full items-center justify-center text-xs text-zinc-600">
+    <span className="mr-3 h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/20 border-t-cyan-200" />
+    Đang mở không gian làm việc…
+  </div>
+);
 
 function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
@@ -21,6 +31,7 @@ function App() {
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showModelConfig, setShowModelConfig] = useState(false);
+  const [showProductionCenter, setShowProductionCenter] = useState(false);
   
   const saveTimeoutRef = useRef<any>(null);
   const hideStatusTimeoutRef = useRef<any>(null);
@@ -146,18 +157,19 @@ function App() {
     });
   };
 
-  const setStage = (stage: 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts') => {
+  const setStage = (stage: ProjectStage) => {
     updateProject({ stage });
   };
 
   const handleOpenProject = (proj: ProjectState) => {
-    setProject(proj);
+    setProject(normalizeWorkflowState(proj));
   };
 
   const handleExitProject = async () => {
     if (project) {
         await saveProjectToDB(project);
     }
+    setShowProductionCenter(false);
     setProject(null);
   };
 
@@ -203,6 +215,12 @@ function App() {
     );
   }
 
+  const readiness = getWorkflowReadiness(project);
+  const stageStatuses = Object.fromEntries(
+    readiness.stages.map((stage) => [stage.id, stage.status]),
+  ) as Partial<Record<CoreStage, 'ready' | 'attention' | 'blocked'>>;
+  const activeJobCount = (project.workflow?.jobs || []).filter((job) => ['queued', 'running'].includes(job.status)).length;
+
   return (
     <div className="eg-app-shell flex h-[100dvh] font-sans text-slate-100">
       <Sidebar 
@@ -212,10 +230,25 @@ function App() {
         projectName={project.title}
         onShowOnboarding={handleShowOnboarding}
         onShowModelConfig={() => setShowModelConfig(true)}
+        workflowProgress={readiness.overallPercent}
+        stageStatuses={stageStatuses}
+        activeJobCount={activeJobCount}
+        onOpenProductionCenter={() => setShowProductionCenter(true)}
       />
       
       <main className="eg-stage-main flex-1">
-        {renderStage()}
+        <React.Suspense fallback={<WorkspaceLoader />}>{renderStage()}</React.Suspense>
+
+        <button
+          type="button"
+          onClick={() => setShowProductionCenter(true)}
+          className="eg-mobile-production-button"
+          aria-label="Mở Trung tâm sản xuất"
+        >
+          <Gauge className="h-4 w-4" />
+          <span>{readiness.overallPercent}%</span>
+          {activeJobCount > 0 && <span className="eg-mobile-production-count">{activeJobCount}</span>}
+        </button>
         
         {showSaveStatus && (
           <div className="pointer-events-none absolute right-5 top-4 z-[90] flex min-h-9 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 font-mono text-[10px] text-zinc-300 shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
@@ -245,6 +278,21 @@ function App() {
         isOpen={showModelConfig}
         onClose={() => setShowModelConfig(false)}
       />
+
+      {showProductionCenter && (
+        <React.Suspense fallback={<div className="fixed inset-0 z-[120] bg-[var(--eg-canvas)]"><WorkspaceLoader /></div>}>
+          <ProductionCenter
+            project={project}
+            updateProject={updateProject}
+            setStage={(stage: CoreStage) => setStage(stage)}
+            onClose={() => setShowProductionCenter(false)}
+            onShowModelConfig={() => {
+              setShowProductionCenter(false);
+              setShowModelConfig(true);
+            }}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Film } from 'lucide-react';
 import { ProjectState } from '../../types';
-import { downloadMasterVideo, downloadSourceAssets } from '../../services/exportService';
+import { downloadEditorialPackage, downloadMasterVideo, downloadSourceAssets } from '../../services/exportService';
 import { STYLES } from './constants';
 import {
   calculateEstimatedDuration,
@@ -157,6 +157,15 @@ const StageExport: React.FC<Props> = ({ project }) => {
     }
   };
 
+  const handleExportTimeline = async () => {
+    try {
+      await downloadEditorialPackage(project);
+      showAlert('Đã tạo gói EDL, FCPXML và phụ đề SRT.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể xuất timeline', { type: 'error' });
+    }
+  };
+
   return (
     <div className={STYLES.container}>
       <div className={STYLES.header.container}>
@@ -197,6 +206,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
               }}
               onPreview={openVideoPlayer}
               onDownloadMaster={handleDownloadMaster}
+              onExportTimeline={() => void handleExportTimeline()}
             />
           </div>
 

@@ -2,7 +2,7 @@
 
 > Xưởng sản xuất phim ngắn, truyện tranh chuyển động và bảng phân cảnh bằng AI của Egoric Agency.
 
-Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu dự án, hình ảnh, bản thoại và cấu hình mô hình được lưu cục bộ trên thiết bị.
+Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu luôn được tự lưu trên thiết bị; bản deploy hỗ trợ sao lưu dự án và media lên cloud theo tài khoản ChatGPT.
 
 ## Quy trình sản xuất
 
@@ -10,15 +10,25 @@ Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trìn
 2. **Nhân vật & bối cảnh** — tạo concept, biến thể trang phục và ảnh tham chiếu.
 3. **Voice Studio** — casting giọng Việt, tổng hợp bản nháp hoặc duyệt nhiều take của diễn viên thật.
 4. **Xưởng dựng** — sản xuất khung hình chính đầu/cuối và video cho từng cảnh quay.
-5. **Xuất bản** — xem timeline, tải video và toàn bộ tài nguyên gốc.
+5. **Xuất bản** — xem timeline, tải gói dựng, CMX 3600 EDL, FCPXML, phụ đề SRT và toàn bộ tài nguyên gốc.
 
 Kho sáng tạo là khu vực nâng cao để tìm kiếm và chỉnh câu lệnh nhân vật, bối cảnh, khung hình chính và video.
+
+## Quy trình V2
+
+- **Trung tâm sản xuất** hiển thị readiness thật của năm công đoạn và đề xuất bước tiếp theo.
+- **Preflight** kiểm tra mô hình, API và nhà cung cấp voice trước khi gọi tác vụ có thể tính phí.
+- **Hàng đợi sản xuất** ghi tiến độ, lỗi và tác vụ bị gián đoạn cho các đợt tạo ảnh, thoại, video và cloud.
+- **Dependency tracking** đánh dấu cảnh cần tạo lại khi kịch bản, casting, tài nguyên hoặc keyframe thay đổi.
+- **Điểm khôi phục** giữ tối đa ba phiên bản gần nhất trước các thao tác ghi đè quan trọng.
+- **Egoric Cloud** dùng D1 cho trạng thái dự án và R2 cho media; dữ liệu được tách theo email tài khoản đã xác thực.
 
 ## Công nghệ
 
 - React 19, TypeScript và Vite 6
 - Tailwind CSS và Lucide icons
 - IndexedDB cho dữ liệu dự án cục bộ
+- D1 và R2 cho sao lưu cloud trên bản Sites
 - OpenRouter và Google AI Studio cho mô hình hội thoại
 - Replicate cho mô hình hình ảnh và video
 - FPT.AI, Viettel AI và ElevenLabs cho bản nháp giọng nói; tệp âm thanh cho diễn viên thật

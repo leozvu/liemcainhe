@@ -51,11 +51,11 @@ const ShotRow: React.FC<Props> = ({
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}`;
+      return `CẢNH ${String(idParts[0]).padStart(3, '0')}`;
     } else if (idParts.length === 2) {
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
+      return `CẢNH ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
     } else {
-      return `SHOT ${shotNumber.toString().padStart(3, '0')}`;
+      return `CẢNH ${shotNumber.toString().padStart(3, '0')}`;
     }
   };
 

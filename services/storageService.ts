@@ -1,5 +1,6 @@
 import { ProjectState, AssetLibraryItem } from '../types';
 import { migrateDeprecatedChatModelId } from '../types/model';
+import { createDefaultWorkflowState, normalizeWorkflowState } from './workflowService';
 
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
@@ -127,7 +128,7 @@ export const loadProjectFromDB = async (id: string): Promise<ProjectState> => {
             project.scriptData.shotGenerationModel = migratedScriptModel;
           }
         }
-        resolve(project);
+        resolve(normalizeWorkflowState(project));
       }
       else reject(new Error('Không tìm thấy dự án'));
     };
@@ -142,7 +143,7 @@ export const getAllProjectsMetadata = async (): Promise<ProjectState[]> => {
     const store = tx.objectStore(STORE_NAME);
     const request = store.getAll(); 
     request.onsuccess = () => {
-       const projects = request.result as ProjectState[];
+       const projects = (request.result as ProjectState[]).map(normalizeWorkflowState);
        projects.sort((a, b) => b.lastModified - a.lastModified);
        resolve(projects);
     };
@@ -258,6 +259,7 @@ Bao giờ cơn mưa này mới dừng?`,
     isParsingScript: false,
     renderLogs: [],
     voiceStudio: createDefaultVoiceStudioState(),
+    workflow: createDefaultWorkflowState(),
   };
 };
 
