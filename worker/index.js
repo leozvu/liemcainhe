@@ -664,6 +664,7 @@ const hydrateClientReviewPortal = (row, comments, requestUrl) => {
     label: version.label || `Phiên bản ${version.number || 1}`,
     note: version.note || undefined,
     duration: Number(version.duration || 0),
+    internalRoundId: version.internalRoundId || undefined,
     createdAt: Number(version.createdAt || row.created_at),
     clips: Array.isArray(version.clips) ? version.clips.map((clip) => ({
       id: clip.id,
@@ -708,9 +709,38 @@ const loadClientReviewPortal = async (env, row, requestUrl) => {
   return hydrateClientReviewPortal(row, comments.results || [], requestUrl);
 };
 
-const buildReviewVersion = (project, label, note, number) => {
+const reviewSourceSignature = (project, shotIds) => {
+  const shots = new Map((Array.isArray(project.shots) ? project.shots : []).map((shot) => [shot.id, shot]));
+  const payload = {
+    shotIds,
+    planSignature: project.autoEditor?.planSignature,
+    editorSettings: project.autoEditor?.settings,
+    clips: shotIds.map((shotId) => {
+      const shot = shots.get(shotId);
+      const voiceTakeId = project.voiceStudio?.selectedTakeByShot?.[shotId];
+      const voice = (project.voiceStudio?.takes || []).find((take) => take.id === voiceTakeId);
+      return {
+        shotId,
+        videoUrl: shot?.interval?.videoUrl,
+        duration: shot?.interval?.duration,
+        videoStale: shot?.workflow?.videoStale,
+        dialogue: shot?.dialogue,
+        voiceTakeId,
+        voiceUrl: voice?.audioUrl,
+      };
+    }),
+  };
+  const value = JSON.stringify(payload);
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
+  return (hash >>> 0).toString(36);
+};
+
+const buildReviewVersion = (project, reviewRound, label, note, number) => {
   const versionId = `version_${crypto.randomUUID()}`;
+  const allowedShotIds = new Set(reviewRound.shotIds);
   const clips = (Array.isArray(project.shots) ? project.shots : []).flatMap((shot, index) => {
+    if (!allowedShotIds.has(shot?.id)) return [];
     const videoValue = shot?.interval?.videoUrl;
     const mediaPath = getCloudMediaPath(project.id, videoValue);
     const externalUrl = mediaPath ? null : getExternalMediaUrl(videoValue);
@@ -738,6 +768,7 @@ const buildReviewVersion = (project, label, note, number) => {
     note: cleanText(note, 1000) || undefined,
     duration: clips.reduce((sum, clip) => sum + clip.duration, 0),
     clips,
+    internalRoundId: reviewRound.id,
     createdAt: Date.now(),
   };
 };
@@ -766,6 +797,19 @@ async function handleClientReviewsApi(request, env, url) {
     let project;
     try { project = JSON.parse(projectRow.payload); } catch { return json({ error: 'Bản sao dự án cloud bị lỗi dữ liệu.' }, 500); }
 
+    const internalRoundId = safeReviewId(body?.internalRoundId);
+    const reviewState = project?.agencyReview;
+    const reviewRound = Array.isArray(reviewState?.rounds)
+      ? reviewState.rounds.find((round) => round?.id === internalRoundId && round?.id === reviewState.activeRoundId)
+      : null;
+    const allGatesApproved = ['director', 'editor', 'account'].every((role) => reviewRound?.gates?.find((gate) => gate.role === role)?.status === 'approved');
+    if (!reviewRound || reviewRound.status !== 'ready-client' || !allGatesApproved) {
+      return json({ error: 'Phiên bản chưa hoàn tất vòng duyệt Director → Editor → Account.' }, 409);
+    }
+    if (!Array.isArray(reviewRound.shotIds) || !reviewRound.shotIds.length || reviewRound.sourceSignature !== reviewSourceSignature(project, reviewRound.shotIds)) {
+      return json({ error: 'Media đã thay đổi sau vòng duyệt nội bộ. Hãy mở vòng duyệt mới.' }, 409);
+    }
+
     const existing = await env.DB.prepare(
       'SELECT * FROM egoric_client_review_portals WHERE owner_email = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1'
     ).bind(email, projectId).first();
@@ -775,7 +819,7 @@ async function handleClientReviewsApi(request, env, url) {
     }
     const versions = Array.isArray(currentPayload.versions) ? currentPayload.versions : [];
     const nextNumber = versions.reduce((highest, version) => Math.max(highest, Number(version.number) || 0), 0) + 1;
-    const version = buildReviewVersion(project, body?.versionLabel, body?.versionNote, nextNumber);
+    const version = buildReviewVersion(project, reviewRound, body?.versionLabel, body?.versionNote, nextNumber);
     if (!version.clips.length) return json({ error: 'Dự án cloud chưa có video có thể chia sẻ. Hãy tạo video rồi sao lưu lại.' }, 409);
     const nextPayload = JSON.stringify({ versions: [...versions, version].slice(-20) });
     const now = Date.now();
@@ -906,11 +950,13 @@ async function handlePublicClientReviewApi(request, env, url) {
     let payload = { versions: [] };
     try { payload = JSON.parse(row.payload_json || '{}'); } catch { return json({ error: 'Dữ liệu bản duyệt bị lỗi.' }, 500); }
     const version = (payload.versions || []).find((item) => item.id === body?.versionId);
+    const latestVersion = (payload.versions || []).at(-1);
     const clip = version?.clips?.find((item) => item.id === body?.clipId);
     const authorName = cleanText(body?.authorName, 120);
     const authorEmail = cleanText(body?.authorEmail, 180) || null;
     const commentBody = cleanText(body?.body, 2000);
     if (!version || !clip || authorName.length < 2 || !commentBody) return json({ error: 'Hãy nhập tên, nội dung và chọn đúng cảnh cần góp ý.' }, 400);
+    if (version.id !== latestVersion?.id) return json({ error: 'Phiên bản cũ đã khóa. Hãy góp ý trên phiên bản mới nhất.' }, 409);
     const timecode = Math.max(0, Math.min(Number(clip.duration) || 0, Number(body?.timecodeSeconds) || 0));
     const id = `client_comment_${crypto.randomUUID()}`;
     const now = Date.now();
@@ -930,10 +976,12 @@ async function handlePublicClientReviewApi(request, env, url) {
     try { payload = JSON.parse(row.payload_json || '{}'); } catch { return json({ error: 'Dữ liệu bản duyệt bị lỗi.' }, 500); }
     const versionId = safeReviewId(body?.versionId);
     const version = (payload.versions || []).find((item) => item.id === versionId);
+    const latestVersion = (payload.versions || []).at(-1);
     const reviewerName = cleanText(body?.reviewerName, 120);
     const reviewerEmail = cleanText(body?.reviewerEmail, 180) || null;
     const note = cleanText(body?.note, 1000) || null;
     if (!decision || !version || reviewerName.length < 2) return json({ error: 'Hãy nhập tên người duyệt và chọn đúng phiên bản.' }, 400);
+    if (version.id !== latestVersion?.id) return json({ error: 'Chỉ phiên bản mới nhất mới được phê duyệt hoặc yêu cầu chỉnh sửa.' }, 409);
     const now = Date.now();
     await env.DB.prepare(
       `UPDATE egoric_client_review_portals SET decision = ?, decision_version_id = ?, decision_note = ?, reviewer_name = ?, reviewer_email = ?,

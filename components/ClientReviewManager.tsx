@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
+  ArrowRight,
+  BriefcaseBusiness,
   CheckCircle2,
+  Clapperboard,
   Clipboard,
   Clock3,
   CloudUpload,
@@ -14,10 +18,12 @@ import {
   RotateCcw,
   Send,
   ShieldCheck,
+  Scissors,
+  UserRoundCheck,
   Video,
   XCircle,
 } from 'lucide-react';
-import { AgencyCampaign, AgencyClient, ClientReviewPortal, ProjectState } from '../types';
+import { AgencyCampaign, AgencyClient, AgencyReviewRole, ClientReviewPortal, ProjectState } from '../types';
 import {
   getClientReviewSummary,
   getClientReviewWorkspace,
@@ -25,6 +31,15 @@ import {
   syncClientReviewDecisionToCampaign,
   updateClientReviewPortal,
 } from '../services/clientReviewService';
+import {
+  AGENCY_REVIEW_ROLE_META,
+  createAgencyReviewRound,
+  getAgencyReviewSummary,
+  markAgencyReviewPublished,
+  refreshAgencyReviewSourceSignature,
+  syncAgencyReviewFromClientDecision,
+  updateAgencyReviewGate,
+} from '../services/agencyReviewService';
 import { syncProjectToCloud } from '../services/cloudSyncService';
 import { getAllAgencyCampaigns, getAllAgencyClients } from '../services/storageService';
 import { useAlert } from './GlobalAlert';
@@ -44,6 +59,18 @@ const DECISION_META = {
   approved: { label: 'Đã nghiệm thu', icon: CheckCircle2, className: 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' },
 } as const;
 
+const INTERNAL_ROLE_ICONS = {
+  director: Clapperboard,
+  editor: Scissors,
+  account: BriefcaseBusiness,
+} as const;
+
+const INTERNAL_STATUS_META = {
+  pending: { label: 'Đang chờ', className: 'border-white/[.08] bg-white/[.025] text-zinc-500' },
+  approved: { label: 'Đã duyệt', className: 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' },
+  'changes-requested': { label: 'Yêu cầu sửa', className: 'border-amber-200/20 bg-amber-200/[.07] text-amber-100' },
+} as const;
+
 const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
   const { showAlert } = useAlert();
   const [portals, setPortals] = useState<ClientReviewPortal[]>([]);
@@ -59,8 +86,12 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
   const [versionLabel, setVersionLabel] = useState('');
   const [versionNote, setVersionNote] = useState('');
   const [expiresInDays, setExpiresInDays] = useState(30);
+  const [reviewerName, setReviewerName] = useState(() => sessionStorage.getItem('egoric-internal-reviewer') || '');
+  const [reviewNote, setReviewNote] = useState('');
 
   const completedClips = project.shots.filter((shot) => Boolean(shot.interval?.videoUrl));
+  const agencySummary = getAgencyReviewSummary(project);
+  const activeRound = agencySummary.activeRound;
   const selectedPortal = portals.find((portal) => portal.id === selectedPortalId) || portals[0];
   const summary = getClientReviewSummary(selectedPortal);
   const decisionVersion = selectedPortal?.versions.find((version) => version.id === selectedPortal.decisionVersionId);
@@ -89,6 +120,9 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
         : workspace.portals[0]?.id || null);
       const nextVersion = (workspace.portals[0]?.versions.at(-1)?.number || 0) + 1;
       setVersionLabel((current) => current || `Bản duyệt V${nextVersion}`);
+      if (workspace.portals[0]) {
+        updateProject((previous) => syncAgencyReviewFromClientDecision(previous, workspace.portals[0]));
+      }
       await syncClientReviewDecisionToCampaign(project, workspace.portals[0]);
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể tải cổng duyệt.', { type: 'error' });
@@ -98,6 +132,29 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
   };
 
   useEffect(() => { void loadWorkspace(); }, [project.id]);
+
+  const openInternalRound = () => {
+    try {
+      const next = createAgencyReviewRound(project, versionLabel, versionNote);
+      updateProject(next);
+      setReviewNote('');
+      showAlert('Đã mở vòng duyệt nội bộ. Director là người duyệt đầu tiên.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể mở vòng duyệt nội bộ.', { type: 'error' });
+    }
+  };
+
+  const decideInternalGate = (role: AgencyReviewRole, decision: 'approved' | 'changes-requested') => {
+    try {
+      const next = updateAgencyReviewGate(project, role, decision, reviewerName, reviewNote);
+      sessionStorage.setItem('egoric-internal-reviewer', reviewerName.trim());
+      updateProject(next);
+      setReviewNote('');
+      showAlert(decision === 'approved' ? `${AGENCY_REVIEW_ROLE_META[role].label} đã duyệt.` : 'Đã chuyển bản dựng về vòng chỉnh sửa.', { type: decision === 'approved' ? 'success' : 'warning' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể cập nhật vòng duyệt.', { type: 'error' });
+    }
+  };
 
   const copyLink = async (portal: ClientReviewPortal) => {
     if (!portal.shareUrl) return;
@@ -119,21 +176,19 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
       showAlert('Dự án chưa có clip video hoàn tất để gửi duyệt.', { type: 'warning' });
       return;
     }
+    if (!activeRound || !agencySummary.readyForClient) {
+      showAlert(agencySummary.stale ? 'Media đã thay đổi. Hãy mở vòng duyệt nội bộ mới.' : 'Cần Director, Editor và Account duyệt trước khi gửi khách.', { type: 'warning' });
+      return;
+    }
     setPublishing(true);
     setProgress(2);
     setProgressDetail('Đang chuẩn bị bản duyệt…');
     try {
-      const cloudProject = await syncProjectToCloud(project, (nextProgress, detail) => {
+      const uploadedProject = await syncProjectToCloud(project, (nextProgress, detail) => {
         setProgress(Math.min(88, Math.round(nextProgress * 0.88)));
         setProgressDetail(detail);
       });
-      updateProject((previous) => ({
-        ...cloudProject,
-        workflow: {
-          ...(cloudProject.workflow || { jobs: [], checkpoints: [] }),
-          checkpoints: previous.workflow?.checkpoints || [],
-        },
-      }));
+      const cloudProject = await syncProjectToCloud(refreshAgencyReviewSourceSignature(uploadedProject, activeRound.id));
       setProgress(92);
       setProgressDetail('Đang đóng gói phiên bản và tạo link an toàn…');
       const portal = await publishClientReview(project.id, {
@@ -144,14 +199,27 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
         versionLabel: versionLabel.trim() || `Bản duyệt V${(summary.latestVersion?.number || 0) + 1}`,
         versionNote: versionNote.trim() || undefined,
         expiresInDays,
+        internalRoundId: activeRound.id,
       });
+      const publishedProject = markAgencyReviewPublished(cloudProject, activeRound.id, portal);
+      const persistedProject = await syncProjectToCloud(publishedProject, (nextProgress, detail) => {
+        setProgress(96 + Math.round(nextProgress * 0.04));
+        setProgressDetail(detail);
+      });
+      updateProject((previous) => ({
+        ...persistedProject,
+        workflow: {
+          ...(persistedProject.workflow || { jobs: [], checkpoints: [] }),
+          checkpoints: previous.workflow?.checkpoints || persistedProject.workflow?.checkpoints || [],
+        },
+      }));
       setPortals((current) => [portal, ...current.filter((item) => item.id !== portal.id)]);
       setSelectedPortalId(portal.id);
       setVersionLabel(`Bản duyệt V${(portal.versions.at(-1)?.number || 0) + 1}`);
       setVersionNote('');
       setProgress(100);
       setProgressDetail('Đã phát hành bản duyệt.');
-      await syncClientReviewDecisionToCampaign(project, portal);
+      await syncClientReviewDecisionToCampaign(publishedProject, portal);
       await copyLink(portal);
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể phát hành bản duyệt.', { type: 'error' });
@@ -179,6 +247,10 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
 
   const decisionMeta = selectedPortal ? DECISION_META[selectedPortal.decision] : DECISION_META.pending;
   const DecisionIcon = decisionMeta.icon;
+  const canOpenRound = !activeRound
+    || agencySummary.stale
+    || ['changes-requested', 'approved'].includes(activeRound.status);
+  const nextRole = agencySummary.nextRole;
 
   return (
     <div className="space-y-6">
@@ -206,6 +278,54 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
         </div>
       </section>
 
+      <section className="eg-panel overflow-hidden">
+        <div className="flex flex-col gap-4 border-b eg-divider px-5 py-5 md:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <UserRoundCheck className="mt-0.5 h-5 w-5 text-cyan-200" />
+            <div><div className="eg-kicker">Agency approval pipeline</div><h3 className="mt-1 text-base font-semibold text-white">Director → Editor → Account</h3><p className="mt-2 text-[11px] leading-5 text-zinc-500">Ba lớp kiểm duyệt nội bộ phải thông qua đúng thứ tự. Server sẽ từ chối phát hành nếu thiếu bất kỳ chữ ký nào.</p></div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {activeRound && <span className="eg-chip"><span className="font-mono">{agencySummary.approvedGates}/3</span> chữ ký</span>}
+            {agencySummary.stale && <span className="eg-chip border-amber-200/20 bg-amber-200/[.07] text-amber-100"><AlertTriangle className="h-3 w-3" /> Media đã đổi</span>}
+            {agencySummary.readyForClient && <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100"><ShieldCheck className="h-3 w-3" /> Đủ điều kiện gửi khách</span>}
+          </div>
+        </div>
+
+        {!activeRound ? (
+          <div className="grid gap-5 p-5 md:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div><h4 className="text-sm font-semibold text-zinc-200">Chưa mở vòng duyệt nội bộ</h4><p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-600">Tên và ghi chú version ở khối phát hành sẽ được dùng làm hồ sơ vòng duyệt. Hệ thống khóa đúng danh sách clip và dấu vân tay media tại thời điểm mở vòng.</p></div>
+            <button type="button" onClick={openInternalRound} disabled={!completedClips.length || !versionLabel.trim()} className="eg-button-primary inline-flex min-h-11 items-center justify-center gap-2 px-5 text-xs font-bold disabled:opacity-40"><UserRoundCheck className="h-4 w-4" /> Mở vòng duyệt nội bộ</button>
+          </div>
+        ) : (
+          <div className="p-5 md:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div><span className="font-mono text-[9px] uppercase tracking-wider text-cyan-100/70">{activeRound.id}</span><h4 className="mt-1 text-sm font-semibold text-white">{activeRound.label}</h4>{activeRound.note && <p className="mt-2 max-w-2xl whitespace-pre-wrap text-[11px] leading-5 text-zinc-500">{activeRound.note}</p>}</div>
+              {canOpenRound && <button type="button" onClick={openInternalRound} disabled={!completedClips.length || !versionLabel.trim()} className="eg-button-secondary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-40"><RefreshCw className="h-4 w-4" /> Mở vòng mới</button>}
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-stretch">
+              {activeRound.gates.map((gate, index) => {
+                const meta = AGENCY_REVIEW_ROLE_META[gate.role];
+                const statusMeta = INTERNAL_STATUS_META[gate.status];
+                const RoleIcon = INTERNAL_ROLE_ICONS[gate.role];
+                const actionable = nextRole === gate.role && !agencySummary.stale && ['internal-review', 'changes-requested'].includes(activeRound.status);
+                return <React.Fragment key={gate.role}><article className={`rounded-2xl border p-4 ${actionable ? 'border-cyan-200/25 bg-cyan-200/[.045]' : 'border-white/[.07] bg-black/15'}`}><div className="flex items-start justify-between gap-3"><span className={`flex h-10 w-10 items-center justify-center rounded-xl border ${actionable ? 'border-cyan-200/20 bg-cyan-200/[.07] text-cyan-100' : 'border-white/[.07] bg-white/[.025] text-zinc-500'}`}><RoleIcon className="h-4 w-4" /></span><span className={`eg-chip ${statusMeta.className}`}>{statusMeta.label}</span></div><h5 className="mt-4 text-sm font-semibold text-white">{meta.label}</h5><p className="mt-1 min-h-10 text-[10px] leading-4 text-zinc-600">{meta.detail}</p>{gate.reviewer && <p className="mt-3 text-[10px] text-zinc-400"><strong className="text-zinc-300">{gate.reviewer}</strong>{gate.note ? ` · ${gate.note}` : ''}</p>}</article>{index < activeRound.gates.length - 1 && <ArrowRight className="mx-auto hidden h-4 w-4 self-center text-zinc-700 lg:block" />}</React.Fragment>;
+              })}
+            </div>
+
+            {nextRole && !agencySummary.stale && ['internal-review', 'changes-requested'].includes(activeRound.status) && (
+              <div className="mt-5 grid gap-3 rounded-2xl border border-white/[.07] bg-white/[.02] p-4 lg:grid-cols-[minmax(180px,.55fr)_1fr_auto] lg:items-end">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Người duyệt · {AGENCY_REVIEW_ROLE_META[nextRole].label}<input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} className="eg-input mt-2 px-4 text-sm font-normal normal-case tracking-normal" placeholder="Tên thành viên phụ trách" /></label>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Ghi chú nội bộ<input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} maxLength={1000} className="eg-input mt-2 px-4 text-sm font-normal normal-case tracking-normal" placeholder="Điểm đã kiểm tra hoặc yêu cầu sửa…" /></label>
+                <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => decideInternalGate(nextRole, 'changes-requested')} disabled={reviewerName.trim().length < 2} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-200/[.055] px-4 text-xs font-semibold text-amber-100 disabled:opacity-40"><RefreshCw className="h-4 w-4" /> Trả sửa</button><button type="button" onClick={() => decideInternalGate(nextRole, 'approved')} disabled={reviewerName.trim().length < 2} className="eg-button-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-bold disabled:opacity-40"><CheckCircle2 className="h-4 w-4" /> Duyệt</button></div>
+              </div>
+            )}
+
+            {agencySummary.stale && <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200/20 bg-amber-200/[.055] p-4 text-amber-100"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p className="text-[11px] leading-5">Video, voice hoặc cấu hình dựng đã thay đổi sau chữ ký nội bộ. Vòng này được giữ trong lịch sử nhưng không thể phát hành; hãy mở vòng mới.</p></div>}
+          </div>
+        )}
+      </section>
+
       <section className="grid gap-5 xl:grid-cols-[.82fr_1.18fr]">
         <div className="eg-panel p-5 md:p-6">
           <div className="flex items-start gap-3"><Send className="mt-0.5 h-5 w-5 text-cyan-200" /><div><div className="eg-kicker">Phát hành phiên bản</div><h3 className="mt-1 text-base font-semibold text-white">Đồng bộ và gửi khách duyệt</h3><p className="mt-2 text-[11px] leading-5 text-zinc-500">Mỗi lần phát hành tạo một version mới nhưng giữ nguyên link, lịch sử và góp ý cũ.</p></div></div>
@@ -215,7 +335,8 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
             <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Link hết hạn sau<select value={expiresInDays} onChange={(event) => setExpiresInDays(Number(event.target.value))} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal"><option value={7}>7 ngày</option><option value={14}>14 ngày</option><option value={30}>30 ngày</option><option value={60}>60 ngày</option><option value={90}>90 ngày</option></select></label>
           </div>
           {publishing && <div className="mt-5 rounded-2xl border border-cyan-200/15 bg-cyan-200/[.045] p-4" aria-live="polite"><div className="flex items-center justify-between gap-3 text-[10px] text-cyan-100"><span>{progressDetail}</span><span className="font-mono">{progress}%</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[var(--eg-accent)] transition-[width] duration-300" style={{ width: `${progress}%` }} /></div></div>}
-          <button type="button" onClick={() => void publish()} disabled={publishing || !hosted || !completedClips.length || !versionLabel.trim()} className="eg-button-primary mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40">{publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />} {portals.length ? 'Phát hành version mới' : 'Tạo link và gửi duyệt'}</button>
+          <button type="button" onClick={() => void publish()} disabled={publishing || !hosted || !completedClips.length || !versionLabel.trim() || !agencySummary.readyForClient} className="eg-button-primary mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40">{publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />} {portals.length ? 'Phát hành version mới' : 'Tạo link và gửi duyệt'}</button>
+          {hosted && !agencySummary.readyForClient && <p className="mt-3 text-[10px] leading-4 text-amber-100/70">Nút phát hành sẽ mở sau khi Director, Editor và Account đều duyệt media hiện tại.</p>}
           {!hosted && <p className="mt-3 text-[10px] leading-4 text-amber-100/70">Bản local không tạo link giả. Sau khi deploy Sites, dự án và media sẽ được đồng bộ lên D1/R2 trước khi phát hành.</p>}
           {hosted && <p className="mt-3 text-[10px] leading-4 text-zinc-600">Khách ngoài workspace chỉ mở được link sau khi quyền truy cập Sites được bật công khai. Dashboard nội bộ vẫn được server chặn nếu không đăng nhập.</p>}
         </div>

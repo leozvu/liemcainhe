@@ -350,6 +350,7 @@ const createSnapshot = (project: ProjectState): ProjectSnapshot => ({
   videoFactory: cloneValue(project.videoFactory),
   aiSupervisor: cloneValue(project.aiSupervisor),
   autoEditor: cloneValue(project.autoEditor),
+  agencyReview: cloneValue(project.agencyReview),
 });
 
 export const createProjectCheckpoint = (project: ProjectState, label: string): ProjectState => {

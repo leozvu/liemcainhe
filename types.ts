@@ -181,7 +181,7 @@ export interface RenderLog {
 
 export type ProjectStage = 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
 export type CoreStage = 'script' | 'assets' | 'voice' | 'director' | 'export';
-export type ProductionJobKind = 'script-analysis' | 'creative-director' | 'video-factory' | 'ai-supervisor' | 'auto-editor' | 'asset-image' | 'keyframe-image' | 'video' | 'voice' | 'cloud-sync' | 'export';
+export type ProductionJobKind = 'script-analysis' | 'creative-director' | 'video-factory' | 'ai-supervisor' | 'auto-editor' | 'agency-review' | 'asset-image' | 'keyframe-image' | 'video' | 'voice' | 'cloud-sync' | 'export';
 export type ProductionJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
 
 export interface ProductionJob {
@@ -215,6 +215,7 @@ export interface ProjectSnapshot {
   videoFactory?: VideoFactoryState;
   aiSupervisor?: AISupervisorState;
   autoEditor?: AutoEditorState;
+  agencyReview?: AgencyReviewState;
 }
 
 export interface ProjectCheckpoint {
@@ -285,6 +286,7 @@ export interface ClientReviewVersion {
   note?: string;
   duration: number;
   clips: ClientReviewClip[];
+  internalRoundId?: string;
   createdAt: number;
 }
 
@@ -715,6 +717,39 @@ export interface AutoEditorState {
   updatedAt: number;
 }
 
+export type AgencyReviewRole = 'director' | 'editor' | 'account';
+export type AgencyReviewGateStatus = 'pending' | 'approved' | 'changes-requested';
+export type AgencyReviewRoundStatus = 'internal-review' | 'ready-client' | 'client-review' | 'changes-requested' | 'approved';
+
+export interface AgencyReviewGate {
+  role: AgencyReviewRole;
+  status: AgencyReviewGateStatus;
+  reviewer?: string;
+  note?: string;
+  updatedAt: number;
+}
+
+export interface AgencyReviewRound {
+  id: string;
+  label: string;
+  note?: string;
+  status: AgencyReviewRoundStatus;
+  sourceSignature: string;
+  shotIds: string[];
+  gates: AgencyReviewGate[];
+  portalId?: string;
+  versionId?: string;
+  clientDecisionAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AgencyReviewState {
+  rounds: AgencyReviewRound[];
+  activeRoundId?: string;
+  updatedAt: number;
+}
+
 export interface AgencyClient {
   id: string;
   name: string;
@@ -790,6 +825,7 @@ export interface ProjectState {
   videoFactory?: VideoFactoryState;
   aiSupervisor?: AISupervisorState;
   autoEditor?: AutoEditorState;
+  agencyReview?: AgencyReviewState;
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';

@@ -22,6 +22,7 @@ export interface PublishClientReviewInput {
   versionLabel: string;
   versionNote?: string;
   expiresInDays: number;
+  internalRoundId: string;
 }
 
 export interface PublicReviewCommentInput {
