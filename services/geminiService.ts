@@ -908,6 +908,7 @@ export const generateImage = async (
   aspectRatio: AspectRatio = '16:9',
   isVariation: boolean = false,
   modelId?: string,
+  usageResourceId?: string,
 ): Promise<string> => {
   const startTime = Date.now();
   
@@ -938,7 +939,7 @@ export const generateImage = async (
           : `${prompt}\n\nYêu cầu bắt buộc: duy trì chính xác khuôn mặt, mái tóc, trang phục, tỷ lệ nhân vật, ánh sáng và bối cảnh từ các ảnh tham chiếu.`
         : prompt;
       const rawResult = await callImageApi(
-        { prompt: providerPrompt, referenceImages, aspectRatio },
+        { prompt: providerPrompt, referenceImages, aspectRatio, usageResourceId },
         activeImageModel
       );
       const result = await normalizeImageResult(rawResult);
@@ -1357,7 +1358,8 @@ export const generateVideo = async (
   endImageBase64?: string, 
   model: string = DEFAULT_VIDEO_MODEL_ID,
   aspectRatio: AspectRatio = '16:9',
-  duration: VideoDuration = 8
+  duration: VideoDuration = 8,
+  usageResourceId?: string,
 ): Promise<string> => {
   const resolvedVideoModel = resolveModel('video', model) as VideoModelDefinition | undefined;
   const requestModel = resolveRequestModel('video', model) || model;
@@ -1375,6 +1377,7 @@ export const generateVideo = async (
         endImage: endImageBase64,
         aspectRatio,
         duration,
+        usageResourceId,
       },
       resolvedVideoModel
     );

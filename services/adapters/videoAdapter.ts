@@ -336,6 +336,7 @@ export const callVideoApi = async (
     preferred,
     inputSize: options.prompt.length,
     durationSeconds: options.duration || preferred.params.defaultDuration,
+    resourceId: options.usageResourceId,
     operation: (candidate) => callVideoApiOnce(options, candidate as VideoModelDefinition),
   });
 };

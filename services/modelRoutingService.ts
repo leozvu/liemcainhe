@@ -65,6 +65,7 @@ export const executeWithModelFallback = async <T>(input: {
   operation: (model: ModelDefinition) => Promise<T>;
   inputSize?: number;
   durationSeconds?: number;
+  resourceId?: string;
 }): Promise<T> => {
   assertUsageAllowed();
   const candidates = getRoutingCandidates(input.type, input.preferred);
@@ -79,6 +80,7 @@ export const executeWithModelFallback = async <T>(input: {
         kind: input.type,
         providerId: candidate.providerId,
         modelId: candidate.id,
+        resourceId: input.resourceId,
         inputSize: input.inputSize,
         durationSeconds: input.durationSeconds,
         durationMs: Date.now() - startedAt,
@@ -91,6 +93,7 @@ export const executeWithModelFallback = async <T>(input: {
         kind: input.type,
         providerId: candidate.providerId,
         modelId: candidate.id,
+        resourceId: input.resourceId,
         durationMs: Date.now() - startedAt,
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),

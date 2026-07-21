@@ -10,6 +10,7 @@ export interface UsageRecord {
   kind: UsageKind;
   providerId?: string;
   modelId?: string;
+  resourceId?: string;
   units: number;
   estimatedCostUsd: number;
   durationMs?: number;
@@ -27,6 +28,7 @@ export interface UsagePolicy {
     videoPerSecond: number;
     voicePerThousandCharacters: number;
   };
+  modelRates?: Record<string, Partial<UsagePolicy['rates']>>;
 }
 
 export interface UsageSummary {
@@ -68,6 +70,7 @@ export const getUsagePolicy = (): UsagePolicy => {
       ...DEFAULT_POLICY,
       ...stored,
       rates: { ...DEFAULT_POLICY.rates, ...(stored.rates || {}) },
+      modelRates: stored.modelRates && typeof stored.modelRates === 'object' ? stored.modelRates : {},
     };
   } catch {
     return { ...DEFAULT_POLICY, rates: { ...DEFAULT_POLICY.rates } };
@@ -132,8 +135,9 @@ export const assertUsageAllowed = (): void => {
   }
 };
 
-const calculateUsage = (kind: UsageKind, inputSize = 0, durationSeconds = 0) => {
-  const rates = getUsagePolicy().rates;
+const calculateUsage = (kind: UsageKind, inputSize = 0, durationSeconds = 0, modelId?: string) => {
+  const policy = getUsagePolicy();
+  const rates = { ...policy.rates, ...(modelId ? policy.modelRates?.[modelId] : undefined) };
   if (kind === 'chat') {
     return { units: Math.max(1, Math.ceil(inputSize / 4000)), estimatedCostUsd: (inputSize / 1_000_000) * rates.chatPerMillionCharacters };
   }
@@ -157,6 +161,7 @@ export const recordUsage = (input: {
   kind: UsageKind;
   providerId?: string;
   modelId?: string;
+  resourceId?: string;
   inputSize?: number;
   durationSeconds?: number;
   durationMs?: number;
@@ -164,7 +169,7 @@ export const recordUsage = (input: {
   error?: string;
 }): UsageRecord => {
   const calculated = input.status === 'success'
-    ? calculateUsage(input.kind, input.inputSize, input.durationSeconds)
+    ? calculateUsage(input.kind, input.inputSize, input.durationSeconds, input.modelId)
     : { units: 0, estimatedCostUsd: 0 };
   const record: UsageRecord = {
     id: `usage_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
@@ -173,6 +178,7 @@ export const recordUsage = (input: {
     kind: input.kind,
     providerId: input.providerId,
     modelId: input.modelId,
+    resourceId: input.resourceId?.trim().slice(0, 240) || undefined,
     units: calculated.units,
     estimatedCostUsd: Number(calculated.estimatedCostUsd.toFixed(6)),
     durationMs: input.durationMs,

@@ -114,12 +114,15 @@ export interface ChatOptions {
   responseFormat?: 'text' | 'json';
   timeout?: number;
   overrideParams?: Partial<ChatModelParams>;
+  /** Mã tài nguyên nghiệp vụ để quy chi phí về shot/asset. */
+  usageResourceId?: string;
 }
 
 export interface ImageGenerateOptions {
   prompt: string;
   referenceImages?: string[];
   aspectRatio?: AspectRatio;
+  usageResourceId?: string;
 }
 
 export interface VideoGenerateOptions {
@@ -128,6 +131,7 @@ export interface VideoGenerateOptions {
   endImage?: string;
   aspectRatio?: AspectRatio;
   duration?: VideoDuration;
+  usageResourceId?: string;
 }
 
 export const DEFAULT_CHAT_PARAMS: ChatModelParams = {

@@ -24,7 +24,14 @@ export const usageEventsSchema = {
   table: 'egoric_usage_events',
   primaryKey: ['id'],
   indexes: [['owner_email', 'created_at'], ['owner_email', 'project_id', 'created_at']],
-  columns: ['id', 'owner_email', 'project_id', 'kind', 'provider_id', 'model_id', 'units', 'estimated_cost_usd', 'duration_ms', 'status', 'error', 'created_at'],
+  columns: ['id', 'owner_email', 'project_id', 'kind', 'provider_id', 'model_id', 'resource_id', 'units', 'estimated_cost_usd', 'duration_ms', 'status', 'error', 'created_at'],
+} as const;
+
+export const campaignFinancialsSchema = {
+  table: 'egoric_campaign_financials',
+  primaryKey: ['owner_email', 'campaign_id'],
+  indexes: [['owner_email', 'updated_at']],
+  columns: ['owner_email', 'campaign_id', 'campaign_name', 'client_name', 'quoted_revenue_vnd', 'labor_hours', 'labor_hourly_rate_vnd', 'other_cost_vnd', 'exchange_rate_vnd_per_usd', 'notes', 'created_at', 'updated_at'],
 } as const;
 
 export const systemEventsSchema = {

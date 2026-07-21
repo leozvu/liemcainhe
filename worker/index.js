@@ -387,7 +387,7 @@ async function handleAccountApi(request, env, url) {
        FROM egoric_usage_events WHERE owner_email = ? AND created_at >= ?`
     ).bind(email, monthStart.getTime()).first();
     const events = await env.DB.prepare(
-      `SELECT id, project_id AS projectId, kind, provider_id AS providerId, model_id AS modelId,
+      `SELECT id, project_id AS projectId, kind, provider_id AS providerId, model_id AS modelId, resource_id AS resourceId,
               units, estimated_cost_usd AS estimatedCostUsd, duration_ms AS durationMs,
               status, error, created_at AS timestamp
        FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 20`
@@ -420,12 +420,13 @@ async function handleAccountApi(request, env, url) {
     if (!kind || !status) return json({ error: 'Sự kiện sử dụng không hợp lệ.' }, 400);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO egoric_usage_events
-       (id, owner_email, project_id, kind, provider_id, model_id, units, estimated_cost_usd, duration_ms, status, error, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, owner_email, project_id, kind, provider_id, model_id, resource_id, units, estimated_cost_usd, duration_ms, status, error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, email, safeProjectId(payload.projectId), kind,
       String(payload.providerId || '').slice(0, 120) || null,
       String(payload.modelId || '').slice(0, 200) || null,
+      cleanText(payload.resourceId, 240) || null,
       Math.max(0, Number(payload.units) || 0), Math.max(0, Number(payload.estimatedCostUsd) || 0),
       Math.max(0, Number(payload.durationMs) || 0) || null, status,
       String(payload.error || '').slice(0, 800) || null,
@@ -459,7 +460,7 @@ async function handleAccountApi(request, env, url) {
   }
 
   if (url.pathname === '/api/account/export' && request.method === 'GET') {
-    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments] = await Promise.all([
+    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments, campaignFinancials] = await Promise.all([
       ensureAccountProfile(request, env, email),
       env.DB.prepare('SELECT project_id AS projectId, title, payload_json AS payloadJson, updated_at AS updatedAt FROM egoric_projects WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 100').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 5000').bind(email).all(),
@@ -470,6 +471,7 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('SELECT * FROM egoric_stage_approvals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
       env.DB.prepare('SELECT id, project_id, title, client_name, campaign_name, deliverable_title, status, decision, decision_version_id, decision_note, reviewer_name, reviewer_email, decided_at, expires_at, payload_json, created_at, updated_at FROM egoric_client_review_portals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?) ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
+      env.DB.prepare('SELECT * FROM egoric_campaign_financials WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
     ]);
     return json({
       product: 'Egoric Film Studio', exportedAt: new Date().toISOString(), profile,
@@ -477,6 +479,7 @@ async function handleAccountApi(request, env, url) {
       usage: usage.results || [], events: events.results || [], jobs: jobs.results || [],
       media: media.results || [], reviewNotes: notes.results || [], approvals: approvals.results || [],
       clientReviewPortals: clientReviewPortals.results || [], clientReviewComments: clientReviewComments.results || [],
+      campaignFinancials: campaignFinancials.results || [],
     });
   }
 
@@ -495,6 +498,7 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('DELETE FROM egoric_jobs WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_projects WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_usage_events WHERE owner_email = ?').bind(email),
+      env.DB.prepare('DELETE FROM egoric_campaign_financials WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_system_events WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_profiles WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_rate_limits WHERE owner_email = ?').bind(email),
@@ -503,6 +507,125 @@ async function handleAccountApi(request, env, url) {
   }
 
   return json({ error: 'Account route không tồn tại.' }, 404);
+}
+
+const mapCampaignFinancial = (row) => ({
+  campaignId: row.campaignId ?? row.campaign_id,
+  campaignName: row.campaignName ?? row.campaign_name,
+  clientName: row.clientName ?? row.client_name ?? undefined,
+  quotedRevenueVnd: Number(row.quotedRevenueVnd ?? row.quoted_revenue_vnd ?? 0),
+  laborHours: Number(row.laborHours ?? row.labor_hours ?? 0),
+  laborHourlyRateVnd: Number(row.laborHourlyRateVnd ?? row.labor_hourly_rate_vnd ?? 0),
+  otherCostVnd: Number(row.otherCostVnd ?? row.other_cost_vnd ?? 0),
+  exchangeRateVndPerUsd: Number(row.exchangeRateVndPerUsd ?? row.exchange_rate_vnd_per_usd ?? 26000),
+  notes: row.notes || undefined,
+  createdAt: Number(row.createdAt ?? row.created_at),
+  updatedAt: Number(row.updatedAt ?? row.updated_at),
+});
+
+async function handleAgencyEconomicsApi(request, env) {
+  if (!env.DB) return json({ error: 'Dashboard tài chính chưa được cấp cơ sở dữ liệu.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để xem tài chính agency.' }, 401);
+
+  if (request.method === 'GET') {
+    const [usage, financials, projects, portals] = await Promise.all([
+      env.DB.prepare(
+        `SELECT id, project_id AS projectId, kind, provider_id AS providerId, model_id AS modelId,
+                resource_id AS resourceId, units, estimated_cost_usd AS estimatedCostUsd,
+                duration_ms AS durationMs, status, error, created_at AS timestamp
+         FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 5000`
+      ).bind(email).all(),
+      env.DB.prepare(
+        `SELECT campaign_id AS campaignId, campaign_name AS campaignName, client_name AS clientName,
+                quoted_revenue_vnd AS quotedRevenueVnd, labor_hours AS laborHours,
+                labor_hourly_rate_vnd AS laborHourlyRateVnd, other_cost_vnd AS otherCostVnd,
+                exchange_rate_vnd_per_usd AS exchangeRateVndPerUsd, notes,
+                created_at AS createdAt, updated_at AS updatedAt
+         FROM egoric_campaign_financials WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000`
+      ).bind(email).all(),
+      env.DB.prepare(
+        'SELECT project_id AS projectId, title, payload_json AS payloadJson, updated_at AS updatedAt FROM egoric_projects WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 500'
+      ).bind(email).all(),
+      env.DB.prepare(
+        `SELECT project_id AS projectId, decision, decision_version_id AS decisionVersionId, payload_json AS payloadJson
+         FROM egoric_client_review_portals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000`
+      ).bind(email).all(),
+    ]);
+
+    const acceptedByProject = new Map();
+    (portals.results || []).forEach((row) => {
+      if (row.decision !== 'approved' || acceptedByProject.has(row.projectId)) return;
+      try {
+        const payload = JSON.parse(row.payloadJson || '{}');
+        const versions = Array.isArray(payload.versions) ? payload.versions : [];
+        const version = versions.find((item) => item.id === row.decisionVersionId) || versions.at(-1);
+        acceptedByProject.set(row.projectId, new Set((version?.clips || []).map((clip) => clip.shotId).filter(Boolean)));
+      } catch { /* Giữ dự án ở trạng thái chưa nghiệm thu nếu payload lỗi. */ }
+    });
+
+    const projectRefs = (projects.results || []).flatMap((row) => {
+      try {
+        const payload = JSON.parse(row.payloadJson || '{}');
+        const accepted = acceptedByProject.get(row.projectId);
+        const approvedRoundShots = (payload.agencyReview?.rounds || [])
+          .filter((round) => round.status === 'approved')
+          .flatMap((round) => round.shotIds || []);
+        const acceptedShotIds = Array.from(new Set([...(accepted || []), ...approvedRoundShots]));
+        return [{
+          projectId: row.projectId,
+          title: row.title,
+          campaignId: safeProjectId(payload.campaignId) || undefined,
+          clientId: safeProjectId(payload.clientId) || undefined,
+          deliverableId: safeProjectId(payload.deliverableId) || undefined,
+          approved: acceptedShotIds.length > 0,
+          acceptedShotIds,
+          shots: (Array.isArray(payload.shots) ? payload.shots : []).map((shot, index) => ({
+            id: cleanText(shot.id, 160),
+            label: `Cảnh ${String(index + 1).padStart(2, '0')}`,
+            actionSummary: cleanText(shot.actionSummary, 180),
+          })).filter((shot) => shot.id),
+          updatedAt: Number(row.updatedAt),
+        }];
+      } catch { return []; }
+    });
+
+    return json({
+      usage: usage.results || [],
+      financials: (financials.results || []).map(mapCampaignFinancial),
+      projects: projectRefs,
+    });
+  }
+
+  if (request.method === 'PUT') {
+    const body = await request.json();
+    const campaignId = safeProjectId(body?.campaignId);
+    const campaignName = cleanText(body?.campaignName, 240);
+    if (!campaignId || !campaignName) return json({ error: 'Chiến dịch tài chính không hợp lệ.' }, 400);
+    const amount = (value, max = 1_000_000_000_000) => Math.max(0, Math.min(max, Number(value) || 0));
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO egoric_campaign_financials
+        (owner_email, campaign_id, campaign_name, client_name, quoted_revenue_vnd, labor_hours,
+         labor_hourly_rate_vnd, other_cost_vnd, exchange_rate_vnd_per_usd, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(owner_email, campaign_id) DO UPDATE SET
+         campaign_name = excluded.campaign_name, client_name = excluded.client_name,
+         quoted_revenue_vnd = excluded.quoted_revenue_vnd, labor_hours = excluded.labor_hours,
+         labor_hourly_rate_vnd = excluded.labor_hourly_rate_vnd, other_cost_vnd = excluded.other_cost_vnd,
+         exchange_rate_vnd_per_usd = excluded.exchange_rate_vnd_per_usd, notes = excluded.notes,
+         updated_at = excluded.updated_at`
+    ).bind(
+      email, campaignId, campaignName, cleanText(body?.clientName, 200) || null,
+      amount(body?.quotedRevenueVnd), amount(body?.laborHours, 100_000), amount(body?.laborHourlyRateVnd),
+      amount(body?.otherCostVnd), Math.max(1, Math.min(1_000_000, Number(body?.exchangeRateVndPerUsd) || 26000)),
+      cleanText(body?.notes, 2000) || null, now, now,
+    ).run();
+    const saved = await env.DB.prepare('SELECT * FROM egoric_campaign_financials WHERE owner_email = ? AND campaign_id = ?').bind(email, campaignId).first();
+    return json({ financial: mapCampaignFinancial(saved) });
+  }
+
+  return json({ error: 'Economics route không tồn tại.' }, 405);
 }
 
 async function handleJobsApi(request, env, url) {
@@ -1081,6 +1204,15 @@ export default {
       } catch (error) {
         console.error('Cloud API error', error);
         return json({ error: error instanceof Error ? error.message : 'Cloud API thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/agency-economics') {
+      try {
+        return await handleAgencyEconomicsApi(request, env);
+      } catch (error) {
+        console.error('Agency economics API error', error);
+        return json({ error: error instanceof Error ? error.message : 'Dashboard tài chính thất bại.' }, 500);
       }
     }
 

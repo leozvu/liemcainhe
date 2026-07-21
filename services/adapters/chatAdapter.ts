@@ -183,6 +183,7 @@ export const callChatApi = async (
     type: 'chat',
     preferred,
     inputSize: options.prompt.length + (options.systemPrompt?.length || 0),
+    resourceId: options.usageResourceId,
     operation: (candidate) => callChatApiOnce(options, candidate as ChatModelDefinition),
   });
 };

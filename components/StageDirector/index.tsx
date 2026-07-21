@@ -130,7 +130,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     
     try {
       const referenceImages = getRefImagesForShot(shot, project.scriptData);
-      const url = await generateImage(prompt, referenceImages, keyframeAspectRatio);
+      const url = await generateImage(prompt, referenceImages, keyframeAspectRatio, false, undefined, `${shot.id}:keyframe:${type}`);
 
       updateProject((prevProject: ProjectState) => ({
         ...prevProject,
@@ -270,7 +270,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         textToVideoOnly ? undefined : eKf?.imageUrl,
         selectedModel,
         aspectRatio,
-        duration
+        duration,
+        `${shot.id}:video`,
       );
 
       updateShot(shot.id, (s) => clearShotStaleFlag({

@@ -45,8 +45,9 @@ import {
   setReviewNoteStatus,
 } from '../services/reviewService';
 import { getCredentialVaultStatus } from '../services/credentialVault';
+import CostProfitDashboard from './CostProfitDashboard';
 
-type TabId = 'api' | 'voice' | 'workflow' | 'review' | 'workspace';
+type TabId = 'api' | 'voice' | 'workflow' | 'review' | 'economics' | 'workspace';
 
 interface Props {
   isOpen: boolean;
@@ -63,6 +64,7 @@ const TAB_META = [
   { id: 'voice' as const, label: 'Voice tiếng Việt', icon: AudioLines },
   { id: 'workflow' as const, label: 'Kiểm thử workflow', icon: Activity },
   { id: 'review' as const, label: 'Duyệt & bàn giao', icon: ClipboardCheck },
+  { id: 'economics' as const, label: 'Chi phí & lợi nhuận', icon: CircleDollarSign },
   { id: 'workspace' as const, label: 'Workspace & hạn mức', icon: Gauge },
 ];
 
@@ -256,7 +258,7 @@ const OperationsHub: React.FC<Props> = ({
           <header className="flex items-start justify-between gap-4 border-b eg-divider px-5 py-5 md:px-7">
             <div>
               <div className="eg-kicker">{TAB_META.find((item) => item.id === tab)?.label}</div>
-              <h2 className="mt-1 text-xl font-semibold text-white">{tab === 'api' ? 'Tuyến AI không phụ thuộc một cổng' : tab === 'voice' ? 'Voice tiếng Việt nhất quán' : tab === 'workflow' ? 'Chẩn đoán trước khi phát sinh phí' : tab === 'review' ? 'Sổ duyệt và bàn giao production' : 'Workspace sẵn sàng vận hành'}</h2>
+              <h2 className="mt-1 text-xl font-semibold text-white">{tab === 'api' ? 'Tuyến AI không phụ thuộc một cổng' : tab === 'voice' ? 'Voice tiếng Việt nhất quán' : tab === 'workflow' ? 'Chẩn đoán trước khi phát sinh phí' : tab === 'review' ? 'Sổ duyệt và bàn giao production' : tab === 'economics' ? 'Giá vốn và biên lợi nhuận agency' : 'Workspace sẵn sàng vận hành'}</h2>
             </div>
             <button type="button" onClick={onClose} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng Trung tâm vận hành"><X className="h-4 w-4" /></button>
           </header>
@@ -335,6 +337,8 @@ const OperationsHub: React.FC<Props> = ({
                 </div>
               )
             )}
+
+            {tab === 'economics' && <CostProfitDashboard project={project} />}
 
             {tab === 'workspace' && (
               loadingAccount || !profile ? <div className="flex min-h-72 items-center justify-center gap-3 text-xs text-zinc-500"><Loader2 className="h-5 w-5 animate-spin text-cyan-200" /> Đang tải workspace…</div> : (

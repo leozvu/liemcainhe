@@ -175,6 +175,7 @@ export const callImageApi = async (
     type: 'image',
     preferred,
     inputSize: options.prompt.length,
+    resourceId: options.usageResourceId,
     operation: (candidate) => callImageApiOnce(options, candidate as ImageModelDefinition),
   });
 };

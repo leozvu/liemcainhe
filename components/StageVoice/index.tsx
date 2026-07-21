@@ -299,6 +299,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         pronunciationDictionary: studio.pronunciationDictionary,
         outputFormat: studio.outputFormat,
         masterAudio: studio.normalizeLoudness,
+        usageResourceId: `${shot.id}:voice`,
       });
       patchTake(takeId, {
         status: 'ready',

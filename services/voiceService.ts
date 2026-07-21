@@ -13,6 +13,7 @@ export interface GenerateVoiceInput {
   pronunciationDictionary?: PronunciationEntry[];
   outputFormat: 'mp3' | 'wav';
   masterAudio?: boolean;
+  usageResourceId?: string;
 }
 
 export interface GenerateVoiceResult {
@@ -282,10 +283,10 @@ export const generateVoice = async (input: GenerateVoiceInput): Promise<Generate
       throw new Error('Vbee yêu cầu máy chủ callback công khai. Hãy dùng FPT.AI/Viettel AI trong bản web hoặc nhập bản thu đã tạo từ Vbee.');
     } else throw new Error('Giọng người thật cần được tải lên từ tệp âm thanh');
     const finalResult = input.masterAudio ? await masterGeneratedAudio(result) : result;
-    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, inputSize: text.length, durationMs: Date.now() - startedAt, status: 'success' });
+    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, resourceId: input.usageResourceId, inputSize: text.length, durationMs: Date.now() - startedAt, status: 'success' });
     return finalResult;
   } catch (error) {
-    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
+    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, resourceId: input.usageResourceId, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 };
