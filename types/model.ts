@@ -109,6 +109,8 @@ export interface ModelRegistryState {
 export interface ChatOptions {
   prompt: string;
   systemPrompt?: string;
+  /** Ảnh đầu vào cho các model hội thoại có khả năng thị giác. */
+  imageUrls?: string[];
   responseFormat?: 'text' | 'json';
   timeout?: number;
   overrideParams?: Partial<ChatModelParams>;

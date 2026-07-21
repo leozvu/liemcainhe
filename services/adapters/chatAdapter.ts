@@ -12,6 +12,16 @@ export class ApiKeyError extends Error {
   }
 }
 
+class ProviderHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ProviderHttpError';
+    this.status = status;
+  }
+}
+
 const retryOperation = async <T>(
   operation: () => Promise<T>,
   maxRetries: number = 3,
@@ -24,9 +34,11 @@ const retryOperation = async <T>(
       return await operation();
     } catch (error: any) {
       lastError = error;
-      if (error.message?.includes('400') || 
-          error.message?.includes('401') || 
-          error.message?.includes('403')) {
+      const status = Number(error?.status);
+      const nonRetryableClientError = status >= 400
+        && status < 500
+        && ![408, 409, 429].includes(status);
+      if (nonRetryableClientError || error instanceof ApiKeyError) {
         throw error;
       }
       if (i < maxRetries - 1) {
@@ -78,7 +90,13 @@ const callChatApiOnce = async (
     messages.push({ role: 'system', content: options.systemPrompt });
   }
   
-  messages.push({ role: 'user', content: options.prompt });
+  const userContent = options.imageUrls?.length
+    ? [
+        { type: 'text', text: options.prompt },
+        ...options.imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+      ]
+    : options.prompt;
+  messages.push({ role: 'user', content: userContent });
   
   const requestBody: any = {
     model: apiModel,
@@ -128,7 +146,7 @@ const callChatApiOnce = async (
           const errorText = await res.text();
           if (errorText) errorMessage = errorText;
         }
-        throw new Error(localizeApiErrorMessage(errorMessage, res.status));
+        throw new ProviderHttpError(localizeApiErrorMessage(errorMessage, res.status), res.status);
       }
       
       return res;

@@ -60,3 +60,15 @@ export const rateLimitsSchema = {
   table: 'egoric_rate_limits',
   primaryKey: ['owner_email', 'bucket'],
 } as const;
+
+export const clientReviewPortalsSchema = {
+  table: 'egoric_client_review_portals',
+  primaryKey: ['id'],
+  indexes: [['owner_email', 'project_id', 'updated_at'], ['token']],
+} as const;
+
+export const clientReviewCommentsSchema = {
+  table: 'egoric_client_review_comments',
+  primaryKey: ['id'],
+  indexes: [['portal_id', 'updated_at']],
+} as const;

@@ -12,6 +12,7 @@ import {
   Cpu,
   ExternalLink,
   Film,
+  FolderKanban,
   FolderOpen,
   Gauge,
   HelpCircle,
@@ -38,9 +39,13 @@ import {
 import { applyLibraryItemToProject } from '../services/assetLibraryService';
 import { useAlert } from './GlobalAlert';
 import { CloudProjectMetadata, deleteCloudProject, listCloudProjects, loadCloudProject } from '../services/cloudSyncService';
+import CampaignHub from './CampaignHub';
 
 interface Props {
   onOpenProject: (project: ProjectState) => void;
+  onOpenProjectWithDirector?: (project: ProjectState, initialPrompt: string) => void;
+  onOpenProjectWithProductionControl?: (project: ProjectState) => void;
+  onOpenProjectWithClientReview?: (project: ProjectState) => void;
   onShowOnboarding?: () => void;
   onShowModelConfig?: () => void;
   onShowOperations?: () => void;
@@ -66,7 +71,7 @@ const getProjectPreview = (project: ProjectState) => {
   return keyframe || scene || character;
 };
 
-const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowModelConfig, onShowOperations }) => {
+const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, onOpenProjectWithProductionControl, onOpenProjectWithClientReview, onShowOnboarding, onShowModelConfig, onShowOperations }) => {
   const { showAlert } = useAlert();
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,6 +86,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
   const [cloudProjects, setCloudProjects] = useState<CloudProjectMetadata[]>([]);
   const [cloudLoading, setCloudLoading] = useState(false);
   const [restoringCloudId, setRestoringCloudId] = useState<string | null>(null);
+  const [dashboardView, setDashboardView] = useState<'campaigns' | 'projects'>('campaigns');
 
   const loadProjects = async () => {
     setIsLoading(true);
@@ -207,15 +213,19 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
   return (
     <div className="eg-app-shell min-h-[100dvh] text-[var(--eg-text)]">
       <header className="sticky top-0 z-40 border-b eg-divider bg-[rgba(7,9,12,.82)] backdrop-blur-2xl">
-        <div className="mx-auto flex min-h-[76px] max-w-[1600px] items-center justify-between gap-4 px-4 md:px-8">
+        <div className="mx-auto flex min-h-[76px] max-w-[1600px] flex-wrap items-center justify-between gap-2 px-4 py-2 md:flex-nowrap md:gap-4 md:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[.035]">
               <img src="/egoric-agency-icon.png" alt="Egoric Agency" className="h-8 w-8 object-contain" />
             </div>
-            <div className="min-w-0">
+            <div className="hidden min-w-0 sm:block">
               <div className="truncate text-sm font-semibold text-white">Egoric Film Studio</div>
             <div className="mt-0.5 hidden font-mono text-[9px] uppercase tracking-[.2em] text-zinc-600 sm:block">Không gian sản xuất · Việt Nam</div>
             </div>
+          </div>
+          <div className="order-3 flex w-full items-center rounded-xl border border-white/[.08] bg-black/20 p-1 md:order-none md:w-auto" aria-label="Không gian điều hành">
+            <button type="button" onClick={() => setDashboardView('campaigns')} aria-pressed={dashboardView === 'campaigns'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'campaigns' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderKanban className="h-3.5 w-3.5" /><span>Chiến dịch</span></button>
+            <button type="button" onClick={() => setDashboardView('projects')} aria-pressed={dashboardView === 'projects'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'projects' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderOpen className="h-3.5 w-3.5" /><span>Dự án</span></button>
           </div>
           <nav className="flex items-center gap-2" aria-label="Công cụ ứng dụng">
             {onShowOperations && (
@@ -233,7 +243,9 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10">
+      {dashboardView === 'campaigns' ? (
+        <CampaignHub projects={projects} onOpenProject={onOpenProject} onOpenProjectWithDirector={onOpenProjectWithDirector} onOpenProjectWithProductionControl={onOpenProjectWithProductionControl} onOpenProjectWithClientReview={onOpenProjectWithClientReview} />
+      ) : <main className="mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10">
         <section className="relative overflow-hidden rounded-[28px] border border-white/[.08] bg-[linear-gradient(120deg,rgba(18,24,33,.98),rgba(9,13,18,.94))] p-6 shadow-2xl shadow-black/20 md:p-9">
           <div className="pointer-events-none absolute -right-16 -top-28 h-72 w-72 rounded-full bg-cyan-200/[.08] blur-3xl" />
           <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(420px,.9fr)] xl:items-end">
@@ -341,7 +353,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
           {onShowModelConfig && <button type="button" onClick={onShowModelConfig} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-amber-200"><Cpu className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Mô hình và API</span><span className="mt-1 block text-xs text-zinc-600">Kết nối model hội thoại, hình ảnh và video.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
           <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-violet-200"><HelpCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Hỗ trợ sản phẩm</span><span className="mt-1 block text-xs text-zinc-600">Gửi lỗi hoặc đề xuất cho đội ngũ Egoric.</span></span><ExternalLink className="h-4 w-4 text-zinc-700" /></a>
         </section>
-      </main>
+      </main>}
 
       {showCloud && (
         <div className="fixed inset-0 z-[185] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setShowCloud(false)}>

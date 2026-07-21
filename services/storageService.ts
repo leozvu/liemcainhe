@@ -1,13 +1,17 @@
-import { ProjectState, AssetLibraryItem } from '../types';
+import { AgencyCampaign, AgencyClient, ProjectState, AssetLibraryItem } from '../types';
 import { migrateDeprecatedChatModelId } from '../types/model';
 import { createDefaultWorkflowState, normalizeWorkflowState } from './workflowService';
+import { createDefaultCreativeDirectorState } from './creativeDirectorState';
+import { normalizeAgencyClient } from './brandKitService';
 
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
 const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
+const CLIENT_STORE_NAME = 'agencyClients';
+const CAMPAIGN_STORE_NAME = 'agencyCampaigns';
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -23,6 +27,14 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
       }
       if (!db.objectStoreNames.contains(ASSET_STORE_NAME)) {
         db.createObjectStore(ASSET_STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(CLIENT_STORE_NAME)) {
+        db.createObjectStore(CLIENT_STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(CAMPAIGN_STORE_NAME)) {
+        const store = db.createObjectStore(CAMPAIGN_STORE_NAME, { keyPath: 'id' });
+        store.createIndex('clientId', 'clientId', { unique: false });
+        store.createIndex('status', 'status', { unique: false });
       }
     };
   });
@@ -260,8 +272,52 @@ Bao giờ cơn mưa này mới dừng?`,
     renderLogs: [],
     voiceStudio: createDefaultVoiceStudioState(),
     workflow: createDefaultWorkflowState(),
+    creativeDirector: createDefaultCreativeDirectorState(),
   };
 };
+
+const putWorkspaceItem = async <T extends { id: string }>(storeName: string, item: T): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const request = tx.objectStore(storeName).put(item);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const deleteWorkspaceItem = async (storeName: string, id: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const request = tx.objectStore(storeName).delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getAllAgencyClients = async (): Promise<AgencyClient[]> => {
+  const db = await openDB();
+  const clients = await readStoreItems<AgencyClient>(db, CLIENT_STORE_NAME);
+  return clients.map(normalizeAgencyClient).sort((left, right) => right.updatedAt - left.updatedAt);
+};
+
+export const saveAgencyClient = async (client: AgencyClient): Promise<void> => putWorkspaceItem(CLIENT_STORE_NAME, client);
+
+export const deleteAgencyClient = async (id: string): Promise<void> => deleteWorkspaceItem(CLIENT_STORE_NAME, id);
+
+export const getAllAgencyCampaigns = async (): Promise<AgencyCampaign[]> => {
+  const db = await openDB();
+  const campaigns = await readStoreItems<AgencyCampaign>(db, CAMPAIGN_STORE_NAME);
+  return campaigns.map((campaign) => ({
+    ...campaign,
+    contentPillars: Array.isArray(campaign.contentPillars) ? campaign.contentPillars : [],
+  })).sort((left, right) => right.updatedAt - left.updatedAt);
+};
+
+export const saveAgencyCampaign = async (campaign: AgencyCampaign): Promise<void> => putWorkspaceItem(CAMPAIGN_STORE_NAME, campaign);
+
+export const deleteAgencyCampaign = async (id: string): Promise<void> => deleteWorkspaceItem(CAMPAIGN_STORE_NAME, id);
 
 export const createDefaultVoiceStudioState = () => ({
   defaultProviderId: 'elevenlabs' as const,

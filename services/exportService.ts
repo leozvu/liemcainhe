@@ -84,6 +84,15 @@ export async function downloadEditorialPackage(project: ProjectState): Promise<v
   zip.file('subtitles_vi.srt', buildSubtitleFile(project) || '');
   zip.file('timeline_25fps.edl', buildEdlFile(project));
   zip.file('timeline.fcpxml', buildFcpxmlFile(project));
+  if (project.creativeDirector?.timeline) {
+    zip.file('director_timeline.json', JSON.stringify(project.creativeDirector.timeline, null, 2));
+  }
+  if (project.creativeDirector?.moodboard) {
+    zip.file('visual_bible.json', JSON.stringify(project.creativeDirector.moodboard, null, 2));
+  }
+  if (project.creativeDirector?.productionPlan) {
+    zip.file('production_plan.txt', project.creativeDirector.productionPlan.map((item, index) => `${index + 1}. ${item}`).join('\n'));
+  }
   zip.file('README.txt', 'Gói timeline Egoric Film Studio\n\n- timeline_25fps.edl: CMX 3600, 25fps.\n- timeline.fcpxml: Final Cut Pro XML; khi nhập hãy relink tới thư mục video.\n- subtitles_vi.srt: phụ đề tiếng Việt theo thời lượng từng cảnh.');
   triggerBlobDownload(await zip.generateAsync({ type: 'blob' }), `${safeName(project.scriptData?.title || project.title)}_egoric_timeline.zip`);
   recordUsage({ kind: 'export', modelId: 'Editorial Package', inputSize: project.shots.length, status: 'success' });
@@ -198,7 +207,14 @@ export async function downloadMasterVideo(
       project: project.scriptData?.title || project.title,
       exportedAt: new Date().toISOString(),
       timeline: manifest,
+      directorTimeline: project.creativeDirector?.timeline || null,
     }, null, 2));
+    if (project.creativeDirector?.moodboard) {
+      zip.file('visual_bible.json', JSON.stringify(project.creativeDirector.moodboard, null, 2));
+    }
+    if (project.creativeDirector?.productionPlan) {
+      zip.file('production_plan.txt', project.creativeDirector.productionPlan.map((item, index) => `${index + 1}. ${item}`).join('\n'));
+    }
     zip.file('subtitles_vi.srt', buildSubtitleFile(project));
     zip.file('timeline_25fps.edl', buildEdlFile(project));
     zip.file('timeline.fcpxml', buildFcpxmlFile(project));

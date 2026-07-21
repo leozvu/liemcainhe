@@ -148,6 +148,64 @@ h4,
   backdrop-filter: blur(18px);
 }
 
+.eg-mobile-director-button {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 96;
+  display: none;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(216, 185, 118, .3);
+  border-radius: 999px;
+  background: rgba(12, 11, 9, .92);
+  padding: 0 14px;
+  color: #ead7a8;
+  box-shadow: 0 16px 42px rgba(0,0,0,.34);
+  font-size: 10px;
+  font-weight: 700;
+  backdrop-filter: blur(18px);
+}
+
+.eg-director-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 115;
+  pointer-events: none;
+}
+
+.eg-director-scrim {
+  position: absolute;
+  inset: 0;
+  display: none;
+  border: 0;
+  background: rgba(0, 0, 0, .58);
+  pointer-events: auto;
+}
+
+.eg-director-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  width: min(460px, calc(100vw - 84px));
+  min-width: 360px;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid rgba(121, 230, 223, .15);
+  background:
+    radial-gradient(circle at 80% 0%, rgba(121,230,223,.08), transparent 26%),
+    linear-gradient(180deg, rgba(13,17,23,.99), rgba(7,9,12,.99));
+  box-shadow: -28px 0 80px rgba(0, 0, 0, .44);
+  pointer-events: auto;
+  animation: eg-director-enter 220ms ease-out both;
+}
+
+@keyframes eg-director-enter {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 .eg-mobile-production-count {
   display: inline-flex;
   min-width: 20px;
@@ -319,6 +377,11 @@ h4,
     display: flex;
   }
 
+  .eg-mobile-director-button {
+    display: flex;
+    bottom: 72px;
+  }
+
   .eg-sidebar {
     width: 84px;
   }
@@ -356,6 +419,21 @@ h4,
 @media (max-width: 760px) {
   .eg-mobile-production-button {
     bottom: 88px;
+  }
+
+  .eg-mobile-director-button {
+    bottom: 142px;
+  }
+
+  .eg-director-scrim {
+    display: block;
+  }
+
+  .eg-director-panel {
+    inset: 0;
+    width: 100%;
+    min-width: 0;
+    border-left: 0;
   }
 
   .eg-sidebar {

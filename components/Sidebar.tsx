@@ -12,6 +12,7 @@ import {
   HelpCircle,
   LibraryBig,
   ListTodo,
+  Sparkles,
   UsersRound,
 } from 'lucide-react';
 import { CoreStage, ProjectStage } from '../types';
@@ -30,6 +31,7 @@ interface SidebarProps {
   activeJobCount?: number;
   onOpenProductionCenter?: () => void;
   onOpenOperations?: () => void;
+  onOpenCreativeDirector?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -53,6 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeJobCount = 0,
   onOpenProductionCenter,
   onOpenOperations,
+  onOpenCreativeDirector,
 }) => {
   return (
     <aside className="eg-sidebar select-none" aria-label="Quy trình sản xuất">
@@ -122,6 +125,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="eg-sidebar-tools border-t eg-divider p-3">
+        {onOpenCreativeDirector && (
+          <button type="button" onClick={onOpenCreativeDirector} className="eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-amber-100/70 hover:bg-amber-200/[.06] hover:text-amber-50" title="Mở Đạo diễn AI">
+            <Sparkles className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">Đạo diễn AI</span>
+          </button>
+        )}
         {onOpenOperations && (
           <button type="button" onClick={onOpenOperations} className="eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-zinc-500 hover:bg-white/[.035] hover:text-white" title="Trung tâm vận hành">
             <Gauge className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">Trung tâm vận hành</span>

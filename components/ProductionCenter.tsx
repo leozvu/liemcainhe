@@ -13,11 +13,16 @@ import {
   Gauge,
   History,
   Loader2,
+  Layers3,
   ListTodo,
+  MessageSquareText,
   Play,
   RotateCcw,
+  ScanSearch,
+  Scissors,
   ShieldCheck,
   Trash2,
+  UsersRound,
   X,
   XCircle,
 } from 'lucide-react';
@@ -37,16 +42,22 @@ import {
 import { syncProjectToCloud } from '../services/cloudSyncService';
 import { clearFinishedDurableJobs } from '../services/durableJobService';
 import { useAlert } from './GlobalAlert';
+import ProductionControlBoard from './ProductionControlBoard';
+import ClientReviewManager from './ClientReviewManager';
+import VideoFactory from './VideoFactory';
+import AISupervisor from './AISupervisor';
+import AutoEditor from './AutoEditor';
 
 interface Props {
   project: ProjectState;
   updateProject: (updates: Partial<ProjectState> | ((previous: ProjectState) => ProjectState)) => void;
+  initialTab?: 'overview' | 'board' | 'factory' | 'supervisor' | 'editor' | 'review';
   setStage: (stage: CoreStage) => void;
   onClose: () => void;
   onShowModelConfig: () => void;
 }
 
-type CenterTab = 'overview' | 'jobs' | 'history';
+type CenterTab = 'overview' | 'board' | 'factory' | 'supervisor' | 'editor' | 'review' | 'jobs' | 'history';
 
 const STATUS_META: Record<ProductionJobStatus, { label: string; className: string; icon: React.ComponentType<{ className?: string }> }> = {
   queued: { label: 'Đang chờ', className: 'border-sky-200/20 bg-sky-200/[.07] text-sky-100', icon: CircleDashed },
@@ -64,17 +75,20 @@ const formatTime = (timestamp?: number) => timestamp
 const ProductionCenter: React.FC<Props> = ({
   project,
   updateProject,
+  initialTab = 'overview',
   setStage,
   onClose,
   onShowModelConfig,
 }) => {
   const { showAlert } = useAlert();
-  const [activeTab, setActiveTab] = useState<CenterTab>('overview');
+  const [activeTab, setActiveTab] = useState<CenterTab>(initialTab);
   const [syncing, setSyncing] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const readiness = useMemo(() => getWorkflowReadiness(project), [project]);
   const preflight = useMemo(() => getPreflightItems(project), [project]);
   const workflow = project.workflow || { jobs: [], checkpoints: [] };
+  const productionTasks = workflow.productionTasks || [];
+  const teamAttentionCount = productionTasks.filter((task) => ['in-progress', 'review', 'blocked'].includes(task.status)).length;
   const activeJobs = workflow.jobs.filter((job) => ['queued', 'running'].includes(job.status));
   const failedJobs = workflow.jobs.filter((job) => ['failed', 'interrupted'].includes(job.status));
   const hosted = typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
@@ -222,6 +236,11 @@ const ProductionCenter: React.FC<Props> = ({
           <nav className="mx-auto flex max-w-[1520px] gap-1 overflow-x-auto" aria-label="Khu vực Trung tâm sản xuất">
             {([
               { id: 'overview' as const, label: 'Tổng quan', icon: Gauge },
+              { id: 'board' as const, label: `Bảng team${teamAttentionCount ? ` · ${teamAttentionCount}` : ''}`, icon: UsersRound },
+              { id: 'factory' as const, label: 'Video Factory', icon: Layers3 },
+              { id: 'supervisor' as const, label: 'AI Supervisor', icon: ScanSearch },
+              { id: 'editor' as const, label: 'Auto Editor', icon: Scissors },
+              { id: 'review' as const, label: 'Duyệt khách hàng', icon: MessageSquareText },
               { id: 'jobs' as const, label: `Tác vụ ${activeJobs.length ? `· ${activeJobs.length}` : ''}`, icon: ListTodo },
               { id: 'history' as const, label: `Checkpoint · ${workflow.checkpoints.length}`, icon: History },
             ]).map((tab) => (
@@ -315,6 +334,40 @@ const ProductionCenter: React.FC<Props> = ({
                   </div>
                 </section>
               </div>
+            )}
+
+            {activeTab === 'board' && (
+              <ProductionControlBoard project={project} updateProject={updateProject} />
+            )}
+
+            {activeTab === 'factory' && (
+              <VideoFactory
+                project={project}
+                updateProject={updateProject}
+                onOpenDirector={() => goToStage('director')}
+                onShowModelConfig={onShowModelConfig}
+              />
+            )}
+
+            {activeTab === 'supervisor' && (
+              <AISupervisor
+                project={project}
+                updateProject={updateProject}
+                onOpenDirector={() => goToStage('director')}
+                onShowModelConfig={onShowModelConfig}
+              />
+            )}
+
+            {activeTab === 'editor' && (
+              <AutoEditor
+                project={project}
+                updateProject={updateProject}
+                onOpenExport={() => goToStage('export')}
+              />
+            )}
+
+            {activeTab === 'review' && (
+              <ClientReviewManager project={project} updateProject={updateProject} />
             )}
 
             {activeTab === 'jobs' && (

@@ -9,7 +9,7 @@ export interface CloudProjectMetadata {
 
 interface MediaTask {
   path: string;
-  dataUrl: string;
+  sourceUrl: string;
   apply: (url: string) => void;
 }
 
@@ -50,8 +50,20 @@ const fetchWithRetry = async (input: RequestInfo | URL, init: RequestInit, attem
   throw lastError instanceof Error ? lastError : new Error('Không thể tải media');
 };
 
-const uploadDataUrl = async (projectId: string, task: MediaTask): Promise<string> => {
-  const blob = await fetch(task.dataUrl).then((response) => response.blob());
+const uploadMediaSource = async (projectId: string, task: MediaTask): Promise<string> => {
+  if (task.sourceUrl.startsWith('https://')) {
+    const response = await fetch('/api/cloud/media/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, path: task.path, sourceUrl: task.sourceUrl }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `Không thể nhập media từ nhà cung cấp (${response.status})`);
+    return payload.url as string;
+  }
+  const sourceResponse = await fetch(task.sourceUrl);
+  if (!sourceResponse.ok) throw new Error(`Không thể tải media nguồn (${sourceResponse.status})`);
+  const blob = await sourceResponse.blob();
   const contentType = blob.type || 'application/octet-stream';
   const checksum = await createBlobChecksum(blob);
   const initResponse = await fetch('/api/cloud/media/uploads', {
@@ -124,12 +136,19 @@ export const collectCloudMediaPaths = (projectId: string, value: unknown): strin
   return Array.from(paths);
 };
 
+export const shouldUploadCloudMedia = (projectId: string, value?: string): boolean => {
+  if (!value) return false;
+  const cloudPrefix = `/api/cloud/media/${encodeURIComponent(projectId)}/`;
+  if (value.startsWith(cloudPrefix)) return false;
+  return value.startsWith('data:') || value.startsWith('blob:') || value.startsWith('https://');
+};
+
 const collectMediaTasks = (project: ProjectState): { clone: ProjectState; tasks: MediaTask[] } => {
   const clone = structuredClone(project);
   const tasks: MediaTask[] = [];
   const add = (value: string | undefined, path: string, apply: (url: string) => void) => {
-    if (!value?.startsWith('data:')) return;
-    tasks.push({ path, dataUrl: value, apply });
+    if (!value || !shouldUploadCloudMedia(project.id, value)) return;
+    tasks.push({ path, sourceUrl: value, apply });
   };
 
   clone.scriptData?.characters.forEach((character, charIndex) => {
@@ -166,6 +185,16 @@ const collectMediaTasks = (project: ProjectState): { clone: ProjectState; tasks:
     });
   });
 
+  clone.brandKitSnapshot?.assets.forEach((asset, assetIndex) => {
+    add(asset.url, `brand/${safeSegment(asset.id)}.${extensionForDataUrl(asset.url || '', 'png')}`, (url) => {
+      if (clone.brandKitSnapshot) clone.brandKitSnapshot.assets[assetIndex].url = url;
+    });
+  });
+
+  add(clone.autoEditor?.settings.musicUrl, `editor/music.${extensionForDataUrl(clone.autoEditor?.settings.musicUrl || '', 'mp3')}`, (url) => {
+    if (clone.autoEditor) clone.autoEditor.settings.musicUrl = url;
+  });
+
   // Checkpoints remain a lightweight local safety net. Cloud stores the current
   // authoritative project state and avoids duplicating several generations of blobs.
   if (clone.workflow) clone.workflow.checkpoints = [];
@@ -183,7 +212,7 @@ export const syncProjectToCloud = async (
   for (let index = 0; index < tasks.length; index += 3) {
     const batch = tasks.slice(index, index + 3);
     await Promise.all(batch.map(async (task) => {
-      const url = await uploadDataUrl(project.id, task);
+      const url = await uploadMediaSource(project.id, task);
       task.apply(url);
       completed += 1;
       onProgress?.(5 + Math.round((completed / Math.max(1, tasks.length)) * 80), `Đang tải media ${completed}/${tasks.length}…`);

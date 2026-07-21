@@ -365,9 +365,16 @@ export const callKieChatApi = async (
   const config = model.kie || {};
   const params = { ...model.params, ...options.overrideParams };
   const endpoint = model.endpoint || '/v1/chat/completions';
+  const imageUrls = (options.imageUrls || []).filter(Boolean);
+  const openAiUserContent = imageUrls.length
+    ? [
+        { type: 'text', text: options.prompt },
+        ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+      ]
+    : options.prompt;
   const messages = [
     ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
-    { role: 'user', content: options.prompt },
+    { role: 'user', content: openAiUserContent },
   ];
   let body: Record<string, unknown>;
   if (config.chatApi === 'responses') {
@@ -375,10 +382,16 @@ export const callKieChatApi = async (
       model: model.apiModel || model.id,
       stream: false,
       ...(params.maxTokens ? { max_output_tokens: params.maxTokens } : {}),
-      input: messages.map((message) => ({
-        role: message.role,
-        content: [{ type: 'input_text', text: message.content }],
-      })),
+      input: [
+        ...(options.systemPrompt ? [{ role: 'system', content: [{ type: 'input_text', text: options.systemPrompt }] }] : []),
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: options.prompt },
+            ...imageUrls.map((imageUrl) => ({ type: 'input_image', image_url: imageUrl })),
+          ],
+        },
+      ],
     };
   } else if (config.chatApi === 'claude') {
     body = {
@@ -386,7 +399,15 @@ export const callKieChatApi = async (
       max_tokens: params.maxTokens || 4096,
       stream: false,
       ...(options.systemPrompt ? { system: options.systemPrompt } : {}),
-      messages: [{ role: 'user', content: options.prompt }],
+      messages: [{
+        role: 'user',
+        content: imageUrls.length
+          ? [
+              { type: 'text', text: options.prompt },
+              ...imageUrls.map((url) => ({ type: 'image', source: { type: 'url', url } })),
+            ]
+          : options.prompt,
+      }],
     };
   } else {
     body = {

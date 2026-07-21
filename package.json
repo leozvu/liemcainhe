@@ -16,6 +16,8 @@
     "electron:build:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "express": "^4.22.2",
     "http-proxy-middleware": "^3.0.7",
     "jszip": "^3.10.1",

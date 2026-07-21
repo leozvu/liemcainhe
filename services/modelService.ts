@@ -4,6 +4,8 @@ import {
   VideoGenerateOptions,
   AspectRatio,
   VideoDuration,
+  ImageModelDefinition,
+  VideoModelDefinition,
 } from '../types/model';
 
 import { callChatApi, verifyApiKey as verifyChatApiKey, ApiKeyError } from './adapters/chatAdapter';
@@ -12,6 +14,7 @@ import { callVideoApi } from './adapters/videoAdapter';
 import {
   getGlobalApiKey,
   getActiveVideoModel,
+  getModels,
 } from './modelRegistry';
 import { setGlobalApiKey as setGeminiApiKey } from './geminiService';
 import { parseModelJson } from './jsonResponse';
@@ -32,6 +35,20 @@ export const generateImage = async (options: ImageGenerateOptions): Promise<stri
 
 export const generateVideo = async (options: VideoGenerateOptions): Promise<string> => {
   return callVideoApi(options);
+};
+
+export const generateImageWithModel = async (options: ImageGenerateOptions, modelId?: string): Promise<string> => {
+  if (!modelId) return callImageApi(options);
+  const model = getModels('image').find((item): item is ImageModelDefinition => item.type === 'image' && item.id === modelId);
+  if (!model) throw new Error(`Không tìm thấy mô hình ảnh “${modelId}” trong Video Factory.`);
+  return callImageApi(options, model);
+};
+
+export const generateVideoWithModel = async (options: VideoGenerateOptions, modelId?: string): Promise<string> => {
+  if (!modelId) return callVideoApi(options);
+  const model = getModels('video').find((item): item is VideoModelDefinition => item.type === 'video' && item.id === modelId);
+  if (!model) throw new Error(`Không tìm thấy mô hình video “${modelId}” trong Video Factory.`);
+  return callVideoApi(options, model);
 };
 
 export const parseScript = async (options: {

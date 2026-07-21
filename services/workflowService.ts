@@ -17,6 +17,7 @@ import {
   getApiKeyForModel,
 } from './modelRegistry';
 import { isVoiceProviderConfigured, normalizeProductionVoiceProviderId } from './voiceRegistry';
+import { normalizeCreativeDirectorState } from './creativeDirectorState';
 
 export interface StageReadiness {
   id: CoreStage;
@@ -54,11 +55,14 @@ const cloneValue = <T,>(value: T): T => {
 export const createDefaultWorkflowState = (): ProjectWorkflowState => ({
   jobs: [],
   checkpoints: [],
+  productionTasks: [],
+  approvalGates: [],
   cloudSyncStatus: 'idle',
 });
 
 export const normalizeWorkflowState = (project: ProjectState): ProjectState => {
   const current = project.workflow || createDefaultWorkflowState();
+  const creativeDirector = normalizeCreativeDirectorState(project.creativeDirector);
   const jobs = (current.jobs || []).map((job) =>
     job.status === 'running' || job.status === 'queued'
       ? {
@@ -72,6 +76,25 @@ export const normalizeWorkflowState = (project: ProjectState): ProjectState => {
 
   return {
     ...project,
+    creativeDirector: {
+      ...creativeDirector,
+      runs: creativeDirector.runs.map((run) => run.status === 'thinking' ? {
+        ...run,
+        status: 'failed',
+        completedAt: Date.now(),
+        error: 'Phiên tư vấn bị gián đoạn khi ứng dụng đóng.',
+      } : run),
+      missions: creativeDirector.missions.map((mission) => mission.status === 'running' ? {
+        ...mission,
+        status: 'paused',
+        error: 'Nhiệm vụ bị gián đoạn. Bạn có thể tiếp tục từ hành động chưa hoàn tất.',
+        actions: mission.actions.map((action) => action.status === 'running' ? {
+          ...action,
+          status: 'pending',
+          error: undefined,
+        } : action),
+      } : mission),
+    },
     voiceStudio: project.voiceStudio ? {
       defaultProviderId: normalizeProductionVoiceProviderId(project.voiceStudio.defaultProviderId),
       profiles: (project.voiceStudio.profiles || []).map((profile) => ({
@@ -95,6 +118,8 @@ export const normalizeWorkflowState = (project: ProjectState): ProjectState => {
       ...current,
       jobs,
       checkpoints: current.checkpoints || [],
+      productionTasks: current.productionTasks || [],
+      approvalGates: current.approvalGates || [],
     },
   };
 };
@@ -322,6 +347,9 @@ const createSnapshot = (project: ProjectState): ProjectSnapshot => ({
   scriptData: cloneValue(project.scriptData),
   shots: cloneValue(project.shots),
   voiceStudio: cloneValue(project.voiceStudio),
+  videoFactory: cloneValue(project.videoFactory),
+  aiSupervisor: cloneValue(project.aiSupervisor),
+  autoEditor: cloneValue(project.autoEditor),
 });
 
 export const createProjectCheckpoint = (project: ProjectState, label: string): ProjectState => {

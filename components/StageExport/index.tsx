@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Film } from 'lucide-react';
 import { ProjectState } from '../../types';
 import { downloadEditorialPackage, downloadMasterVideo, downloadSourceAssets } from '../../services/exportService';
+import { cancelBrowserMasterRender, renderMasterVideoInBrowser } from '../../services/browserMasterRenderService';
 import { STYLES } from './constants';
 import {
   calculateEstimatedDuration,
@@ -31,6 +32,10 @@ const StageExport: React.FC<Props> = ({ project }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadPhase, setDownloadPhase] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isRenderingMaster, setIsRenderingMaster] = useState(false);
+  const [renderPhase, setRenderPhase] = useState('');
+  const [renderProgress, setRenderProgress] = useState(0);
+  const renderCancelledRef = useRef(false);
 
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const [assetsPhase, setAssetsPhase] = useState('');
@@ -157,6 +162,36 @@ const StageExport: React.FC<Props> = ({ project }) => {
     }
   };
 
+  const handleRenderMaster = async () => {
+    if (isRenderingMaster || progress < 100) return;
+    renderCancelledRef.current = false;
+    setIsRenderingMaster(true);
+    setRenderProgress(0);
+    setRenderPhase('Đang chuẩn bị…');
+    try {
+      await renderMasterVideoInBrowser(project, ({ phase, progress: nextProgress }) => {
+        setRenderPhase(phase);
+        setRenderProgress(nextProgress);
+      });
+      showAlert('Đã ghép và tải bản master MP4. Quá trình chạy trên thiết bị nên không tốn credit AI.', { type: 'success' });
+    } catch (error) {
+      if (renderCancelledRef.current) {
+        showAlert('Đã hủy ghép bản master.', { type: 'info' });
+      } else {
+        showAlert(`Ghép MP4 thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}. Bạn vẫn có thể tải gói dựng ZIP.`, { type: 'error' });
+      }
+    } finally {
+      setIsRenderingMaster(false);
+      setRenderPhase('');
+      setRenderProgress(0);
+    }
+  };
+
+  const handleCancelRender = () => {
+    renderCancelledRef.current = true;
+    cancelBrowserMasterRender();
+  };
+
   const handleExportTimeline = async () => {
     try {
       await downloadEditorialPackage(project);
@@ -204,7 +239,14 @@ const StageExport: React.FC<Props> = ({ project }) => {
                 phase: downloadPhase,
                 progress: downloadProgress
               }}
+              renderState={{
+                isDownloading: isRenderingMaster,
+                phase: renderPhase,
+                progress: renderProgress,
+              }}
               onPreview={openVideoPlayer}
+              onRenderMaster={() => void handleRenderMaster()}
+              onCancelRender={handleCancelRender}
               onDownloadMaster={handleDownloadMaster}
               onExportTimeline={() => void handleExportTimeline()}
             />

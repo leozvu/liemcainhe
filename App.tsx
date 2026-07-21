@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import Onboarding, { shouldShowOnboarding, resetOnboarding } from './components/Onboarding';
 import ModelConfigModal from './components/ModelConfig';
 import { CoreStage, ProjectStage, ProjectState } from './types';
-import { Save, CheckCircle, Gauge } from 'lucide-react';
+import { Save, CheckCircle, Gauge, Sparkles } from 'lucide-react';
 import { createNewProjectState, saveProjectToDB } from './services/storageService';
 import { setLogCallback, clearLogCallback } from './services/renderLogService';
 import { getWorkflowReadiness, normalizeWorkflowState } from './services/workflowService';
@@ -13,6 +13,7 @@ import { recordSystemEvent } from './services/accountService';
 import { setUsageProjectContext } from './services/usageService';
 import { createProductionDemoProject } from './services/demoProjectService';
 import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobService';
+import { syncLinkedCampaignFromProject } from './services/productionControlService';
 
 const StageScript = React.lazy(() => import('./components/StageScript'));
 const StageAssets = React.lazy(() => import('./components/StageAssets'));
@@ -22,6 +23,8 @@ const StageExport = React.lazy(() => import('./components/StageExport'));
 const StagePrompts = React.lazy(() => import('./components/StagePrompts'));
 const ProductionCenter = React.lazy(() => import('./components/ProductionCenter'));
 const OperationsHub = React.lazy(() => import('./components/OperationsHub'));
+const CreativeDirectorPanel = React.lazy(() => import('./components/CreativeDirectorPanel'));
+const ClientReviewPortal = React.lazy(() => import('./components/ClientReviewPortal'));
 
 const WorkspaceLoader = () => (
   <div className="flex h-full items-center justify-center text-xs text-zinc-600">
@@ -37,7 +40,10 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showModelConfig, setShowModelConfig] = useState(false);
   const [showProductionCenter, setShowProductionCenter] = useState(false);
+  const [productionCenterInitialTab, setProductionCenterInitialTab] = useState<'overview' | 'board' | 'review'>('overview');
   const [showOperations, setShowOperations] = useState(false);
+  const [showCreativeDirector, setShowCreativeDirector] = useState(false);
+  const [creativeDirectorInitialPrompt, setCreativeDirectorInitialPrompt] = useState<string | null>(null);
   
   const saveTimeoutRef = useRef<any>(null);
   const hideStatusTimeoutRef = useRef<any>(null);
@@ -137,6 +143,9 @@ function App() {
       setSaveStatus('saving');
       try {
         await saveProjectToDB(project);
+        void syncLinkedCampaignFromProject(project).catch((error) => {
+          console.warn('Không thể đồng bộ tiến độ về Campaign Hub', error);
+        });
         setSaveStatus('saved');
       } catch (e) {
         console.error('Tự động lưu thất bại', e);
@@ -195,10 +204,36 @@ function App() {
 
   const handleOpenProject = (proj: ProjectState) => {
     const normalized = normalizeWorkflowState(proj);
+    setCreativeDirectorInitialPrompt(null);
     setProject(normalized);
     void hydrateDurableJobs(normalized).then((hydrated) => {
-      setProject((current) => current?.id === normalized.id ? hydrated : current);
+      setProject((current) => current?.id === normalized.id
+        ? { ...current, workflow: hydrated.workflow }
+        : current);
     });
+  };
+
+  const handleOpenProjectWithDirector = (proj: ProjectState, initialPrompt: string) => {
+    handleOpenProject(proj);
+    setCreativeDirectorInitialPrompt(initialPrompt);
+    setShowCreativeDirector(true);
+  };
+
+  const handleOpenProjectWithProductionControl = (proj: ProjectState) => {
+    handleOpenProject(proj);
+    setProductionCenterInitialTab('board');
+    setShowProductionCenter(true);
+  };
+
+  const handleOpenProjectWithClientReview = (proj: ProjectState) => {
+    handleOpenProject(proj);
+    setProductionCenterInitialTab('review');
+    setShowProductionCenter(true);
+  };
+
+  const openProductionCenter = () => {
+    setProductionCenterInitialTab('overview');
+    setShowProductionCenter(true);
   };
 
   const handleCreateDemo = async () => {
@@ -211,8 +246,13 @@ function App() {
   const handleExitProject = async () => {
     if (project) {
         await saveProjectToDB(project);
+        await syncLinkedCampaignFromProject(project).catch((error) => {
+          console.warn('Không thể đồng bộ tiến độ về Campaign Hub khi đóng dự án', error);
+        });
     }
     setShowProductionCenter(false);
+    setShowCreativeDirector(false);
+    setCreativeDirectorInitialPrompt(null);
     setProject(null);
   };
 
@@ -236,11 +276,19 @@ function App() {
     }
   };
 
+  const reviewToken = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('review') : null;
+  if (reviewToken) {
+    return <React.Suspense fallback={<WorkspaceLoader />}><ClientReviewPortal token={reviewToken} /></React.Suspense>;
+  }
+
   if (!project) {
     return (
        <>
          <Dashboard 
            onOpenProject={handleOpenProject} 
+           onOpenProjectWithDirector={handleOpenProjectWithDirector}
+           onOpenProjectWithProductionControl={handleOpenProjectWithProductionControl}
+           onOpenProjectWithClientReview={handleOpenProjectWithClientReview}
            onShowOnboarding={handleShowOnboarding}
            onShowModelConfig={handleShowModelConfig}
            onShowOperations={() => setShowOperations(true)}
@@ -287,8 +335,9 @@ function App() {
         workflowProgress={readiness.overallPercent}
         stageStatuses={stageStatuses}
         activeJobCount={activeJobCount}
-        onOpenProductionCenter={() => setShowProductionCenter(true)}
+        onOpenProductionCenter={openProductionCenter}
         onOpenOperations={() => setShowOperations(true)}
+        onOpenCreativeDirector={() => setShowCreativeDirector(true)}
       />
       
       <main className="eg-stage-main flex-1">
@@ -296,13 +345,23 @@ function App() {
 
         <button
           type="button"
-          onClick={() => setShowProductionCenter(true)}
+          onClick={openProductionCenter}
           className="eg-mobile-production-button"
           aria-label="Mở Trung tâm sản xuất"
         >
           <Gauge className="h-4 w-4" />
           <span>{readiness.overallPercent}%</span>
           {activeJobCount > 0 && <span className="eg-mobile-production-count">{activeJobCount}</span>}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowCreativeDirector(true)}
+          className="eg-mobile-director-button"
+          aria-label="Mở Đạo diễn AI"
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Đạo diễn AI</span>
         </button>
         
         {showSaveStatus && (
@@ -339,6 +398,7 @@ function App() {
           <ProductionCenter
             project={project}
             updateProject={updateProject}
+            initialTab={productionCenterInitialTab}
             setStage={(stage: CoreStage) => setStage(stage)}
             onClose={() => setShowProductionCenter(false)}
             onShowModelConfig={() => {
@@ -359,6 +419,26 @@ function App() {
             onOpenModelCatalog={() => { setShowOperations(false); setShowModelConfig(true); }}
             onOpenVoiceStudio={() => { setShowOperations(false); setStage('voice'); }}
             onCreateDemo={() => void handleCreateDemo()}
+          />
+        </React.Suspense>
+      )}
+
+      {showCreativeDirector && (
+        <React.Suspense fallback={<div className="fixed inset-y-0 right-0 z-[115] w-full max-w-[460px] border-l border-white/10 bg-[var(--eg-canvas)]"><WorkspaceLoader /></div>}>
+          <CreativeDirectorPanel
+            isOpen={showCreativeDirector}
+            project={project}
+            updateProject={updateProject}
+            initialPrompt={creativeDirectorInitialPrompt || undefined}
+            onInitialPromptConsumed={() => setCreativeDirectorInitialPrompt(null)}
+            onClose={() => {
+              setCreativeDirectorInitialPrompt(null);
+              setShowCreativeDirector(false);
+            }}
+            onShowModelConfig={() => {
+              setShowCreativeDirector(false);
+              setShowModelConfig(true);
+            }}
           />
         </React.Suspense>
       )}

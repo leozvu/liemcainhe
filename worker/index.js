@@ -32,7 +32,7 @@ const ALLOWED_PROXY_HEADERS = new Set([
   'xi-api-key',
 ]);
 
-async function enforceProxyRateLimit(env, email, bucket) {
+async function enforceProxyRateLimit(env, email, bucket, limit = 180) {
   if (!env.DB) return true;
   const windowStart = Math.floor(Date.now() / 60_000) * 60_000;
   const row = await env.DB.prepare(
@@ -43,7 +43,7 @@ async function enforceProxyRateLimit(env, email, bucket) {
        request_count = CASE WHEN egoric_rate_limits.window_start = excluded.window_start THEN egoric_rate_limits.request_count + 1 ELSE 1 END
      RETURNING request_count AS requestCount`
   ).bind(email, bucket, windowStart).first();
-  return Number(row?.requestCount || 1) <= 180;
+  return Number(row?.requestCount || 1) <= limit;
 }
 
 const getAuthenticatedName = (request) => {
@@ -59,10 +59,64 @@ const hashOwner = async (email) => {
 };
 
 const safeProjectId = (value) => /^[a-zA-Z0-9_-]{3,120}$/.test(value || '') ? value : null;
+const safeReviewId = (value) => /^[a-zA-Z0-9_-]{6,180}$/.test(value || '') ? value : null;
+const safeReviewToken = (value) => /^[a-zA-Z0-9_-]{40,180}$/.test(value || '') ? value : null;
+const cleanText = (value, limit) => String(value || '').trim().slice(0, limit);
+const createReviewToken = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+};
 const safeMediaPath = (value) => {
   const decoded = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
   if (!decoded || decoded.includes('..') || decoded.length > 500) return null;
   return decoded.split('/').map((segment) => segment.replace(/[^a-zA-Z0-9._-]/g, '_')).filter(Boolean).join('/');
+};
+
+const getCloudMediaPath = (projectId, value) => {
+  if (typeof value !== 'string') return null;
+  const prefix = `/api/cloud/media/${encodeURIComponent(projectId)}/`;
+  let pathname = value;
+  try { pathname = new URL(value, 'https://egoric.invalid').pathname; } catch { /* Giữ nguyên đường dẫn tương đối. */ }
+  if (!pathname.startsWith(prefix)) return null;
+  return safeMediaPath(pathname.slice(prefix.length).split('/').map(decodeURIComponent).join('/'));
+};
+
+const getExternalMediaUrl = (value) => {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const safeImportMediaUrl = (value, base) => {
+  try {
+    const url = new URL(value, base);
+    if (url.protocol !== 'https:') return null;
+    const host = url.hostname.toLowerCase();
+    const privateIpv4 = /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host === '::1' || privateIpv4) return null;
+    return url;
+  } catch {
+    return null;
+  }
+};
+
+const fetchExternalMedia = async (sourceUrl) => {
+  let current = safeImportMediaUrl(sourceUrl);
+  if (!current) throw new Error('URL media nguồn không an toàn.');
+  for (let redirect = 0; redirect < 5; redirect += 1) {
+    const response = await fetch(current, { redirect: 'manual', headers: { accept: 'video/*,audio/*,image/*,*/*;q=0.5' } });
+    if (response.status >= 300 && response.status < 400) {
+      current = safeImportMediaUrl(response.headers.get('location'), current);
+      if (!current) throw new Error('Media nguồn chuyển hướng tới địa chỉ không an toàn.');
+      continue;
+    }
+    return response;
+  }
+  throw new Error('Media nguồn chuyển hướng quá nhiều lần.');
 };
 
 async function deleteMediaPrefix(bucket, prefix) {
@@ -131,6 +185,8 @@ async function handleCloudApi(request, env, url) {
 
     if (request.method === 'DELETE') {
       await env.DB.batch([
+        env.DB.prepare('DELETE FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ? AND project_id = ?)').bind(email, projectId),
+        env.DB.prepare('DELETE FROM egoric_client_review_portals WHERE owner_email = ? AND project_id = ?').bind(email, projectId),
         env.DB.prepare('DELETE FROM egoric_projects WHERE owner_email = ? AND project_id = ?').bind(email, projectId),
         env.DB.prepare('DELETE FROM egoric_jobs WHERE owner_email = ? AND project_id = ?').bind(email, projectId),
         env.DB.prepare('DELETE FROM egoric_media WHERE owner_email = ? AND project_id = ?').bind(email, projectId),
@@ -141,6 +197,26 @@ async function handleCloudApi(request, env, url) {
       await deleteMediaPrefix(env.MEDIA, `${owner}/${projectId}/`);
       return json({ deleted: true });
     }
+  }
+
+  if (url.pathname === '/api/cloud/media/import' && request.method === 'POST') {
+    const payload = await request.json();
+    const projectId = safeProjectId(payload?.projectId);
+    const mediaPath = safeMediaPath(payload?.path);
+    const sourceUrl = safeImportMediaUrl(payload?.sourceUrl);
+    if (!projectId || !mediaPath || !sourceUrl) return json({ error: 'Thông tin media nguồn không hợp lệ.' }, 400);
+    const source = await fetchExternalMedia(sourceUrl);
+    if (!source.ok || !source.body) return json({ error: `Không thể tải media từ nhà cung cấp (${source.status}).` }, 502);
+    const declaredBytes = Math.max(0, Number(source.headers.get('content-length')) || 0);
+    if (declaredBytes > 1_500_000_000) return json({ error: 'Media nguồn vượt giới hạn 1,5 GB.' }, 413);
+    const contentType = source.headers.get('content-type') || 'application/octet-stream';
+    const owner = await hashOwner(email);
+    const object = await env.MEDIA.put(`${owner}/${projectId}/${mediaPath}`, source.body, { httpMetadata: { contentType } });
+    await saveMediaMetadata(env, {
+      email, projectId, mediaPath, contentType, etag: object?.httpEtag, bytes: declaredBytes,
+    });
+    const encodedPath = mediaPath.split('/').map(encodeURIComponent).join('/');
+    return json({ url: `/api/cloud/media/${encodeURIComponent(projectId)}/${encodedPath}` }, 201);
   }
 
   if (url.pathname === '/api/cloud/media/uploads' && request.method === 'POST') {
@@ -383,7 +459,7 @@ async function handleAccountApi(request, env, url) {
   }
 
   if (url.pathname === '/api/account/export' && request.method === 'GET') {
-    const [profile, projects, usage, events, jobs, media, notes, approvals] = await Promise.all([
+    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments] = await Promise.all([
       ensureAccountProfile(request, env, email),
       env.DB.prepare('SELECT project_id AS projectId, title, payload_json AS payloadJson, updated_at AS updatedAt FROM egoric_projects WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 100').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 5000').bind(email).all(),
@@ -392,12 +468,15 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('SELECT project_id, path, content_type, bytes, checksum, etag, created_at, updated_at FROM egoric_media WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_review_notes WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_stage_approvals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
+      env.DB.prepare('SELECT id, project_id, title, client_name, campaign_name, deliverable_title, status, decision, decision_version_id, decision_note, reviewer_name, reviewer_email, decided_at, expires_at, payload_json, created_at, updated_at FROM egoric_client_review_portals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
+      env.DB.prepare('SELECT * FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?) ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
     ]);
     return json({
       product: 'Egoric Film Studio', exportedAt: new Date().toISOString(), profile,
       projects: (projects.results || []).map((project) => ({ ...project, payload: JSON.parse(project.payloadJson), payloadJson: undefined })),
       usage: usage.results || [], events: events.results || [], jobs: jobs.results || [],
       media: media.results || [], reviewNotes: notes.results || [], approvals: approvals.results || [],
+      clientReviewPortals: clientReviewPortals.results || [], clientReviewComments: clientReviewComments.results || [],
     });
   }
 
@@ -408,6 +487,8 @@ async function handleAccountApi(request, env, url) {
     const owner = await hashOwner(email);
     await deleteMediaPrefix(env.MEDIA, `${owner}/`);
     await env.DB.batch([
+      env.DB.prepare('DELETE FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?)').bind(email),
+      env.DB.prepare('DELETE FROM egoric_client_review_portals WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_stage_approvals WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_review_notes WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_media WHERE owner_email = ?').bind(email),
@@ -446,7 +527,7 @@ async function handleJobsApi(request, env, url) {
     const payload = await request.json();
     const jobs = Array.isArray(payload?.jobs) ? payload.jobs.slice(0, 100) : [];
     if (!jobs.length) return json({ saved: 0 });
-    const kinds = new Set(['script-analysis', 'asset-image', 'keyframe-image', 'video', 'voice', 'cloud-sync', 'export']);
+    const kinds = new Set(['script-analysis', 'creative-director', 'asset-image', 'keyframe-image', 'video', 'voice', 'cloud-sync', 'export']);
     const stages = new Set(['script', 'assets', 'voice', 'director', 'export']);
     const statuses = new Set(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']);
     const statements = [];
@@ -558,6 +639,313 @@ async function handleReviewsApi(request, env, url) {
   return json({ error: 'Review route không tồn tại.' }, 404);
 }
 
+const mapClientReviewComment = (row) => ({
+  id: row.id,
+  versionId: row.versionId ?? row.version_id,
+  clipId: row.clipId ?? row.clip_id,
+  authorName: row.authorName ?? row.author_name,
+  authorEmail: row.authorEmail ?? row.author_email ?? undefined,
+  body: row.body,
+  timecodeSeconds: Number(row.timecodeSeconds ?? row.timecode_seconds ?? 0),
+  status: row.status,
+  createdAt: Number(row.createdAt ?? row.created_at),
+  updatedAt: Number(row.updatedAt ?? row.updated_at),
+});
+
+const publicReviewAssetUrl = (token, mediaPath) => `/api/client-review/${encodeURIComponent(token)}/media/${mediaPath.split('/').map(encodeURIComponent).join('/')}`;
+
+const hydrateClientReviewPortal = (row, comments, requestUrl) => {
+  let payload = { versions: [] };
+  try { payload = JSON.parse(row.payload_json || '{}'); } catch { /* Trả portal rỗng thay vì làm hỏng trang duyệt. */ }
+  const token = row.token;
+  const versions = Array.isArray(payload.versions) ? payload.versions.map((version) => ({
+    id: version.id,
+    number: Number(version.number || 1),
+    label: version.label || `Phiên bản ${version.number || 1}`,
+    note: version.note || undefined,
+    duration: Number(version.duration || 0),
+    createdAt: Number(version.createdAt || row.created_at),
+    clips: Array.isArray(version.clips) ? version.clips.map((clip) => ({
+      id: clip.id,
+      shotId: clip.shotId,
+      title: clip.title,
+      actionSummary: clip.actionSummary || '',
+      duration: Number(clip.duration || 0),
+      videoUrl: clip.mediaPath ? publicReviewAssetUrl(token, clip.mediaPath) : clip.externalUrl,
+      posterUrl: clip.posterPath ? publicReviewAssetUrl(token, clip.posterPath) : clip.posterExternalUrl || undefined,
+    })).filter((clip) => Boolean(clip.videoUrl)) : [],
+  })) : [];
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    clientName: row.client_name,
+    campaignName: row.campaign_name || undefined,
+    deliverableTitle: row.deliverable_title || undefined,
+    status: row.status,
+    decision: row.decision,
+    decisionVersionId: row.decision_version_id || undefined,
+    decisionNote: row.decision_note || undefined,
+    reviewerName: row.reviewer_name || undefined,
+    reviewerEmail: row.reviewer_email || undefined,
+    decidedAt: row.decided_at ? Number(row.decided_at) : undefined,
+    expiresAt: row.expires_at ? Number(row.expires_at) : undefined,
+    versions,
+    comments: comments.map(mapClientReviewComment),
+    shareUrl: `${new URL(requestUrl).origin}/?review=${encodeURIComponent(token)}`,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+};
+
+const loadClientReviewPortal = async (env, row, requestUrl) => {
+  const comments = await env.DB.prepare(
+    `SELECT id, version_id AS versionId, clip_id AS clipId, author_name AS authorName,
+            author_email AS authorEmail, body, timecode_seconds AS timecodeSeconds,
+            status, created_at AS createdAt, updated_at AS updatedAt
+     FROM egoric_client_review_comments WHERE portal_id = ? ORDER BY updated_at DESC LIMIT 500`
+  ).bind(row.id).all();
+  return hydrateClientReviewPortal(row, comments.results || [], requestUrl);
+};
+
+const buildReviewVersion = (project, label, note, number) => {
+  const versionId = `version_${crypto.randomUUID()}`;
+  const clips = (Array.isArray(project.shots) ? project.shots : []).flatMap((shot, index) => {
+    const videoValue = shot?.interval?.videoUrl;
+    const mediaPath = getCloudMediaPath(project.id, videoValue);
+    const externalUrl = mediaPath ? null : getExternalMediaUrl(videoValue);
+    if (!mediaPath && !externalUrl) return [];
+    const posterValue = (Array.isArray(shot.keyframes) ? shot.keyframes : []).find((frame) => frame?.type === 'start' && frame?.imageUrl)?.imageUrl;
+    const posterPath = getCloudMediaPath(project.id, posterValue);
+    const posterExternalUrl = posterPath ? null : getExternalMediaUrl(posterValue);
+    const duration = Math.max(1, Math.min(600, Number(shot?.interval?.duration) || 10));
+    return [{
+      id: `clip_${versionId}_${index + 1}`,
+      shotId: cleanText(shot.id, 160) || `shot_${index + 1}`,
+      title: `Cảnh ${String(index + 1).padStart(2, '0')}`,
+      actionSummary: cleanText(shot.actionSummary, 500),
+      duration,
+      mediaPath: mediaPath || undefined,
+      externalUrl: externalUrl || undefined,
+      posterPath: posterPath || undefined,
+      posterExternalUrl: posterExternalUrl || undefined,
+    }];
+  });
+  return {
+    id: versionId,
+    number,
+    label: cleanText(label, 120) || `Phiên bản ${number}`,
+    note: cleanText(note, 1000) || undefined,
+    duration: clips.reduce((sum, clip) => sum + clip.duration, 0),
+    clips,
+    createdAt: Date.now(),
+  };
+};
+
+async function handleClientReviewsApi(request, env, url) {
+  if (!env.DB || !env.MEDIA) return json({ error: 'Cổng duyệt chưa được cấp D1/R2.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để quản lý link duyệt.' }, 401);
+  const projectId = safeProjectId(url.searchParams.get('projectId'));
+  if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
+
+  if (request.method === 'GET') {
+    const rows = await env.DB.prepare(
+      'SELECT * FROM egoric_client_review_portals WHERE owner_email = ? AND project_id = ? ORDER BY updated_at DESC LIMIT 20'
+    ).bind(email, projectId).all();
+    const portals = await Promise.all((rows.results || []).map((row) => loadClientReviewPortal(env, row, request.url)));
+    return json({ portals });
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+    const projectRow = await env.DB.prepare(
+      'SELECT payload_json AS payload FROM egoric_projects WHERE owner_email = ? AND project_id = ?'
+    ).bind(email, projectId).first();
+    if (!projectRow) return json({ error: 'Hãy sao lưu dự án lên cloud trước khi phát hành bản duyệt.' }, 409);
+    let project;
+    try { project = JSON.parse(projectRow.payload); } catch { return json({ error: 'Bản sao dự án cloud bị lỗi dữ liệu.' }, 500); }
+
+    const existing = await env.DB.prepare(
+      'SELECT * FROM egoric_client_review_portals WHERE owner_email = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).bind(email, projectId).first();
+    let currentPayload = { versions: [] };
+    if (existing) {
+      try { currentPayload = JSON.parse(existing.payload_json || '{}'); } catch { currentPayload = { versions: [] }; }
+    }
+    const versions = Array.isArray(currentPayload.versions) ? currentPayload.versions : [];
+    const nextNumber = versions.reduce((highest, version) => Math.max(highest, Number(version.number) || 0), 0) + 1;
+    const version = buildReviewVersion(project, body?.versionLabel, body?.versionNote, nextNumber);
+    if (!version.clips.length) return json({ error: 'Dự án cloud chưa có video có thể chia sẻ. Hãy tạo video rồi sao lưu lại.' }, 409);
+    const nextPayload = JSON.stringify({ versions: [...versions, version].slice(-20) });
+    const now = Date.now();
+    const expiresInDays = Math.max(1, Math.min(365, Number(body?.expiresInDays) || 30));
+    const expiresAt = now + expiresInDays * 86400000;
+    const title = cleanText(body?.title, 240) || cleanText(project.title, 240) || 'Bản duyệt video';
+    const clientName = cleanText(body?.clientName, 160) || 'Khách hàng';
+    const campaignName = cleanText(body?.campaignName, 240) || null;
+    const deliverableTitle = cleanText(body?.deliverableTitle, 240) || null;
+
+    let portalId;
+    if (existing) {
+      portalId = existing.id;
+      await env.DB.prepare(
+        `UPDATE egoric_client_review_portals SET title = ?, client_name = ?, campaign_name = ?, deliverable_title = ?,
+          status = 'active', decision = 'pending', decision_version_id = NULL, decision_note = NULL, reviewer_name = NULL, reviewer_email = NULL,
+          decided_at = NULL, expires_at = ?, payload_json = ?, updated_at = ?
+         WHERE id = ? AND owner_email = ? AND project_id = ?`
+      ).bind(title, clientName, campaignName, deliverableTitle, expiresAt, nextPayload, now, portalId, email, projectId).run();
+    } else {
+      portalId = `portal_${crypto.randomUUID()}`;
+      await env.DB.prepare(
+        `INSERT INTO egoric_client_review_portals
+          (id, token, owner_email, project_id, title, client_name, campaign_name, deliverable_title,
+           status, decision, expires_at, payload_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'pending', ?, ?, ?, ?)`
+      ).bind(portalId, createReviewToken(), email, projectId, title, clientName, campaignName, deliverableTitle, expiresAt, nextPayload, now, now).run();
+    }
+    const row = await env.DB.prepare('SELECT * FROM egoric_client_review_portals WHERE id = ? AND owner_email = ?').bind(portalId, email).first();
+    return json({ portal: await loadClientReviewPortal(env, row, request.url) }, existing ? 200 : 201);
+  }
+
+  if (request.method === 'PATCH') {
+    const body = await request.json();
+    const portalId = safeReviewId(body?.portalId);
+    if (!portalId) return json({ error: 'Cổng duyệt không hợp lệ.' }, 400);
+    const row = await env.DB.prepare(
+      'SELECT * FROM egoric_client_review_portals WHERE id = ? AND owner_email = ? AND project_id = ?'
+    ).bind(portalId, email, projectId).first();
+    if (!row) return json({ error: 'Không tìm thấy cổng duyệt.' }, 404);
+    const statements = [];
+    if (['active', 'closed'].includes(body?.status)) {
+      statements.push(env.DB.prepare(
+        'UPDATE egoric_client_review_portals SET status = ?, updated_at = ? WHERE id = ? AND owner_email = ?'
+      ).bind(body.status, Date.now(), portalId, email));
+    }
+    if (body?.resetDecision === true) {
+      statements.push(env.DB.prepare(
+        `UPDATE egoric_client_review_portals SET status = 'active', decision = 'pending', decision_version_id = NULL, decision_note = NULL,
+          reviewer_name = NULL, reviewer_email = NULL, decided_at = NULL, updated_at = ? WHERE id = ? AND owner_email = ?`
+      ).bind(Date.now(), portalId, email));
+    }
+    const commentId = safeReviewId(body?.commentId);
+    if (commentId && ['open', 'resolved'].includes(body?.commentStatus)) {
+      statements.push(env.DB.prepare(
+        'UPDATE egoric_client_review_comments SET status = ?, updated_at = ? WHERE id = ? AND portal_id = ?'
+      ).bind(body.commentStatus, Date.now(), commentId, portalId));
+    }
+    if (!statements.length) return json({ error: 'Không có thay đổi hợp lệ.' }, 400);
+    await env.DB.batch(statements);
+    const updated = await env.DB.prepare('SELECT * FROM egoric_client_review_portals WHERE id = ? AND owner_email = ?').bind(portalId, email).first();
+    return json({ portal: await loadClientReviewPortal(env, updated, request.url) });
+  }
+
+  return json({ error: 'Client review route không tồn tại.' }, 404);
+}
+
+const reviewPortalUnavailable = (row) => {
+  if (row.status === 'closed') return 'Link duyệt này đã được đóng.';
+  if (row.expires_at && Number(row.expires_at) < Date.now()) return 'Link duyệt này đã hết hạn.';
+  return null;
+};
+
+async function handlePublicClientReviewApi(request, env, url) {
+  if (!env.DB || !env.MEDIA) return json({ error: 'Cổng duyệt chưa sẵn sàng.' }, 503);
+  const match = url.pathname.match(/^\/api\/client-review\/([^/]+)(?:\/(comments|decision)|\/media\/(.+))?$/);
+  if (!match) return json({ error: 'Link duyệt không hợp lệ.' }, 404);
+  const token = safeReviewToken(decodeURIComponent(match[1]));
+  if (!token) return json({ error: 'Link duyệt không hợp lệ.' }, 404);
+  const row = await env.DB.prepare('SELECT * FROM egoric_client_review_portals WHERE token = ?').bind(token).first();
+  if (!row) return json({ error: 'Không tìm thấy bản duyệt.' }, 404);
+  const unavailable = reviewPortalUnavailable(row);
+  if (unavailable) return json({ error: unavailable }, 410);
+  const action = match[2];
+  const rawMediaPath = match[3];
+
+  if (rawMediaPath && (request.method === 'GET' || request.method === 'HEAD')) {
+    const mediaPath = safeMediaPath(rawMediaPath.split('/').map(decodeURIComponent).join('/'));
+    if (!mediaPath) return new Response('Not found', { status: 404 });
+    let payload = { versions: [] };
+    try { payload = JSON.parse(row.payload_json || '{}'); } catch { /* Không cấp quyền nếu payload lỗi. */ }
+    const allowed = new Set((payload.versions || []).flatMap((version) => (version.clips || []).flatMap((clip) => [clip.mediaPath, clip.posterPath].filter(Boolean))));
+    if (!allowed.has(mediaPath)) return new Response('Not found', { status: 404 });
+    const owner = await hashOwner(row.owner_email);
+    const object = await env.MEDIA.get(`${owner}/${row.project_id}/${mediaPath}`, {
+      onlyIf: request.headers,
+      range: request.headers,
+    });
+    if (!object) return new Response('Not found', { status: 404 });
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set('etag', object.httpEtag);
+    headers.set('accept-ranges', 'bytes');
+    headers.set('cache-control', 'private, max-age=900');
+    let status = 'body' in object ? 200 : 412;
+    if ('body' in object && object.range) {
+      const offset = Number(object.range.offset || 0);
+      const length = Number(object.range.length || object.size);
+      headers.set('content-range', `bytes ${offset}-${offset + length - 1}/${object.size}`);
+      headers.set('content-length', String(length));
+      status = 206;
+    }
+    return new Response(request.method === 'HEAD' || !('body' in object) ? null : object.body, { status, headers });
+  }
+
+  if (!action && request.method === 'GET') {
+    return json({ portal: await loadClientReviewPortal(env, row, request.url) });
+  }
+
+  const identity = `public-review:${row.id}:${request.headers.get('cf-connecting-ip') || 'anonymous'}`;
+  if (!(await enforceProxyRateLimit(env, identity, action || 'review', 30))) {
+    return json({ error: 'Bạn thao tác quá nhanh. Hãy thử lại sau một phút.' }, 429);
+  }
+
+  if (action === 'comments' && request.method === 'POST') {
+    if (row.decision === 'approved') return json({ error: 'Phiên bản đã nghiệm thu nên không nhận thêm góp ý.' }, 409);
+    const body = await request.json();
+    let payload = { versions: [] };
+    try { payload = JSON.parse(row.payload_json || '{}'); } catch { return json({ error: 'Dữ liệu bản duyệt bị lỗi.' }, 500); }
+    const version = (payload.versions || []).find((item) => item.id === body?.versionId);
+    const clip = version?.clips?.find((item) => item.id === body?.clipId);
+    const authorName = cleanText(body?.authorName, 120);
+    const authorEmail = cleanText(body?.authorEmail, 180) || null;
+    const commentBody = cleanText(body?.body, 2000);
+    if (!version || !clip || authorName.length < 2 || !commentBody) return json({ error: 'Hãy nhập tên, nội dung và chọn đúng cảnh cần góp ý.' }, 400);
+    const timecode = Math.max(0, Math.min(Number(clip.duration) || 0, Number(body?.timecodeSeconds) || 0));
+    const id = `client_comment_${crypto.randomUUID()}`;
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO egoric_client_review_comments
+        (id, portal_id, version_id, clip_id, author_name, author_email, body, timecode_seconds, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
+    ).bind(id, row.id, version.id, clip.id, authorName, authorEmail, commentBody, timecode, now, now).run();
+    return json({ comment: { id, versionId: version.id, clipId: clip.id, authorName, authorEmail: authorEmail || undefined, body: commentBody, timecodeSeconds: timecode, status: 'open', createdAt: now, updatedAt: now } }, 201);
+  }
+
+  if (action === 'decision' && request.method === 'PUT') {
+    if (row.decision === 'approved') return json({ error: 'Bản duyệt này đã được nghiệm thu.' }, 409);
+    const body = await request.json();
+    const decision = ['approved', 'changes-requested'].includes(body?.decision) ? body.decision : null;
+    let payload = { versions: [] };
+    try { payload = JSON.parse(row.payload_json || '{}'); } catch { return json({ error: 'Dữ liệu bản duyệt bị lỗi.' }, 500); }
+    const versionId = safeReviewId(body?.versionId);
+    const version = (payload.versions || []).find((item) => item.id === versionId);
+    const reviewerName = cleanText(body?.reviewerName, 120);
+    const reviewerEmail = cleanText(body?.reviewerEmail, 180) || null;
+    const note = cleanText(body?.note, 1000) || null;
+    if (!decision || !version || reviewerName.length < 2) return json({ error: 'Hãy nhập tên người duyệt và chọn đúng phiên bản.' }, 400);
+    const now = Date.now();
+    await env.DB.prepare(
+      `UPDATE egoric_client_review_portals SET decision = ?, decision_version_id = ?, decision_note = ?, reviewer_name = ?, reviewer_email = ?,
+        decided_at = ?, updated_at = ? WHERE id = ?`
+    ).bind(decision, version.id, note, reviewerName, reviewerEmail, now, now, row.id).run();
+    const updated = await env.DB.prepare('SELECT * FROM egoric_client_review_portals WHERE id = ?').bind(row.id).first();
+    return json({ portal: await loadClientReviewPortal(env, updated, request.url) });
+  }
+
+  return json({ error: 'Thao tác review không được hỗ trợ.' }, 405);
+}
+
 function createUpstreamRequest(request, url, prefix, origin) {
   const upstreamUrl = new URL(url.pathname.slice(prefix.length) || '/', origin);
   upstreamUrl.search = url.search;
@@ -592,7 +980,22 @@ async function injectSiteOrigin(response, requestUrl) {
   });
 }
 
+const publicReviewLanding = () => new Response(`<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Egoric Agency · Client Review</title><style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07090c;color:#f4f4f5;font-family:Inter,system-ui,sans-serif;padding:24px}.card{width:min(520px,100%);border:1px solid rgba(255,255,255,.1);border-radius:28px;background:rgba(255,255,255,.035);padding:36px;box-shadow:0 28px 80px rgba(0,0,0,.35)}img{width:56px;height:56px;border-radius:16px;object-fit:cover}small{display:block;margin-top:24px;color:#67e8f9;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{font-size:28px;line-height:1.15;margin:12px 0;color:#fff}p{color:#a1a1aa;font-size:14px;line-height:1.7;margin:0}.hint{margin-top:22px;padding:14px 16px;border-radius:16px;background:rgba(103,232,249,.07);border:1px solid rgba(103,232,249,.14);color:#cffafe;font-size:12px}a{color:#a5f3fc}</style></head>
+<body><main class="card"><img src="/egoric-agency-icon.png" alt="Egoric Agency"><small>Client Review Portal</small><h1>Hãy mở đúng link duyệt từ Egoric.</h1><p>Không gian sản xuất nội bộ được bảo vệ. Khách hàng chỉ có thể xem video và gửi phản hồi bằng link bảo mật do team dự án cung cấp.</p><div class="hint">Nếu link đã hết hạn hoặc bị đóng, hãy liên hệ người phụ trách dự án để nhận link mới.</div></main></body></html>`, {
+  status: 403,
+  headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+});
+
 async function serveApp(request, env) {
+  const url = new URL(request.url);
+  const acceptsHtml = (request.headers.get('accept') || '').includes('text/html');
+  const legalPath = ['/privacy.html', '/terms.html'].includes(url.pathname);
+  if (request.method === 'GET' && acceptsHtml && !legalPath && !url.searchParams.has('review') && !getAuthenticatedEmail(request)) {
+    return publicReviewLanding();
+  }
   const response = await env.ASSETS.fetch(request);
   if (response.status !== 404 || request.method !== 'GET') {
     return injectSiteOrigin(response, request.url);
@@ -605,6 +1008,24 @@ async function serveApp(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith('/api/client-review/')) {
+      try {
+        return await handlePublicClientReviewApi(request, env, url);
+      } catch (error) {
+        console.error('Public client review API error', error);
+        return json({ error: error instanceof Error ? error.message : 'Cổng duyệt khách hàng thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/client-reviews') {
+      try {
+        return await handleClientReviewsApi(request, env, url);
+      } catch (error) {
+        console.error('Client reviews API error', error);
+        return json({ error: error instanceof Error ? error.message : 'Quản lý cổng duyệt thất bại.' }, 500);
+      }
+    }
 
     if (url.pathname.startsWith('/api/cloud/')) {
       try {
