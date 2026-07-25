@@ -11,6 +11,7 @@ import { setLogCallback, clearLogCallback } from './services/renderLogService';
 import { getWorkflowReadiness, normalizeWorkflowState } from './services/workflowService';
 import { recordSystemEvent } from './services/accountService';
 import { setUsageProjectContext } from './services/usageService';
+import { setPreflightBrandKit } from './services/promptPreflight';
 import { createProductionDemoProject } from './services/demoProjectService';
 import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobService';
 import { syncLinkedCampaignFromProject } from './services/productionControlService';
@@ -82,6 +83,14 @@ function App() {
     setUsageProjectContext(project?.id);
     return () => setUsageProjectContext(undefined);
   }, [project?.id]);
+
+  // Cổng chặn trước khi sinh nằm bên trong generateImage và generateVideo, vốn
+  // được gọi từ rất nhiều nơi. Đưa Brand Kit vào context toàn cục để cổng đó
+  // biết từ cấm của khách mà không phải đổi chữ ký hai hàm kia.
+  useEffect(() => {
+    setPreflightBrandKit(project?.brandKitSnapshot);
+    return () => setPreflightBrandKit(undefined);
+  }, [project?.brandKitSnapshot]);
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {

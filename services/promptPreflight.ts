@@ -324,6 +324,58 @@ export const preflightPrompt = async (
   }
 };
 
+/**
+ * Brand Kit của dự án đang mở.
+ *
+ * Dùng biến toàn cục theo đúng mẫu `setUsageProjectContext` sẵn có, để cổng
+ * chặn nằm được ngay trong `generateImage` và `generateVideo` mà không phải
+ * đổi chữ ký của chúng — hai hàm đó được gọi từ rất nhiều nơi.
+ */
+let activeBrandKit: BrandKit | undefined;
+
+export const setPreflightBrandKit = (kit?: BrandKit | null): void => {
+  activeBrandKit = kit ?? undefined;
+};
+
+/**
+ * Những lỗi chắc chắn sai, chặn được mà không sợ oan.
+ *
+ * Cố ý **không** gồm `too-vague`: đó là suy đoán theo số từ, và luồng sẵn có
+ * của dự án có thể đang dùng prompt ngắn hợp lệ. Chặn nhầm một lượt sinh đúng
+ * gây bực hơn là để lọt một lượt sinh hỏng.
+ *
+ * Cũng không gồm `missing-reference` vì `selectImageModelForGeneration` đã tự
+ * chuyển sang model sinh từ văn bản khi thiếu ảnh tham chiếu.
+ */
+const CERTAIN_BLOCK: PreflightIssueCode[] = ['empty', 'brand-forbidden'];
+
+export class PreflightBlockedError extends Error {
+  readonly issues: PreflightIssue[];
+
+  constructor(issues: PreflightIssue[]) {
+    super(issues.map((issue) => issue.message).join(' '));
+    this.name = 'PreflightBlockedError';
+    this.issues = issues;
+  }
+}
+
+/**
+ * Cổng chặn tự động, đặt ngay trước mọi lời gọi sinh ảnh và video.
+ *
+ * Chỉ chạy luật cục bộ nên **không tốn tiền và không thêm độ trễ**. Không gọi
+ * model chấm ở đây: tầng đó cần người đọc và quyết, nên chỉ chạy ở giao diện.
+ */
+export const assertGenerationAllowed = (
+  prompt: string,
+  target: PreflightTarget,
+  brandKit: BrandKit | null | undefined = activeBrandKit,
+): void => {
+  const blocking = runLocalPreflight({ prompt, target, brandKit }).filter(
+    (issue) => issue.severity === 'block' && CERTAIN_BLOCK.includes(issue.code),
+  );
+  if (blocking.length) throw new PreflightBlockedError(blocking);
+};
+
 /** Một dòng tóm tắt để hiện cạnh nút sinh. */
 export const describePreflight = (report: PreflightReport): string => {
   if (report.verdict === 'pass') return 'Prompt ổn, sinh được.';

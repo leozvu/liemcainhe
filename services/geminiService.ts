@@ -34,6 +34,7 @@ import { callVideoApi } from './adapters/videoAdapter';
 import { callChatApi } from './adapters/chatAdapter';
 import { verifyProviderApiKey } from './providerService';
 import { parseModelJson } from './jsonResponse';
+import { assertGenerationAllowed } from './promptPreflight';
 import { selectImageModelForGeneration } from './imageModelSelection';
 
 export class ApiKeyError extends Error {
@@ -910,8 +911,12 @@ export const generateImage = async (
   modelId?: string,
   usageResourceId?: string,
 ): Promise<string> => {
+  // Chặn trước khi tiêu tiền. Chỉ luật cục bộ nên không tốn phí, không thêm
+  // độ trễ, và chỉ chặn những lỗi chắc chắn sai.
+  assertGenerationAllowed(prompt, 'image');
+
   const startTime = Date.now();
-  
+
   // Tôn trọng model người dùng chọn. Nếu tác vụ không có ảnh tham chiếu nhưng
   // model chỉ hỗ trợ chỉnh ảnh, tự chuyển sang model text-to-image cùng provider.
   const requestedImageModel = resolveModel('image', modelId) as ImageModelDefinition | undefined;
@@ -1361,6 +1366,9 @@ export const generateVideo = async (
   duration: VideoDuration = 8,
   usageResourceId?: string,
 ): Promise<string> => {
+  // Video là lời gọi đắt nhất trong app, nên cổng chặn ở đây đáng giá nhất.
+  assertGenerationAllowed(prompt, 'video');
+
   const resolvedVideoModel = resolveModel('video', model) as VideoModelDefinition | undefined;
   const requestModel = resolveRequestModel('video', model) || model;
   const apiKey = checkApiKey('video', model);

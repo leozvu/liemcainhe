@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  PreflightBlockedError,
   PreflightInput,
+  assertGenerationAllowed,
   describePreflight,
   estimateSavedCost,
   normalizeJudgeResponse,
   preflightPrompt,
   runLocalPreflight,
+  setPreflightBrandKit,
 } from '../services/promptPreflight';
 import { normalizeBrandKit } from '../services/brandKitService';
 
@@ -222,6 +225,67 @@ describe('chạy đủ hai tầng', () => {
     const chat = vi.fn().mockResolvedValue(JSON.stringify({ issues: [] }));
     await preflightPrompt(input(), { chat: chat as never });
     expect(chat.mock.calls[0][0].usageResourceId).toBe('preflight-judge');
+  });
+});
+
+describe('cổng chặn tự động trong lõi sinh ảnh và video', () => {
+  it('chặn prompt rỗng', () => {
+    expect(() => assertGenerationAllowed('   ', 'video', null)).toThrow(PreflightBlockedError);
+  });
+
+  it('chặn prompt chứa từ cấm của khách', () => {
+    const kit = normalizeBrandKit({ forbiddenTerms: ['cam kết lợi nhuận'] } as never);
+    expect(() => assertGenerationAllowed('Poster cam kết lợi nhuận cho khách hàng', 'image', kit))
+      .toThrow(PreflightBlockedError);
+  });
+
+  /**
+   * Phần quan trọng nhất của cổng này: nó nằm trong đường sinh lõi được gọi từ
+   * StageDirector, Video Factory, Đạo diễn AI và cả bước sửa lỗi của Supervisor.
+   * Chặn nhầm một lượt sinh đúng gây bực hơn nhiều so với để lọt một lượt hỏng.
+   */
+  it('KHÔNG chặn prompt ngắn — đó chỉ là suy đoán theo số từ', () => {
+    expect(() => assertGenerationAllowed('a shop', 'image', null)).not.toThrow();
+  });
+
+  it('KHÔNG chặn khi thiếu ảnh tham chiếu — lõi đã tự đổi model', () => {
+    expect(() => assertGenerationAllowed('Cận cảnh ly cà phê trên bàn gỗ buổi sáng', 'image', null))
+      .not.toThrow();
+  });
+
+  it('KHÔNG chặn prompt đòi chữ trong ảnh — chỉ là cảnh báo', () => {
+    expect(() => assertGenerationAllowed('A sign with the text Sale in a Hanoi street', 'image', null))
+      .not.toThrow();
+  });
+
+  it('prompt bình thường đi qua trót lọt', () => {
+    const kit = normalizeBrandKit({ forbiddenTerms: ['cam kết lợi nhuận'] } as never);
+    expect(() => assertGenerationAllowed(
+      'A Vietnamese barista pouring coffee in a small Hanoi shop, morning light',
+      'video',
+      kit,
+    )).not.toThrow();
+  });
+
+  it('lỗi ném ra mang theo chi tiết để giao diện hiện được', () => {
+    try {
+      assertGenerationAllowed('', 'video', null);
+      expect.unreachable('phải ném lỗi');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PreflightBlockedError);
+      expect((error as PreflightBlockedError).issues[0].code).toBe('empty');
+      expect((error as PreflightBlockedError).message).toContain('rỗng');
+    }
+  });
+
+  it('Brand Kit đặt qua context toàn cục cũng có hiệu lực', () => {
+    setPreflightBrandKit(normalizeBrandKit({ forbiddenTerms: ['bao lãi'] } as never));
+    expect(() => assertGenerationAllowed('Poster bao lãi mỗi tháng cho nhà đầu tư', 'image'))
+      .toThrow(PreflightBlockedError);
+
+    setPreflightBrandKit(undefined);
+    expect(() => assertGenerationAllowed('Poster bao lãi mỗi tháng cho nhà đầu tư', 'image'))
+      .not.toThrow();
   });
 });
 
