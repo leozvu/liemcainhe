@@ -1,4 +1,4 @@
-import { ArticleDraft, ContentBrief, SavedArticle } from '../../types/content';
+import { ArticleDraft, ContentBrief, ReviewRecord, SavedArticle } from '../../types/content';
 import {
   deleteArticleFromLibrary,
   getArticleLibrary,
@@ -35,6 +35,10 @@ export interface SaveArticleOptions {
   projectTitle?: string;
   /** Ghi đè bài đã có thay vì tạo bản mới. */
   existingId?: string;
+  /** Quyết định duyệt. Không truyền thì giữ nguyên quyết định cũ. */
+  review?: ReviewRecord;
+  /** Bản chụp kết quả kiểm Brand Kit tại thời điểm lưu. */
+  compliance?: SavedArticle['compliance'];
 }
 
 const makeId = (now: number): string =>
@@ -53,15 +57,27 @@ export const saveArticle = async (
     ? (await store.readAll()).find((item) => item.id === options.existingId)
     : undefined;
 
+  /**
+   * Sửa nội dung thì quyết định duyệt cũ hết hiệu lực.
+   *
+   * Nếu không đặt lại, một bài đã duyệt có thể bị sửa thành bất cứ thứ gì mà
+   * vẫn giữ dấu đã duyệt — đúng lỗ hổng mà bàn duyệt sinh ra để bịt.
+   */
+  const noiDungDoi =
+    existing !== undefined &&
+    JSON.stringify(existing.draft) !== JSON.stringify(draft);
+
   const article: SavedArticle = {
     id: existing?.id ?? options.existingId ?? makeId(now),
     title: draft.title || brief.topic || 'Bài chưa đặt tên',
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    projectId: options.projectId,
-    projectTitle: options.projectTitle,
+    projectId: options.projectId ?? existing?.projectId,
+    projectTitle: options.projectTitle ?? existing?.projectTitle,
     brief,
     draft,
+    review: options.review ?? (noiDungDoi ? undefined : existing?.review),
+    compliance: options.compliance ?? (noiDungDoi ? undefined : existing?.compliance),
   };
 
   await store.put(article);

@@ -196,6 +196,24 @@ export interface SavedArticle {
   projectTitle?: string;
   brief: ContentBrief;
   draft: ArticleDraft;
+  /** Quyết định duyệt. Chưa duyệt thì không đăng được. */
+  review?: ReviewRecord;
+  /**
+   * Kết quả kiểm Brand Kit tại thời điểm lưu.
+   *
+   * Chụp lại thay vì tính lại khi mở bàn duyệt, vì bàn duyệt nhìn nhiều dự án
+   * cùng lúc và không cầm được Brand Kit của từng dự án.
+   */
+  compliance?: { score: number; passed: boolean; violations: string[]; warnings: string[] };
+}
+
+export type ReviewDecision = 'pending' | 'approved' | 'changes-requested';
+
+export interface ReviewRecord {
+  decision: ReviewDecision;
+  reviewer?: string;
+  note?: string;
+  decidedAt?: number;
 }
 
 /** Kênh đăng bài. */

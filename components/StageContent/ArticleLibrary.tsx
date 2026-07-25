@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, FolderOpen, Save, Search, Trash2 } from 'lucide-react';
-import { ArticleDraft, ContentBrief, SavedArticle } from '../../types/content';
+import { BrandKit } from '../../types';
+import { ArticleDraft, ContentBrief, ReviewDecision, SavedArticle } from '../../types/content';
+import { inspectBrandCompliance } from '../../services/brandKitService';
+import { articleToMarkdown } from '../../services/content/articleService';
 import {
   findPublishRecords,
   listArticles,
@@ -17,7 +20,10 @@ interface Props {
   brief: ContentBrief;
   projectId: string;
   projectTitle: string;
+  brandKit?: BrandKit | null;
   onLoad: (article: SavedArticle) => void;
+  /** Báo cho màn hình cha biết quyết định duyệt của bản đang mở. */
+  onReviewChange?: (decision: ReviewDecision | undefined) => void;
 }
 
 /**
@@ -27,7 +33,15 @@ interface Props {
  * thái đăng đối chiếu với nhật ký đăng bài bằng vân tay nội dung, không lưu
  * thêm quan hệ nào giữa hai kho.
  */
-const ArticleLibrary: React.FC<Props> = ({ draft, brief, projectId, projectTitle, onLoad }) => {
+const ArticleLibrary: React.FC<Props> = ({
+  draft,
+  brief,
+  projectId,
+  projectTitle,
+  brandKit,
+  onLoad,
+  onReviewChange,
+}) => {
   const [articles, setArticles] = useState<SavedArticle[]>([]);
   const [ledger, setLedger] = useState<PublishLedgerEntry[]>([]);
   const [query, setQuery] = useState('');
@@ -51,12 +65,40 @@ const ArticleLibrary: React.FC<Props> = ({ draft, brief, projectId, projectTitle
     setBusy(true);
     setNotice(null);
     try {
-      const saved = await saveArticle(draft, brief, { projectId, projectTitle });
+      // Chụp kết quả kiểm Brand Kit ngay lúc lưu, vì bàn duyệt nhìn nhiều dự án
+      // cùng lúc và không cầm được Brand Kit của từng dự án.
+      const compliance = brandKit
+        ? inspectBrandCompliance(articleToMarkdown(draft), brandKit)
+        : undefined;
+
+      const saved = await saveArticle(draft, brief, {
+        projectId,
+        projectTitle,
+        compliance,
+      });
       await refresh();
-      setNotice(`Đã lưu “${saved.title}” vào thư viện.`);
+      onReviewChange?.(saved.review?.decision);
+      setNotice(
+        compliance && !compliance.passed
+          ? `Đã lưu “${saved.title}”, nhưng bài đang vi phạm Brand Kit nên bàn duyệt sẽ chặn.`
+          : `Đã lưu “${saved.title}” vào thư viện. Sang Trung tâm vận hành → Bàn duyệt để duyệt.`,
+      );
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * Đọc lại bản mới nhất ngay trước khi mở.
+   *
+   * Danh sách trong màn hình này được nạp lúc mở, còn quyết định duyệt lại
+   * diễn ra ở Bàn duyệt sau đó. Dùng bản đang giữ trong bộ nhớ sẽ mở ra một
+   * bài thiếu dấu đã duyệt, và nút đăng không mở khoá dù bài đã được duyệt.
+   */
+  const handleOpen = async (article: SavedArticle) => {
+    const fresh = (await listArticles()).find((row) => row.id === article.id) ?? article;
+    onLoad(fresh);
+    await refresh();
   };
 
   const handleDelete = async (id: string) => {
@@ -140,7 +182,7 @@ const ArticleLibrary: React.FC<Props> = ({ draft, brief, projectId, projectTitle
                     <button
                       type="button"
                       className="eg-button-secondary min-h-11 px-3 text-xs"
-                      onClick={() => onLoad(article)}
+                      onClick={() => void handleOpen(article)}
                     >
                       <FolderOpen className="mr-1.5 inline h-3.5 w-3.5" />Mở
                     </button>

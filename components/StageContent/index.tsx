@@ -15,6 +15,7 @@ import {
   ArticleDraft,
   ContentBrief,
   ContentStudioState,
+  ReviewDecision,
   StoryBridge,
   TrendItem,
 } from '../../types/content';
@@ -83,6 +84,14 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [layout, setLayout] = useState<ArticleLayout>('editorial');
+  /**
+   * Quyết định duyệt của bản đang mở.
+   *
+   * Không lưu vào dự án: nguồn sự thật là thư viện, còn đây chỉ là bản sao để
+   * khối đăng bài biết có được mở khoá hay không. Sinh bài mới thì phải đặt lại
+   * về `undefined`, nếu không bài mới thừa hưởng dấu đã duyệt của bài cũ.
+   */
+  const [reviewDecision, setReviewDecision] = useState<ReviewDecision | undefined>(undefined);
 
   const sourceId = saved?.sourceId ?? TREND_SOURCES[0].id;
   const brief = saved?.brief ?? createDefaultBrief('');
@@ -109,7 +118,17 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const setSourceId = (value: string) => patchStudio({ sourceId: value });
   const setKeywordText = (value: string) => patchStudio({ keywordText: value });
   const setDuration = (value: ShortFilmDuration) => patchStudio({ durationSeconds: value });
-  const setDraft = (value: ArticleDraft | null) => patchStudio({ draft: value });
+  /**
+   * Đổi nội dung là mất hiệu lực phê duyệt.
+   *
+   * Không có ngoại lệ, kể cả sửa một dấu phẩy. Giữ lại dấu đã duyệt sau khi sửa
+   * chính là lỗ hổng mà bàn duyệt sinh ra để bịt: bài được duyệt xong rồi sửa
+   * thành bất cứ thứ gì mà vẫn đăng được.
+   */
+  const setDraft = (value: ArticleDraft | null) => {
+    setReviewDecision(undefined);
+    patchStudio({ draft: value });
+  };
   const setBridge = (value: StoryBridge | null) => patchStudio({ bridge: value });
 
   const markdown = useMemo(() => (draft ? articleToMarkdown(draft) : ''), [draft]);
@@ -454,15 +473,24 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
           />
         )}
 
-        {draft && <PublishPanel draft={draft} brandKit={project.brandKitSnapshot} />}
+        {draft && (
+          <PublishPanel
+            draft={draft}
+            brandKit={project.brandKitSnapshot}
+            reviewDecision={reviewDecision}
+          />
+        )}
 
         <ArticleLibrary
           draft={draft}
           brief={brief}
           projectId={project.id}
           projectTitle={project.title}
+          brandKit={project.brandKitSnapshot}
+          onReviewChange={setReviewDecision}
           onLoad={(article) => {
             patchStudio({ draft: article.draft, brief: article.brief });
+            setReviewDecision(article.review?.decision);
             setEditing(false);
             setNotice(`Đã mở “${article.title}” từ thư viện.`);
           }}

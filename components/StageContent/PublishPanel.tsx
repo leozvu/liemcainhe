@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ExternalLink, Loader2, Send, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
 import { BrandKit } from '../../types';
-import { ArticleDraft, PublishChannelId, PublishResult } from '../../types/content';
+import { ArticleDraft, PublishChannelId, PublishResult, ReviewDecision } from '../../types/content';
 import { PUBLISH_CHANNELS } from '../../services/content/publishChannels';
 import {
   CHANNEL_LIMITS,
@@ -16,6 +16,12 @@ interface Props {
   draft: ArticleDraft;
   /** Brand Kit đã chốt của dự án. Không có thì bỏ qua vòng kiểm thương hiệu. */
   brandKit?: BrandKit | null;
+  /**
+   * Quyết định duyệt của bản đang mở, lấy từ thư viện.
+   *
+   * `undefined` nghĩa là bài chưa được lưu vào thư viện nên chưa qua bàn duyệt.
+   */
+  reviewDecision?: ReviewDecision;
 }
 
 /**
@@ -25,7 +31,7 @@ interface Props {
  * lại được: nội dung sắp đăng luôn hiện ra để đọc lại trước, và nút đăng có
  * bước xác nhận riêng chứ không đăng ngay lần bấm đầu.
  */
-const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
+const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision }) => {
   const [channelId, setChannelId] = useState<PublishChannelId>('facebook-page');
   const [accessToken, setAccessToken] = useState('');
   const [accountId, setAccountId] = useState('');
@@ -53,6 +59,15 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
   );
   const blockedByBrand = Boolean(compliance && !compliance.passed);
 
+  /**
+   * Chưa duyệt thì không đăng.
+   *
+   * Đây là quy tắc do chủ sản phẩm đặt ra và áp cho cả kênh của Egoric lẫn
+   * kênh khách hàng, không có ngoại lệ. Không có nút bỏ qua ở đây — muốn đăng
+   * thì phải đi qua bàn duyệt.
+   */
+  const blockedByReview = reviewDecision !== 'approved';
+
   // Nạp lại token đã lưu trong phiên khi đổi kênh.
   useEffect(() => {
     const stored = getPublishSecret(channelId);
@@ -73,7 +88,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
   const handlePublish = async (force = false) => {
     // Chốt chặn thứ hai. Nút đã bị khoá khi vi phạm, nhưng nội dung có thể đổi
     // sau lúc bấm xác nhận, và đăng bài thì không rút lại được.
-    if (blockedByBrand) {
+    if (blockedByBrand || blockedByReview) {
       setConfirming(false);
       return;
     }
@@ -235,6 +250,40 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
         </div>
       )}
 
+      <div
+        className={`mt-4 flex gap-2 rounded-xl border px-4 py-3 ${
+          blockedByReview
+            ? 'border-amber-300/30 bg-amber-400/[.08]'
+            : 'border-emerald-300/20 bg-emerald-400/[.05]'
+        }`}
+      >
+        {blockedByReview ? (
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
+        ) : (
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+        )}
+        <div className="min-w-0 text-sm">
+          {blockedByReview ? (
+            <>
+              <p className="font-medium text-amber-50">
+                {reviewDecision === 'changes-requested'
+                  ? 'Bàn duyệt yêu cầu sửa'
+                  : reviewDecision === 'pending'
+                    ? 'Đang chờ duyệt'
+                    : 'Chưa qua bàn duyệt'}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+                {reviewDecision
+                  ? 'Mở Trung tâm vận hành → Bàn duyệt để xử lý.'
+                  : 'Lưu bài vào thư viện rồi duyệt ở Trung tâm vận hành → Bàn duyệt. Mọi bài đều phải qua bước này, kể cả kênh của Egoric.'}
+              </p>
+            </>
+          ) : (
+            <p className="font-medium text-emerald-100">Đã duyệt, đăng được.</p>
+          )}
+        </div>
+      </div>
+
       {missing.length > 0 && (
         <p className="mt-3 text-xs text-amber-100/70">Còn thiếu: {missing.join(', ')}.</p>
       )}
@@ -245,7 +294,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
             type="button"
             className="eg-button-primary min-h-11 px-5"
             onClick={() => setConfirming(true)}
-            disabled={missing.length > 0 || blockedByBrand || sending}
+            disabled={missing.length > 0 || blockedByBrand || blockedByReview || sending}
           >
             <Send className="mr-2 inline h-4 w-4" />Đăng lên {channel.label}
           </button>

@@ -48,8 +48,9 @@ import {
 import { getCredentialVaultStatus } from '../services/credentialVault';
 import CostProfitDashboard from './CostProfitDashboard';
 import ProviderHealthPanel from './ProviderHealthPanel';
+import ReviewDeskPanel from './ReviewDeskPanel';
 
-type TabId = 'api' | 'health' | 'voice' | 'workflow' | 'review' | 'economics' | 'workspace';
+type TabId = 'desk' | 'api' | 'health' | 'voice' | 'workflow' | 'review' | 'economics' | 'workspace';
 
 interface Props {
   isOpen: boolean;
@@ -62,6 +63,7 @@ interface Props {
 }
 
 const TAB_META = [
+  { id: 'desk' as const, label: 'Bàn duyệt', icon: ClipboardCheck },
   { id: 'api' as const, label: 'API & định tuyến', icon: KeyRound },
   { id: 'health' as const, label: 'Sức khỏe nhà cung cấp', icon: HeartPulse },
   { id: 'voice' as const, label: 'Voice tiếng Việt', icon: AudioLines },
@@ -261,7 +263,7 @@ const OperationsHub: React.FC<Props> = ({
           <header className="flex items-start justify-between gap-4 border-b eg-divider px-5 py-5 md:px-7">
             <div>
               <div className="eg-kicker">{TAB_META.find((item) => item.id === tab)?.label}</div>
-              <h2 className="mt-1 text-xl font-semibold text-white">{tab === 'api' ? 'Tuyến AI không phụ thuộc một cổng' : tab === 'health' ? 'Nhà cung cấp nào đang chạy được' : tab === 'voice' ? 'Voice tiếng Việt nhất quán' : tab === 'workflow' ? 'Chẩn đoán trước khi phát sinh phí' : tab === 'review' ? 'Sổ duyệt và bàn giao production' : tab === 'economics' ? 'Giá vốn và biên lợi nhuận agency' : 'Workspace sẵn sàng vận hành'}</h2>
+              <h2 className="mt-1 text-xl font-semibold text-white">{tab === 'desk' ? 'Mọi thứ đang chờ bạn quyết' : tab === 'api' ? 'Tuyến AI không phụ thuộc một cổng' : tab === 'health' ? 'Nhà cung cấp nào đang chạy được' : tab === 'voice' ? 'Voice tiếng Việt nhất quán' : tab === 'workflow' ? 'Chẩn đoán trước khi phát sinh phí' : tab === 'review' ? 'Sổ duyệt và bàn giao production' : tab === 'economics' ? 'Giá vốn và biên lợi nhuận agency' : 'Workspace sẵn sàng vận hành'}</h2>
             </div>
             <button type="button" onClick={onClose} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng Trung tâm vận hành"><X className="h-4 w-4" /></button>
           </header>
@@ -273,6 +275,8 @@ const OperationsHub: React.FC<Props> = ({
           </div>
 
           <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">
+            {tab === 'desk' && <ReviewDeskPanel isActive={isOpen && tab === 'desk'} />}
+
             {tab === 'health' && <ProviderHealthPanel isActive={isOpen && tab === 'health'} />}
 
             {tab === 'api' && (
