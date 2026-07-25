@@ -80,14 +80,34 @@ TrendItem ──┬─→ ContentBrief ─→ ArticleDraft   (bài đăng)
 | Mô hình dữ liệu | ✅ `types/content.ts` |
 | Danh mục nguồn + proxy (dev, preview, Worker) | ✅ đã kiểm chứng 13/13 nguồn |
 | Đọc feed, chuẩn hoá, rút thăm, gom bảng | ✅ 25 test |
-| Bốn trục điều khiển kèm `directive` | ⬜ tiếp theo |
-| Sinh bài qua `callChatApi` | ⬜ |
-| `StoryBridge` sang Phase 01 | ⬜ |
-| Giao diện | ⬜ |
+| Bốn trục điều khiển kèm `directive` | ✅ 24 lựa chọn |
+| Sinh bài qua `callChatApi` | ✅ `articleService.ts` |
+| `StoryBridge` sang Phase 01 | ✅ `storyBridgeService.ts` |
+| Giao diện | ⬜ tiếp theo |
 | Đăng đa nền tảng | ⬜ cần khoá và duyệt ứng dụng từng nền tảng |
+
+## Cách sinh bài
+
+`generateArticle(brief)` đi qua `callChatApi` nên thừa hưởng sẵn chuyển tuyến khi model lỗi, đếm chi phí theo `usageResourceId` và thông báo lỗi tiếng Việt.
+
+Prompt gồm hai lớp. Lớp hệ thống là quy tắc viết tiếng Việt áp cho mọi bài, chủ yếu để chặn những lỗi mô hình hay mắc: dịch máy từ tiếng Anh, viết hoa toàn bộ làm mất dấu, chèn lời dẫn kiểu trợ lý ảo, bịa số liệu. Lớp người dùng là chủ đề cộng bốn `directive` của bốn trục.
+
+Phản hồi đi qua `parseModelJson` sẵn có rồi mới chuẩn hoá. Mọi trường đều có đường lui vì mô hình hay trả thiếu — chỉ thiếu toàn bộ thân bài mới báo lỗi. Hàm chuẩn hoá tách riêng khỏi phần gọi mạng nên kiểm thử được mà không cần model thật.
+
+## Cách nối sang Phase 01
+
+```
+TrendItem  ──buildStoryBridgeFromTrend──┐
+                                        ├─→ StoryBridge ──toFilmProjectSeed──→ ProjectState
+ArticleDraft ─buildStoryBridgeFromArticle┘
+```
+
+`toFilmProjectSeed` trả về đúng `title`, `rawScript`, `targetDuration`, `language`, `visualStyle` — chỗ gọi chỉ việc trộn vào `ProjectState` mới, không cần biết gì về Xưởng Nội dung.
+
+Nhánh từ bài viết dùng **tiêu đề mục làm sườn** thay vì đổ nguyên bài vào prompt: giữ được mạch lập luận mà không tốn token cho phần thân bài, vốn không giúp gì cho việc nghĩ ra một câu chuyện quay được.
 
 ## Kiểm chứng
 
 ```bash
-npx vitest run tests/trendService.test.ts
+npx vitest run tests/trendService.test.ts tests/contentStudio.test.ts
 ```
