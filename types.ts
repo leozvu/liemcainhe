@@ -12,6 +12,41 @@ export interface CharacterVariation {
   status?: 'pending' | 'generating' | 'completed' | 'failed';
 }
 
+/** Góc chụp của một ảnh tham chiếu, để chọn ảnh hợp với từng cỡ cảnh. */
+export type ReferenceAngle = 'front' | 'three-quarter' | 'profile' | 'back' | 'unknown';
+
+/**
+ * Một ảnh trong bộ tham chiếu của nhân vật.
+ *
+ * Trước đây mỗi nhân vật chỉ có đúng một `referenceImage`. Một ảnh chính diện
+ * không đủ để model giữ được nhận diện ở cảnh nghiêng hay cảnh lưng, và đó là
+ * nguyên nhân hàng đầu phải sinh lại.
+ */
+export interface CharacterReference {
+  id: string;
+  imageUrl: string;
+  angle: ReferenceAngle;
+  /** Ảnh đã đi qua một shot được duyệt, nên đáng tin hơn ảnh mới sinh. */
+  approved: boolean;
+  /** Sinh ra từ shot nào, để truy vết khi cần. */
+  sourceShotId?: string;
+  addedAt: number;
+}
+
+/**
+ * Tham số của một lần sinh đã được duyệt.
+ *
+ * Khoá lại để shot sau dùng đúng model và seed cũ. Đổi model giữa chừng là
+ * cách chắc chắn làm nhân vật lệch nhận diện, kể cả khi prompt giữ nguyên.
+ */
+export interface GenerationLock {
+  modelId: string;
+  seed?: number;
+  aspectRatio?: AspectRatio;
+  lockedAt: number;
+  sourceShotId?: string;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -24,6 +59,10 @@ export interface Character {
   referenceImage?: string;
   variations: CharacterVariation[];
   status?: 'pending' | 'generating' | 'completed' | 'failed';
+  /** Bộ ảnh tham chiếu nhiều góc. Bổ sung cho `referenceImage`, không thay thế. */
+  referencePack?: CharacterReference[];
+  /** Tham số sinh đã khoá, lấy từ lần sinh được duyệt. */
+  lock?: GenerationLock;
 }
 
 export interface Scene {

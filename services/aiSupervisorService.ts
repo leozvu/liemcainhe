@@ -18,6 +18,7 @@ import {
   readCalibrationRecords,
   recordSupervisorDecision,
 } from './supervisorCalibrationService';
+import { getShotUpstreamSignature } from './consistencyService';
 import {
   addProductionJob,
   createProductionJob,
@@ -43,6 +44,17 @@ export const getShotMediaSignature = (shot: Shot): string => [
   ...shot.keyframes.map((frame) => `${frame.id}:${compactFingerprint(frame.imageUrl)}:${frame.status}`),
   shot.interval ? `${shot.interval.id}:${compactFingerprint(shot.interval.videoUrl)}:${shot.interval.status}` : 'no-interval',
 ].join('|');
+
+/**
+ * Chữ ký đầy đủ của một shot: media của chính nó **cộng** phần nguồn phía trên.
+ *
+ * `getShotMediaSignature` chỉ tính keyframe và video của shot, nên đổi ảnh định
+ * trang nhân vật hay prompt bối cảnh thì shot không bị đánh dấu lỗi thời —
+ * keyframe sai từ gốc mà hệ thống vẫn báo hợp lệ. Đây là hàm dùng để lưu và so
+ * sánh; nơi nào cần biết shot có còn hợp lệ không đều phải dùng hàm này.
+ */
+export const getShotFullSignature = (project: ProjectState, shot: Shot): string =>
+  `${getShotMediaSignature(shot)}##${getShotUpstreamSignature(project, shot)}`;
 
 export const createDefaultAISupervisorState = (): AISupervisorState => ({
   reports: [],
@@ -242,7 +254,7 @@ export const runLocalSupervisorAudit = (project: ProjectState): ProjectState => 
   // Tính hiệu chỉnh một lần cho cả lượt soát, không tính lại theo từng shot.
   const calibration = computeCalibration(readCalibrationRecords());
   const reports = project.shots.map((shot, index): AISupervisorShotReport => {
-    const signature = getShotMediaSignature(shot);
+    const signature = getShotFullSignature(project, shot);
     const previous = previousByShot.get(shot.id);
     const previousIssues = new Map((previous?.issues || []).map((issue) => [issue.id, issue]));
     const localIssues = localIssuesForShot(project, shot, index, lastShotIds)

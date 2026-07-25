@@ -4,7 +4,7 @@ import { createNewProjectState } from '../services/storageService';
 import { createDefaultBrandKit } from '../services/brandKitService';
 import {
   createDefaultAISupervisorState,
-  getShotMediaSignature,
+  getShotFullSignature,
   queueSupervisorRepair,
   runLocalSupervisorAudit,
 } from '../services/aiSupervisorService';
@@ -87,7 +87,7 @@ describe('AI Supervisor', () => {
     project.shots[0].keyframes[0].imageUrl = 'data:image/png;base64,changed';
     const audited = runLocalSupervisorAudit(project);
     const next = audited.aiSupervisor!.reports[0];
-    expect(next.mediaSignature).toBe(getShotMediaSignature(project.shots[0]));
+    expect(next.mediaSignature).toBe(getShotFullSignature(audited, audited.shots[0]));
     expect(next.visionStatus).toBe('not-run');
     expect(next.issues.some((issue) => issue.source === 'ai-vision')).toBe(false);
   });
