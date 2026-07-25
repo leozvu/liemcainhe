@@ -194,6 +194,13 @@ export interface SavedArticle {
   updatedAt: number;
   projectId?: string;
   projectTitle?: string;
+  /**
+   * Khách hàng sở hữu bài này.
+   *
+   * Trí nhớ gom theo khách chứ không theo dự án: một khách chạy nhiều chiến
+   * dịch, và bài học từ chiến dịch trước phải dùng được cho chiến dịch sau.
+   */
+  clientId?: string;
   brief: ContentBrief;
   draft: ArticleDraft;
   /** Quyết định duyệt. Chưa duyệt thì không đăng được. */

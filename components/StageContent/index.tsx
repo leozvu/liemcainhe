@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowRight,
+  BrainCircuit,
   Clapperboard,
   Copy,
   Download,
@@ -37,6 +38,14 @@ import {
   toFilmProjectSeed,
 } from '../../services/content/storyBridgeService';
 import { getCoverImage } from '../../services/content/illustrationService';
+import {
+  ClientMemory,
+  buildClientMemory,
+  describeMemory,
+  hasMemory,
+} from '../../services/content/clientMemoryService';
+import { listArticles } from '../../services/content/articleLibraryService';
+import { readPublishHistory } from '../../services/content/publishLedgerService';
 import {
   ARTICLE_LAYOUTS,
   ArticleLayout,
@@ -92,6 +101,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
    * về `undefined`, nếu không bài mới thừa hưởng dấu đã duyệt của bài cũ.
    */
   const [reviewDecision, setReviewDecision] = useState<ReviewDecision | undefined>(undefined);
+  const [memory, setMemory] = useState<ClientMemory | null>(null);
 
   const sourceId = saved?.sourceId ?? TREND_SOURCES[0].id;
   const brief = saved?.brief ?? createDefaultBrief('');
@@ -184,9 +194,17 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
         .split(',')
         .map((k) => k.trim())
         .filter(Boolean);
+      // Dựng trí nhớ ngay trước khi viết, không dùng bản lưu sẵn: quyết định
+      // duyệt và số liệu hiệu quả đổi liên tục ở nơi khác trong app.
+      const memory = buildClientMemory(await listArticles(), {
+        clientId: project.clientId,
+        ledger: await readPublishHistory(),
+      });
+      setMemory(memory);
+
       const result = await generateArticle(
         { ...brief, keywords },
-        { brandKit: project.brandKitSnapshot },
+        { brandKit: project.brandKitSnapshot, memory },
       );
       setDraft(result);
       setBridge(null);
@@ -354,6 +372,12 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
               Viết bài
             </button>
             {!brief.topic.trim() && <span className="text-xs text-zinc-500">Cần có chủ đề trước đã.</span>}
+            {memory && hasMemory(memory) && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-cyan-100/70">
+                <BrainCircuit className="h-3.5 w-3.5" />
+                {describeMemory(memory)}
+              </span>
+            )}
           </div>
         </section>
 
@@ -486,6 +510,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
           brief={brief}
           projectId={project.id}
           projectTitle={project.title}
+          clientId={project.clientId}
           brandKit={project.brandKitSnapshot}
           onReviewChange={setReviewDecision}
           onLoad={(article) => {

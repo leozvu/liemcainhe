@@ -4,6 +4,7 @@ import { callChatApi } from '../adapters/chatAdapter';
 import { buildBrandKitPromptContext } from '../brandKitService';
 import { parseModelJson } from '../jsonResponse';
 import { buildAxisDirectives, getApproach, getAudience, getIntent, getVoice } from './contentAxes';
+import { ClientMemory, buildMemoryPromptContext } from './clientMemoryService';
 
 /**
  * Sinh bài viết từ một brief.
@@ -149,6 +150,13 @@ export interface GenerateArticleOptions {
    * vì phải sửa ở vòng kiểm tra.
    */
   brandKit?: BrandKit | null;
+  /**
+   * Trí nhớ về khách hàng, dựng từ những bài đã được duyệt.
+   *
+   * Khác Brand Kit ở chỗ: Brand Kit là quy tắc người nhập, còn cái này là bằng
+   * chứng về thứ khách đã thực sự gật đầu.
+   */
+  memory?: ClientMemory | null;
   /** Nhãn ngắn để quy chi phí về đúng thao tác. projectId tự gắn từ context. */
   usageResourceId?: string;
   /** Cho phép thay hàm gọi model khi kiểm thử. */
@@ -164,9 +172,19 @@ export const generateArticle = async (
   }
 
   const chat = options.chat ?? callChatApi;
-  const systemPrompt = options.brandKit
-    ? `${VIETNAMESE_WRITING_RULES}\n\n${buildBrandKitPromptContext(options.brandKit)}`
-    : VIETNAMESE_WRITING_RULES;
+
+  /**
+   * Thứ tự ba khối có chủ đích: quy tắc viết chung, rồi Brand Kit, rồi trí
+   * nhớ. Trí nhớ đứng cuối vì nó cụ thể nhất và gần chỗ áp dụng nhất — mẫu bài
+   * thật đè lên mô tả trừu tượng khi hai bên gợi ý khác nhau.
+   */
+  const systemPrompt = [
+    VIETNAMESE_WRITING_RULES,
+    options.brandKit ? buildBrandKitPromptContext(options.brandKit) : '',
+    options.memory ? buildMemoryPromptContext(options.memory) : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const response = await chat({
     systemPrompt,

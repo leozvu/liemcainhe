@@ -26,6 +26,8 @@ interface Props {
   brief: ContentBrief;
   projectId: string;
   projectTitle: string;
+  /** Khách hàng của dự án, để trí nhớ gom bài theo khách. */
+  clientId?: string;
   brandKit?: BrandKit | null;
   onLoad: (article: SavedArticle) => void;
   /** Báo cho màn hình cha biết quyết định duyệt của bản đang mở. */
@@ -44,6 +46,7 @@ const ArticleLibrary: React.FC<Props> = ({
   brief,
   projectId,
   projectTitle,
+  clientId,
   brandKit,
   onLoad,
   onReviewChange,
@@ -80,6 +83,7 @@ const ArticleLibrary: React.FC<Props> = ({
       const saved = await saveArticle(draft, brief, {
         projectId,
         projectTitle,
+        clientId,
         compliance,
       });
       await refresh();

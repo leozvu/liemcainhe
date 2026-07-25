@@ -33,6 +33,7 @@ export interface SaveArticleOptions {
   now?: () => number;
   projectId?: string;
   projectTitle?: string;
+  clientId?: string;
   /** Ghi đè bài đã có thay vì tạo bản mới. */
   existingId?: string;
   /** Quyết định duyệt. Không truyền thì giữ nguyên quyết định cũ. */
@@ -74,6 +75,7 @@ export const saveArticle = async (
     updatedAt: now,
     projectId: options.projectId ?? existing?.projectId,
     projectTitle: options.projectTitle ?? existing?.projectTitle,
+    clientId: options.clientId ?? existing?.clientId,
     brief,
     draft,
     review: options.review ?? (noiDungDoi ? undefined : existing?.review),
