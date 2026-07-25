@@ -50,6 +50,21 @@ export default defineConfig(() => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/elevenlabs/, ''),
           },
+          '/api-proxy/facebook': {
+            target: 'https://graph.facebook.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/facebook/, ''),
+          },
+          '/api-proxy/threads': {
+            target: 'https://graph.threads.net',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/threads/, ''),
+          },
+          '/api-proxy/zalo': {
+            target: 'https://openapi.zalo.me',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/zalo/, ''),
+          },
         },
       },
       preview: {
@@ -95,6 +110,21 @@ export default defineConfig(() => {
             target: 'https://api.elevenlabs.io',
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/elevenlabs/, ''),
+          },
+          '/api-proxy/facebook': {
+            target: 'https://graph.facebook.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/facebook/, ''),
+          },
+          '/api-proxy/threads': {
+            target: 'https://graph.threads.net',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/threads/, ''),
+          },
+          '/api-proxy/zalo': {
+            target: 'https://openapi.zalo.me',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/zalo/, ''),
           },
         },
       },

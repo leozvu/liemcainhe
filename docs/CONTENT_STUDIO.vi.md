@@ -84,7 +84,42 @@ TrendItem ──┬─→ ContentBrief ─→ ArticleDraft   (bài đăng)
 | Sinh bài qua `callChatApi` | ✅ `articleService.ts` |
 | `StoryBridge` sang Phase 01 | ✅ `storyBridgeService.ts` |
 | Giao diện | ✅ chặng `content` trong sidebar |
-| Đăng đa nền tảng | ⬜ cần khoá và duyệt ứng dụng từng nền tảng |
+| Đăng bài dạng chữ | ✅ Facebook Page, Threads, Zalo OA |
+| Đăng video | ⬜ TikTok và YouTube nhận video, thuộc đường ống Phase 04 |
+
+## Đăng bài
+
+Ba kênh nhận nội dung dạng chữ nên hợp với đầu ra của Xưởng Nội dung. TikTok và YouTube không có ở đây vì chúng nhận video — đó là đầu ra của Phase 04, một đường ống khác.
+
+Token nằm trong `credentialVault` cùng cơ chế BYOK với khoá model: chỉ ở `sessionStorage`, không ghi ra đĩa, không lên cloud, đóng tab là mất.
+
+Đăng bài không rút lại được nên luồng làm chặt hơn phần còn lại của ứng dụng: nội dung sắp đăng luôn hiện ra để đọc lại, có bộ đếm ký tự theo giới hạn từng kênh, và nút đăng có bước xác nhận riêng chứ không đăng ngay lần bấm đầu.
+
+### Lấy thông tin đăng nhập ở đâu
+
+Hướng dẫn đầy đủ nằm ngay trong giao diện, nút *"Lấy token … ở đâu?"*. Tóm tắt:
+
+| Kênh | Cần gì | Lấy ở đâu |
+|---|---|---|
+| Facebook Page | Page ID + Page Access Token | `developers.facebook.com/apps` → ứng dụng loại Business → quyền `pages_manage_posts`, `pages_read_engagement` → Graph API Explorer → Generate Access Token → đổi sang dài hạn bằng Access Token Debugger |
+| Threads | Threads User ID + Access Token | Cùng nơi, thêm sản phẩm Threads API → quyền `threads_basic`, `threads_content_publish` → Threads Graph API Explorer. Gọi `/v1.0/me` để lấy User ID |
+| Zalo OA | OA Access Token | `developers.zalo.me` → tạo ứng dụng → liên kết Official Account → chạy OAuth lấy access token và refresh token |
+
+Ba điều dễ vấp:
+
+1. **Facebook**: token *người dùng* không đăng được, phải là token của chính Trang. Đăng cho Trang của khách hàng ngoài tổ chức thì Meta bắt duyệt ứng dụng.
+2. **Threads**: tài khoản phải liên kết với một tài khoản Instagram chuyên nghiệp. Giới hạn 250 bài mỗi 24 giờ.
+3. **Zalo**: Official Account phải đã xác thực. Access token chỉ sống **25 giờ** — bản này chưa tự làm mới, hết hạn thì phải dán token mới. Tự động làm mới cần nơi giữ refresh token an toàn, tức là phải có phía máy chủ.
+
+### Đường đi kỹ thuật
+
+| Kênh | Endpoint | Ghi chú |
+|---|---|---|
+| Facebook Page | `POST /v21.0/{page-id}/feed` | Một bước |
+| Threads | `POST /v1.0/{user-id}/threads` rồi `/threads_publish` | Hai bước. Bước một hỏng thì chưa có gì lên mạng; bước hai hỏng thì vùng chứa còn treo nhưng không hiện công khai |
+| Zalo OA | `POST /v2.0/article/create` | Trả HTTP 200 kèm mã lỗi trong thân phản hồi, khác hai kênh kia. Token đi qua header tuỳ biến `access_token`, đã thêm vào allowlist header của Worker |
+
+Ba tiền tố proxy `facebook`, `threads`, `zalo` có ở cả bốn lớp: `vite.config.ts`, `worker/index.js`, `electron/main.cjs`, `nginx.conf`. Có test chạy qua từng kênh khẳng định không lớp nào bị bỏ sót.
 
 ## Giao diện
 

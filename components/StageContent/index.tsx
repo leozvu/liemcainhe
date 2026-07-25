@@ -20,6 +20,7 @@ import {
   toFilmProjectSeed,
 } from '../../services/content/storyBridgeService';
 import AxisPicker from './AxisPicker';
+import PublishPanel from './PublishPanel';
 import TrendBoard from './TrendBoard';
 
 interface Props {
@@ -284,6 +285,8 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
             </div>
           </section>
         )}
+
+        {draft && <PublishPanel draft={draft} />}
 
         <section className="eg-panel mt-6 p-5" aria-labelledby="bridge-heading">
           <h2 id="bridge-heading" className="text-sm font-semibold text-white">Chuyển thành phim ngắn</h2>

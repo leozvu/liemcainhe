@@ -17,6 +17,9 @@ const API_PROXY_TARGETS = [
   { path: '/api-proxy/fpt', target: 'https://api.fpt.ai' },
   { path: '/api-proxy/viettel', target: 'https://viettelai.vn' },
   { path: '/api-proxy/elevenlabs', target: 'https://api.elevenlabs.io' },
+  { path: '/api-proxy/facebook', target: 'https://graph.facebook.com' },
+  { path: '/api-proxy/threads', target: 'https://graph.threads.net' },
+  { path: '/api-proxy/zalo', target: 'https://openapi.zalo.me' },
 ];
 const DEFAULT_PORT = 39628;
 

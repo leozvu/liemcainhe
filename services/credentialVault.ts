@@ -13,10 +13,17 @@ export interface StoredVoiceCredentials {
   callbackUrl?: string;
 }
 
+/** Thông tin đăng nhập của một kênh đăng bài. */
+export interface StoredPublishCredentials {
+  accessToken?: string;
+  accountId?: string;
+}
+
 interface CredentialVaultState {
   providerKeys: Record<string, string>;
   modelKeys: Record<string, string>;
   voiceCredentials: Record<string, StoredVoiceCredentials>;
+  publishCredentials: Record<string, StoredPublishCredentials>;
 }
 
 const SESSION_KEY = 'egoric_secure_credential_vault_v1';
@@ -25,6 +32,7 @@ const emptyVault = (): CredentialVaultState => ({
   providerKeys: {},
   modelKeys: {},
   voiceCredentials: {},
+  publishCredentials: {},
 });
 
 const readVault = (): CredentialVaultState => {
@@ -35,6 +43,7 @@ const readVault = (): CredentialVaultState => {
       providerKeys: stored.providerKeys || {},
       modelKeys: stored.modelKeys || {},
       voiceCredentials: stored.voiceCredentials || {},
+      publishCredentials: stored.publishCredentials || {},
     };
   } catch {
     return emptyVault();
@@ -95,6 +104,28 @@ export const clearModelCredentials = (): void => {
   writeVault(state);
 };
 
+export const getPublishSecret = (channelId: string): StoredPublishCredentials =>
+  readVault().publishCredentials[channelId] || {};
+
+export const setPublishSecret = (
+  channelId: string,
+  credentials: StoredPublishCredentials,
+): void => {
+  const state = readVault();
+  const normalized = {
+    accessToken: normalizedSecret(credentials.accessToken),
+    accountId: normalizedSecret(credentials.accountId),
+  };
+  if (normalized.accessToken || normalized.accountId) {
+    state.publishCredentials[channelId] = normalized;
+  } else {
+    delete state.publishCredentials[channelId];
+  }
+  writeVault(state);
+};
+
+export const clearPublishSecret = (channelId: string): void => setPublishSecret(channelId, {});
+
 export const clearVoiceSecret = (providerId: string): void => setVoiceSecret(providerId, {});
 
 export const clearCredentialVault = (): void => {
@@ -107,6 +138,7 @@ export const getCredentialVaultStatus = () => {
     providerCount: Object.keys(state.providerKeys).length,
     modelCount: Object.keys(state.modelKeys).length,
     voiceProviderCount: Object.values(state.voiceCredentials).filter((item) => Boolean(item.apiKey)).length,
+    publishChannelCount: Object.values(state.publishCredentials).filter((item) => Boolean(item.accessToken)).length,
     persistence: 'session' as const,
   };
 };

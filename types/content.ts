@@ -129,6 +129,53 @@ export interface ArticleDraft {
   readingMinutes: number;
 }
 
+/** Kênh đăng bài. */
+export type PublishChannelId = 'facebook-page' | 'threads' | 'zalo-oa';
+
+/** Một ô thông tin đăng nhập mà người dùng phải tự điền. */
+export interface CredentialField {
+  key: 'accessToken' | 'accountId';
+  label: string;
+  /** Gợi ý ngay dưới ô nhập, nói rõ đây là thứ gì. */
+  hint: string;
+  secret: boolean;
+}
+
+export interface PublishChannel {
+  id: PublishChannelId;
+  label: string;
+  /** Tiền tố proxy cùng miền mà trình duyệt gọi. */
+  proxyPrefix: string;
+  fields: CredentialField[];
+  /** Trang lấy thông tin đăng nhập. */
+  consoleUrl: string;
+  /** Các bước lấy thông tin đăng nhập, hiện thẳng trong giao diện. */
+  steps: string[];
+  /** Điều kiện bắt buộc mà không có thì đăng sẽ hỏng. */
+  requirements: string[];
+  /** Điều cần biết trước khi đưa vào chạy thật. */
+  caveat?: string;
+}
+
+export interface PublishCredentials {
+  accessToken?: string;
+  accountId?: string;
+}
+
+/** Nội dung đem đi đăng. Cùng một payload dùng cho mọi kênh. */
+export interface PublishPayload {
+  text: string;
+  link?: string;
+}
+
+export interface PublishResult {
+  channelId: PublishChannelId;
+  success: boolean;
+  message: string;
+  postId?: string;
+  url?: string;
+}
+
 /**
  * Cầu nối sang xưởng phim.
  *

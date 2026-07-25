@@ -7,6 +7,9 @@ const API_TARGETS = {
   '/api-proxy/fpt': 'https://api.fpt.ai',
   '/api-proxy/viettel': 'https://viettelai.vn',
   '/api-proxy/elevenlabs': 'https://api.elevenlabs.io',
+  '/api-proxy/facebook': 'https://graph.facebook.com',
+  '/api-proxy/threads': 'https://graph.threads.net',
+  '/api-proxy/zalo': 'https://openapi.zalo.me',
 };
 
 /**
@@ -59,6 +62,8 @@ const ALLOWED_PROXY_HEADERS = new Set([
   'speed',
   'format',
   'xi-api-key',
+  // Zalo OA truyền token qua header tuỳ biến này thay vì Authorization.
+  'access_token',
 ]);
 
 async function enforceProxyRateLimit(env, email, bucket, limit = 180) {
