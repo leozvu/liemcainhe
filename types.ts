@@ -528,7 +528,16 @@ export interface CreativeDirectorMission {
 
 export interface CreativeDirectorState {
   mode: CreativeDirectorMode;
+  /** Trần cho **một** nhiệm vụ. Không cộng dồn qua nhiều lần chạy. */
   budgetLimitUsd: number;
+  /**
+   * Trần cộng dồn cho cả dự án.
+   *
+   * `budgetLimitUsd` chỉ chặn từng nhiệm vụ, nên chạy nhiều nhiệm vụ nhỏ vẫn
+   * đốt sạch ngân sách mà không có gì cản. Trần này đối chiếu với tiền đã tiêu
+   * thật trong nhật ký usage.
+   */
+  projectBudgetUsd?: number;
   messages: CreativeDirectorMessage[];
   proposals: CreativeDirectorProposal[];
   runs: CreativeDirectorRun[];

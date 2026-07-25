@@ -26,6 +26,7 @@ import {
   patchProductionJob,
   setProductionJobStatus,
 } from './workflowService';
+import { checkMissionBudget, computeBudget } from './directorBriefingService';
 
 const createId = (prefix: string): string => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const sameId = (left?: string | number, right?: string | number): boolean => String(left) === String(right);
@@ -272,6 +273,17 @@ export const startCreativeDirectorMission = (project: ProjectState, missionId: s
   if (remainingCostUsd > director.budgetLimitUsd) {
     throw new Error(`Phần còn lại dự kiến $${remainingCostUsd.toFixed(2)}, vượt trần $${director.budgetLimitUsd.toFixed(2)}.`);
   }
+
+  /**
+   * Trần cộng dồn cho cả dự án.
+   *
+   * Kiểm tra ở trên chỉ chặn từng nhiệm vụ, nên chạy nhiều nhiệm vụ nhỏ vẫn
+   * đốt sạch ngân sách mà không có gì cản. Đây là chỗ đối chiếu với tiền đã
+   * tiêu thật trong nhật ký usage.
+   */
+  const budget = computeBudget(project.id, director.projectBudgetUsd);
+  const verdict = checkMissionBudget({ estimatedCostUsd: remainingCostUsd }, budget);
+  if (!verdict.allowed) throw new Error(verdict.reason);
   if (mission.status === 'completed' || mission.status === 'cancelled') return project;
 
   let next = project;
