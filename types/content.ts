@@ -180,6 +180,24 @@ export interface ContentStudioState {
   updatedAt: number;
 }
 
+/**
+ * Một bài đã lưu vào thư viện.
+ *
+ * Thư viện dùng chung cho cả workspace chứ không gắn chặt vào dự án, để tìm
+ * lại được bài cũ kể cả khi dự án sinh ra nó đã đóng. `projectId` chỉ để truy
+ * vết nguồn gốc.
+ */
+export interface SavedArticle {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  projectId?: string;
+  projectTitle?: string;
+  brief: ContentBrief;
+  draft: ArticleDraft;
+}
+
 /** Kênh đăng bài. */
 export type PublishChannelId = 'facebook-page' | 'threads' | 'zalo-oa';
 

@@ -1,5 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Clapperboard, Copy, Download, Eye, Loader2, Pencil, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  Clapperboard,
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
+  Loader2,
+  Pencil,
+  Sparkles,
+} from 'lucide-react';
 import { ProjectState } from '../../types';
 import {
   ArticleDraft,
@@ -26,7 +36,13 @@ import {
   toFilmProjectSeed,
 } from '../../services/content/storyBridgeService';
 import { getCoverImage } from '../../services/content/illustrationService';
+import {
+  ARTICLE_LAYOUTS,
+  ArticleLayout,
+  renderArticleHtml,
+} from '../../services/content/articleHtmlService';
 import ArticleEditor from './ArticleEditor';
+import ArticleLibrary from './ArticleLibrary';
 import AxisPicker from './AxisPicker';
 import IllustrationPanel from './IllustrationPanel';
 import PublishPanel from './PublishPanel';
@@ -66,6 +82,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [layout, setLayout] = useState<ArticleLayout>('editorial');
 
   const sourceId = saved?.sourceId ?? TREND_SOURCES[0].id;
   const brief = saved?.brief ?? createDefaultBrief('');
@@ -192,14 +209,34 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
     setNotice('Đã chép bài viết dạng Markdown.');
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const safeName = (draft?.title || 'bai-viet').replace(/[\\/:*?"<>|]/g, '-');
+
+  const download = (content: string, mime: string, extension: string) => {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${(draft?.title || 'bai-viet').replace(/[\\/:*?"<>|]/g, '-')}.md`;
+    link.download = `${safeName}.${extension}`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = () => download(markdown, 'text/markdown', 'md');
+
+  const buildHtml = () =>
+    draft ? renderArticleHtml(draft, { layout, brandKit: project.brandKitSnapshot }) : '';
+
+  const handleDownloadHtml = () => download(buildHtml(), 'text/html', 'html');
+
+  /**
+   * Mở bản xem thử trong tab mới.
+   *
+   * Không thu hồi URL ngay vì tab mới cần nó để tải; trình duyệt tự dọn khi
+   * đóng tài liệu gốc.
+   */
+  const handlePreviewHtml = () => {
+    const url = URL.createObjectURL(new Blob([buildHtml()], { type: 'text/html;charset=utf-8' }));
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const canGenerate = brief.topic.trim().length > 0 && busy === null;
@@ -324,7 +361,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
                   <Copy className="mr-2 inline h-4 w-4" />Chép Markdown
                 </button>
                 <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={handleDownload}>
-                  <Download className="mr-2 inline h-4 w-4" />Tải về
+                  <Download className="mr-2 inline h-4 w-4" />Tải Markdown
                 </button>
               </div>
             </div>
@@ -374,6 +411,37 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
                 </>
               )}
             </div>
+
+            <div className="mt-5 border-t eg-divider pt-4">
+              <div className="eg-kicker">Xuất bản dạng trang web</div>
+              <p className="mt-1.5 text-xs text-zinc-500">
+                Dùng để đăng lên web hoặc blog của khách, và để gửi khách duyệt. Màu và font lấy từ
+                Brand Kit của dự án.
+              </p>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <label className="block">
+                  <span className="eg-kicker">Bố cục</span>
+                  <select
+                    className="eg-input mt-2"
+                    value={layout}
+                    onChange={(e) => setLayout(e.target.value as ArticleLayout)}
+                  >
+                    {ARTICLE_LAYOUTS.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={handlePreviewHtml}>
+                  <ExternalLink className="mr-2 inline h-4 w-4" />Xem thử
+                </button>
+                <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={handleDownloadHtml}>
+                  <Download className="mr-2 inline h-4 w-4" />Tải HTML
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                {ARTICLE_LAYOUTS.find((item) => item.value === layout)?.description}
+              </p>
+            </div>
           </section>
         )}
 
@@ -387,6 +455,18 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
         )}
 
         {draft && <PublishPanel draft={draft} brandKit={project.brandKitSnapshot} />}
+
+        <ArticleLibrary
+          draft={draft}
+          brief={brief}
+          projectId={project.id}
+          projectTitle={project.title}
+          onLoad={(article) => {
+            patchStudio({ draft: article.draft, brief: article.brief });
+            setEditing(false);
+            setNotice(`Đã mở “${article.title}” từ thư viện.`);
+          }}
+        />
 
         <section className="eg-panel mt-6 p-5" aria-labelledby="bridge-heading">
           <h2 id="bridge-heading" className="text-sm font-semibold text-white">Chuyển thành phim ngắn</h2>

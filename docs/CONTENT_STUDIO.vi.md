@@ -87,6 +87,36 @@ TrendItem ──┬─→ ContentBrief ─→ ArticleDraft   (bài đăng)
 | Đăng bài dạng chữ | ✅ Facebook Page, Threads, Zalo OA |
 | Đăng video | ⬜ TikTok và YouTube nhận video, thuộc đường ống Phase 04 |
 
+## Bốn phần bù so với AIWriteX
+
+Không bê nguyên mô hình của họ về. AIWriteX đăng lên WeChat — nền tảng bài viết HTML — nên 35 template và trình sửa trực quan của họ giải quyết một bài toán ta không có: kênh của ta là feed văn bản thuần.
+
+### Ảnh minh hoạ
+
+Tách hai bước có chủ đích: lên ý tưởng bằng model chat (rẻ), vẽ bằng model ảnh (đắt). Prompt hiện ra để sửa trước khi bấm vẽ, và vẽ từng ảnh một để dừng được khi ảnh đầu đã sai hướng. **Không có nút "vẽ tất cả"** — đó là cách nhanh nhất để đốt credit vào ảnh không ai dùng.
+
+Dùng lại `imageAdapter` nên thừa hưởng 42 model ảnh KIE, chuyển tuyến khi lỗi và đếm chi phí. Ba điều đưa vào prompt từ kinh nghiệm thực tế: prompt vẽ bằng tiếng Anh còn mô tả thay thế bằng tiếng Việt; bắt nêu rõ bối cảnh Việt Nam vì model mặc định vẽ người phương Tây; cấm đưa chữ vào ảnh vì model vẽ chữ rất tệ, càng tệ với tiếng Việt có dấu.
+
+### Sửa bài trước khi đăng
+
+Sửa tiêu đề, sapo, từng mục, hashtag, phần SEO có đếm ký tự. Mỗi thay đổi tính lại thời gian đọc để con số không lệch nội dung, và vòng kiểm Brand Kit chạy lại theo — sửa thành vi phạm thì nút đăng khoá lại ngay. Không cho xoá mục cuối cùng.
+
+### Thư viện bài viết
+
+Kho riêng trong IndexedDB (DB version 5), **dùng chung cho cả workspace** chứ không gắn vào dự án, nên tìm lại được bài cũ kể cả khi dự án đã đóng.
+
+Tìm kiếm bỏ dấu trước khi so, vì người dùng gõ tìm thường lười bỏ dấu.
+
+Cột "đã đăng ở đâu" đối chiếu với nhật ký đăng bài bằng **chính vân tay nội dung**, không lưu thêm quan hệ nào giữa hai kho. Đổi lại: sửa bài sau khi đăng thì vân tay đổi và bài hiện là chưa đăng — đúng về nghĩa, vì bản đang nằm trong thư viện quả thật chưa từng lên mạng.
+
+### Dàn trang HTML
+
+Ba bố cục: Tạp chí, Tối giản, Thẻ. Màu và font lấy từ Brand Kit của khách nên một bố cục ra được nhiều diện mạo — đúng thứ một agency cần, thay vì thư viện template cố định.
+
+Sinh bằng chuỗi chứ **không gọi model**: dàn trang là việc xác định, gọi AI ở đây chỉ tốn tiền để nhận về HTML kém ổn định hơn.
+
+Trang xuất ra độc lập hoàn toàn: không `<script>`, không tham chiếu tệp ngoài, ảnh nhúng thẳng. Mọi nội dung người dùng đều đi qua `escapeHtml`, có test khẳng định tiêu đề chứa `<img onerror=...>` bị vô hiệu hoá.
+
 ## Lưu trữ
 
 Trạng thái Xưởng Nội dung nằm trong `ProjectState.contentStudio`, không phải state cục bộ của component. Nhờ vậy dùng luôn cơ chế tự lưu xuống IndexedDB và đồng bộ cloud sẵn có, không phải dựng đường lưu trữ riêng.

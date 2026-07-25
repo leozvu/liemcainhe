@@ -7,12 +7,13 @@ import { normalizeAgencyClient } from './brandKitService';
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
 const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
 const CLIENT_STORE_NAME = 'agencyClients';
 const CAMPAIGN_STORE_NAME = 'agencyCampaigns';
 const PUBLISH_LEDGER_STORE_NAME = 'publishLedger';
+const ARTICLE_LIBRARY_STORE_NAME = 'articleLibrary';
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -42,6 +43,13 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
         const store = db.createObjectStore(PUBLISH_LEDGER_STORE_NAME, { keyPath: 'fingerprint' });
         store.createIndex('channelId', 'channelId', { unique: false });
         store.createIndex('startedAt', 'startedAt', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(ARTICLE_LIBRARY_STORE_NAME)) {
+        // Thư viện dùng chung cho cả workspace, không khoá theo dự án, để tìm
+        // lại được bài cũ kể cả khi dự án sinh ra nó đã đóng.
+        const store = db.createObjectStore(ARTICLE_LIBRARY_STORE_NAME, { keyPath: 'id' });
+        store.createIndex('updatedAt', 'updatedAt', { unique: false });
+        store.createIndex('projectId', 'projectId', { unique: false });
       }
     };
   });
@@ -343,6 +351,17 @@ export const getPublishLedger = async <T>(): Promise<T[]> => {
  * khoá theo id. Kho này khoá theo `fingerprint`, nên có hàm ghi riêng thay vì
  * nới lỏng ràng buộc đang bảo vệ những kho kia.
  */
+export const getArticleLibrary = async <T>(): Promise<T[]> => {
+  const db = await openDB();
+  return readStoreItems<T>(db, ARTICLE_LIBRARY_STORE_NAME);
+};
+
+export const saveArticleToLibrary = async <T extends { id: string }>(article: T): Promise<void> =>
+  putWorkspaceItem(ARTICLE_LIBRARY_STORE_NAME, article);
+
+export const deleteArticleFromLibrary = async (id: string): Promise<void> =>
+  deleteWorkspaceItem(ARTICLE_LIBRARY_STORE_NAME, id);
+
 export const savePublishLedgerEntry = async <T extends { fingerprint: string }>(
   entry: T,
 ): Promise<void> => {
