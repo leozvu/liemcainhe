@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, WifiOff } from 'lucide-react';
 import { API_ERROR_CATEGORY_LABELS, ApiErrorCategory } from '../services/apiErrorLocalization';
 import {
@@ -9,6 +9,24 @@ import {
   getProviderHealth,
 } from '../services/providerHealthService';
 import { getProviderById } from '../services/modelRegistry';
+import {
+  CalibrationTrust,
+  KIND_LABELS,
+  KindCalibration,
+  NOISY_OVERRIDE_RATE,
+  TRUST_LABELS,
+  computeCalibration,
+  describeCalibration,
+  readCalibrationRecords,
+  summarizeCalibration,
+} from '../services/supervisorCalibrationService';
+
+const TRUST_STYLE: Record<CalibrationTrust, string> = {
+  trusted: 'border-emerald-300/25 bg-emerald-400/[.08] text-emerald-100',
+  mixed: 'border-amber-300/25 bg-amber-400/[.07] text-amber-100',
+  noisy: 'border-rose-300/30 bg-rose-500/[.09] text-rose-100',
+  unknown: 'border-white/[.1] bg-white/[.03] text-zinc-400',
+};
 
 /**
  * Bảng theo dõi sức khoẻ từng nhà cung cấp.
@@ -51,10 +69,14 @@ const providerLabel = (providerId: string): string => getProviderById(providerId
 const ProviderHealthPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
   const [windowMs, setWindowMs] = useState(HEALTH_WINDOW_MS);
   const [health, setHealth] = useState<ProviderHealth[]>([]);
+  const [calibration, setCalibration] = useState<KindCalibration[]>([]);
   const [refreshedAt, setRefreshedAt] = useState<number>(0);
+
+  const calibSummary = useMemo(() => summarizeCalibration(calibration), [calibration]);
 
   const refresh = () => {
     setHealth(getProviderHealth(Date.now(), windowMs));
+    setCalibration(computeCalibration(readCalibrationRecords()));
     setRefreshedAt(Date.now());
   };
 
@@ -144,6 +166,47 @@ const ProviderHealthPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
           })}
         </ul>
       )}
+
+      <section className="mt-8 border-t eg-divider pt-6" aria-labelledby="calib-heading">
+        <h3 id="calib-heading" className="text-sm font-semibold text-white">Độ tin của AI Supervisor</h3>
+        <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-zinc-500">
+          Đo bằng chính quyết định của người duyệt: bỏ qua một cảnh báo là một phiếu bầu rằng nó sai.
+          Loại nào bị bỏ qua từ {Math.round(NOISY_OVERRIDE_RATE * 100)}% trở lên sẽ tự động hạ xuống
+          mức nhắc, vì cảnh báo không ai tin còn tệ hơn không có cảnh báo.
+        </p>
+
+        {calibration.length === 0 ? (
+          <p className="mt-4 text-sm text-zinc-500">
+            Chưa có quyết định nào. Xử lý vài cảnh báo trong Trung tâm sản xuất để bắt đầu đo.
+          </p>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-wrap gap-4 font-mono text-[10px] uppercase tracking-wider text-zinc-600">
+              <span>{calibSummary.totalDecisions} quyết định</span>
+              <span>{calibSummary.measured}/{calibSummary.kinds} loại đủ dữ liệu</span>
+              {calibSummary.trusted > 0 && <span className="text-emerald-300/70">{calibSummary.trusted} đáng tin</span>}
+              {calibSummary.noisy > 0 && <span className="text-rose-300/80">{calibSummary.noisy} hay báo sai</span>}
+              {calibSummary.overallOverrideRate !== null && (
+                <span>bỏ qua chung {Math.round(calibSummary.overallOverrideRate * 100)}%</span>
+              )}
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {calibration.map((item) => (
+                <li key={item.kind} className="eg-card flex flex-wrap items-center justify-between gap-3 p-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-zinc-200">{KIND_LABELS[item.kind]}</div>
+                    <p className="mt-0.5 text-xs text-zinc-500">{describeCalibration(item)}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium ${TRUST_STYLE[item.trust]}`}>
+                    {TRUST_LABELS[item.trust]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
 
       {refreshedAt > 0 && (
         <p className="eg-mono mt-4 text-[10px] uppercase tracking-wider text-zinc-700">

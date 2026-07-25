@@ -13,6 +13,12 @@ import { chatJson } from './modelService';
 import { parseModelJson } from './jsonResponse';
 import { getUsagePolicy } from './usageService';
 import {
+  calibrateIssues,
+  computeCalibration,
+  readCalibrationRecords,
+  recordSupervisorDecision,
+} from './supervisorCalibrationService';
+import {
   addProductionJob,
   createProductionJob,
   createProjectCheckpoint,
@@ -233,6 +239,8 @@ export const runLocalSupervisorAudit = (project: ProjectState): ProjectState => 
   const previousByShot = new Map(state.reports.map((report) => [report.shotId, report]));
   const lastShotIds = getGroupLastShotIds(project.shots);
   const now = Date.now();
+  // Tính hiệu chỉnh một lần cho cả lượt soát, không tính lại theo từng shot.
+  const calibration = computeCalibration(readCalibrationRecords());
   const reports = project.shots.map((shot, index): AISupervisorShotReport => {
     const signature = getShotMediaSignature(shot);
     const previous = previousByShot.get(shot.id);
@@ -243,7 +251,9 @@ export const runLocalSupervisorAudit = (project: ProjectState): ProjectState => 
     const visionIssues = visionStillValid
       ? (previous?.issues || []).filter((issue) => issue.source === 'ai-vision')
       : [];
-    const issues = [...localIssues, ...visionIssues];
+    // Hạ mức những loại cảnh báo hay bị bỏ qua, trước khi chấm điểm — nếu áp
+    // sau khi chấm thì điểm shot vẫn bị kéo xuống bởi cảnh báo đã mất tín.
+    const issues = calibrateIssues([...localIssues, ...visionIssues], calibration);
     const score = scoreIssues(issues);
     return {
       shotId: shot.id,
@@ -437,7 +447,13 @@ export const setSupervisorIssueStatus = (
   const state = normalizeAISupervisorState(project.aiSupervisor);
   const reports = state.reports.map((report) => {
     if (report.shotId !== shotId) return report;
-    const issues = report.issues.map((issue) => issue.id === issueId ? { ...issue, status, updatedAt: Date.now() } : issue);
+    const issues = report.issues.map((issue) => {
+      if (issue.id !== issueId) return issue;
+      // Ghi lại quyết định để hiệu chỉnh. Trạng thái nằm trong dự án sẽ mất khi
+      // báo cáo dựng lại, nên phải giữ riêng mới thống kê được xuyên dự án.
+      recordSupervisorDecision(issue, status, { projectId: project.id });
+      return { ...issue, status, updatedAt: Date.now() };
+    });
     return { ...report, ...scoreIssues(issues), issues };
   });
   return { ...project, aiSupervisor: { ...state, reports, updatedAt: Date.now() } };
