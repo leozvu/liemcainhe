@@ -195,11 +195,26 @@ describe('Zalo OA', () => {
 });
 
 describe('lỗi mạng', () => {
-  it('trở thành kết quả thất bại chứ không ném ra ngoài', async () => {
+  it('đánh dấu không xác định, vì có thể bài đã lên mà không nhận được phản hồi', async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('Failed to fetch'));
     const r = await publishToChannel('facebook-page', { text: 'a' }, creds, fetchImpl as never);
     expect(r.success).toBe(false);
-    expect(r.message).toBe('Failed to fetch');
+    expect(r.indeterminate).toBe(true);
+    expect(r.message).toContain('Không rõ bài đã lên hay chưa');
+  });
+
+  it('lỗi có phản hồi từ nhà cung cấp thì KHÔNG phải không xác định', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'Token hết hạn' } }), { status: 400 }),
+    );
+    const r = await publishToChannel('facebook-page', { text: 'a' }, creds, fetchImpl as never);
+    expect(r.success).toBe(false);
+    expect(r.indeterminate).toBeUndefined();
+  });
+
+  it('chặn trước khi gọi mạng cũng không phải không xác định', async () => {
+    const r = await publishToChannel('facebook-page', { text: 'a' }, {}, vi.fn() as never);
+    expect(r.indeterminate).toBeUndefined();
   });
 });
 

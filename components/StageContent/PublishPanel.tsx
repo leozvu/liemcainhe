@@ -6,9 +6,9 @@ import { PUBLISH_CHANNELS } from '../../services/content/publishChannels';
 import {
   CHANNEL_LIMITS,
   findMissingCredentials,
-  publishToChannel,
   toPostText,
 } from '../../services/content/publishService';
+import { DuplicateVerdict, publishWithGuard } from '../../services/content/publishLedgerService';
 import { inspectBrandCompliance } from '../../services/brandKitService';
 import { getPublishSecret, setPublishSecret } from '../../services/credentialVault';
 
@@ -33,6 +33,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<PublishResult | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateVerdict | null>(null);
 
   const channel = PUBLISH_CHANNELS.find((item) => item.id === channelId)!;
   const limit = CHANNEL_LIMITS[channelId];
@@ -65,7 +66,11 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
     setPublishSecret(channelId, { accessToken, accountId });
   };
 
-  const handlePublish = async () => {
+  /**
+   * @param force bỏ qua cảnh báo trùng. Chỉ true khi người dùng đã đọc cảnh
+   * báo và tự khẳng định muốn đăng lại.
+   */
+  const handlePublish = async (force = false) => {
     // Chốt chặn thứ hai. Nút đã bị khoá khi vi phạm, nhưng nội dung có thể đổi
     // sau lúc bấm xác nhận, và đăng bài thì không rút lại được.
     if (blockedByBrand) {
@@ -75,8 +80,18 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
     handleSaveCredentials();
     setSending(true);
     setResult(null);
+    if (force) setDuplicate(null);
+
     try {
-      setResult(await publishToChannel(channelId, { text: postText }, { accessToken, accountId }));
+      const outcome = await publishWithGuard(
+        channelId,
+        { text: postText },
+        { accessToken, accountId },
+        { force },
+      );
+      setDuplicate(outcome.duplicate ?? null);
+      // Bị chặn vì trùng thì chưa phải kết quả đăng, đừng hiện như lỗi đăng.
+      setResult(outcome.duplicate ? null : outcome.result);
     } finally {
       setSending(false);
       setConfirming(false);
@@ -239,7 +254,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
             <span className="text-xs text-zinc-300">
               Đăng công khai lên {channel.label}. Thao tác này không rút lại được từ đây.
             </span>
-            <button type="button" className="eg-button-primary min-h-11 px-5" onClick={() => void handlePublish()} disabled={sending}>
+            <button type="button" className="eg-button-primary min-h-11 px-5" onClick={() => void handlePublish(false)} disabled={sending}>
               {sending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : null}
               Xác nhận đăng
             </button>
@@ -249,6 +264,59 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
           </>
         )}
       </div>
+
+      {duplicate && duplicate.kind !== 'clear' && (
+        <div role="alert" className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/[.08] px-4 py-3">
+          <div className="flex gap-2">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-amber-50">
+                {duplicate.kind === 'already-published'
+                  ? 'Nội dung này đã được đăng rồi'
+                  : 'Lần đăng trước không rõ kết quả'}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+                {duplicate.kind === 'already-published' ? (
+                  <>
+                    Đã đăng lúc {new Date(duplicate.entry.startedAt).toLocaleString('vi-VN')} lên{' '}
+                    {channel.label}
+                    {duplicate.entry.accountId ? ` (tài khoản ${duplicate.entry.accountId})` : ''}.
+                    {duplicate.entry.url && (
+                      <>
+                        {' '}
+                        <a href={duplicate.entry.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-4">
+                          Xem bài cũ
+                        </a>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Bắt đầu đăng lúc {new Date(duplicate.entry.startedAt).toLocaleString('vi-VN')} nhưng
+                    chưa ghi nhận được kết quả, có thể do mất mạng hoặc đóng tab giữa chừng.{' '}
+                    <strong className="text-amber-50">Bài có thể đã lên.</strong> Hãy mở {channel.label} kiểm
+                    tra trước khi đăng lại.
+                  </>
+                )}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="eg-button-secondary min-h-11 px-4"
+                  onClick={() => void handlePublish(true)}
+                  disabled={sending}
+                >
+                  {sending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : null}
+                  Tôi đã kiểm tra, vẫn đăng
+                </button>
+                <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={() => setDuplicate(null)}>
+                  Bỏ qua
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {result && (
         <div

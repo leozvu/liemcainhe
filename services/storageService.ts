@@ -7,11 +7,12 @@ import { normalizeAgencyClient } from './brandKitService';
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
 const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
 const CLIENT_STORE_NAME = 'agencyClients';
 const CAMPAIGN_STORE_NAME = 'agencyCampaigns';
+const PUBLISH_LEDGER_STORE_NAME = 'publishLedger';
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -35,6 +36,12 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
         const store = db.createObjectStore(CAMPAIGN_STORE_NAME, { keyPath: 'id' });
         store.createIndex('clientId', 'clientId', { unique: false });
         store.createIndex('status', 'status', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(PUBLISH_LEDGER_STORE_NAME)) {
+        // keyPath là fingerprint để lần đăng lại cùng nội dung tìm đúng bản ghi cũ.
+        const store = db.createObjectStore(PUBLISH_LEDGER_STORE_NAME, { keyPath: 'fingerprint' });
+        store.createIndex('channelId', 'channelId', { unique: false });
+        store.createIndex('startedAt', 'startedAt', { unique: false });
       }
     };
   });
@@ -318,6 +325,35 @@ export const getAllAgencyCampaigns = async (): Promise<AgencyCampaign[]> => {
 export const saveAgencyCampaign = async (campaign: AgencyCampaign): Promise<void> => putWorkspaceItem(CAMPAIGN_STORE_NAME, campaign);
 
 export const deleteAgencyCampaign = async (id: string): Promise<void> => deleteWorkspaceItem(CAMPAIGN_STORE_NAME, id);
+
+/**
+ * Nhật ký đăng bài.
+ *
+ * Khoá là fingerprint của nội dung nên lần đăng lại cùng một bài lên cùng một
+ * tài khoản sẽ ghi đè đúng bản ghi cũ thay vì tạo bản ghi mới. Đây là cơ sở để
+ * phát hiện đăng trùng.
+ */
+export const getPublishLedger = async <T>(): Promise<T[]> => {
+  const db = await openDB();
+  return readStoreItems<T>(db, PUBLISH_LEDGER_STORE_NAME);
+};
+
+/**
+ * Không dùng putWorkspaceItem vì hàm đó ràng buộc `{ id: string }` cho các kho
+ * khoá theo id. Kho này khoá theo `fingerprint`, nên có hàm ghi riêng thay vì
+ * nới lỏng ràng buộc đang bảo vệ những kho kia.
+ */
+export const savePublishLedgerEntry = async <T extends { fingerprint: string }>(
+  entry: T,
+): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PUBLISH_LEDGER_STORE_NAME, 'readwrite');
+    const request = tx.objectStore(PUBLISH_LEDGER_STORE_NAME).put(entry);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
 
 export const createDefaultVoiceStudioState = () => ({
   defaultProviderId: 'elevenlabs' as const,

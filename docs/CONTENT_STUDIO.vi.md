@@ -123,6 +123,30 @@ Ba điều dễ vấp:
 2. **Threads**: tài khoản phải liên kết với một tài khoản Instagram chuyên nghiệp. Giới hạn 250 bài mỗi 24 giờ.
 3. **Zalo**: Official Account phải đã xác thực. Access token chỉ sống **25 giờ** — bản này chưa tự làm mới, hết hạn thì phải dán token mới. Tự động làm mới cần nơi giữ refresh token an toàn, tức là phải có phía máy chủ.
 
+### Chống đăng trùng
+
+Đây là hàng rào cho tình huống nguy hiểm nhất của sản phẩm: **mất mạng giữa lúc đăng**. Người dùng không biết bài đã lên hay chưa, bấm lại, và Trang khách hàng có hai bài giống nhau. Sự cố uy tín, không phải sự cố chi phí, và không tự sửa được.
+
+Cơ chế nằm ở `publishLedgerService.ts`, ghi vào kho `publishLedger` của IndexedDB (DB version 4). Giao diện **chỉ gọi `publishWithGuard`**, không gọi thẳng `publishToChannel`, để không có đường nào đăng mà bỏ qua hàng rào.
+
+Nguyên tắc: **ghi bản ghi `pending` xuống đĩa trước khi gọi mạng**. Tiến trình chết giữa chừng thì lần sau vẫn còn dấu vết.
+
+Vân tay nội dung là `hash(channelId + accountId + text)` — cùng bài, cùng kênh, cùng tài khoản thì cùng vân tay. Không dùng hàm băm mật mã vì không cần chống giả mạo; trùng vân tay chỉ gây một cảnh báo thừa, tức là hỏng về phía an toàn.
+
+Ba trạng thái và cách xử lý lần đăng kế tiếp trong 24 giờ:
+
+| Trạng thái | Nghĩa | Lần sau |
+|---|---|---|
+| `success` | Chắc chắn đã lên | Chặn, kèm liên kết xem bài cũ |
+| `pending` | **Không rõ đã lên hay chưa** | Chặn, yêu cầu tự kiểm tra trên nền tảng trước |
+| `failed` | Chắc chắn chưa lên | Cho đăng lại ngay |
+
+Phân biệt `pending` với `failed` là điểm mấu chốt. Lỗi có phản hồi từ nhà cung cấp (HTTP 400, token hết hạn) là **chắc chắn chưa lên** nên đăng lại an toàn. Còn `TypeError: Failed to fetch` nghĩa là **không nhận được phản hồi nào** — request vẫn có thể đã tới nơi và đã được xử lý. `PublishResult.indeterminate` đánh dấu đúng trường hợp này, và nhật ký giữ nguyên `pending` thay vì ghi `failed`.
+
+Lỗi này bị bắt trong lúc chạy thử trên trình duyệt, không phải trong unit test — vì unit test mock hàm đăng *ném lỗi*, còn `publishToChannel` thật lại nuốt lỗi thành kết quả thất bại. Nay có test cho cả hai đường.
+
+Người dùng đã tự kiểm tra trên nền tảng thì có nút *"Tôi đã kiểm tra, vẫn đăng"* để vượt hàng rào.
+
 ### Đường đi kỹ thuật
 
 | Kênh | Endpoint | Ghi chú |

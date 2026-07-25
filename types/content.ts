@@ -174,6 +174,14 @@ export interface PublishResult {
   message: string;
   postId?: string;
   url?: string;
+  /**
+   * Không xác định được kết quả: lệnh đã gửi đi nhưng không nhận được phản hồi,
+   * thường do đứt mạng. Bài **có thể đã lên**.
+   *
+   * Khác hẳn thất bại thường. Thất bại là chắc chắn chưa lên nên đăng lại an
+   * toàn; không xác định thì đăng lại có nguy cơ ra hai bài.
+   */
+  indeterminate?: boolean;
 }
 
 /**

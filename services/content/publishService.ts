@@ -256,6 +256,15 @@ export const publishToChannel = async (
   try {
     return await adapter(payload, credentials, fetchImpl);
   } catch (error) {
-    return { channelId, success: false, message: asMessage(error) };
+    // Tới đây nghĩa là chính lời gọi mạng ném lỗi, tức là không nhận được phản
+    // hồi nào. Request vẫn có thể đã tới nơi và đã được xử lý, nên phải đánh
+    // dấu không xác định thay vì coi như thất bại — thất bại thì đăng lại an
+    // toàn, còn không xác định thì đăng lại có nguy cơ ra hai bài.
+    return {
+      channelId,
+      success: false,
+      indeterminate: true,
+      message: `${asMessage(error)}. Không rõ bài đã lên hay chưa.`,
+    };
   }
 };
