@@ -77,6 +77,12 @@ const TAB_ITEMS: Array<{ id: PanelTab; label: string; icon: React.ElementType }>
 ];
 
 const QUICK_PROMPTS: Record<ProjectState['stage'], string[]> = {
+  content: [
+    'Gợi ý ba góc tiếp cận khác nhau cho chủ đề đang chọn',
+    'Chủ đề này hợp làm phim ngắn hay hợp làm bài viết hơn, vì sao',
+    'Chỉ ra điểm yếu của bài viết vừa sinh ra',
+    'Đề xuất tuyến nhân vật cho phiên bản phim ngắn',
+  ],
   script: [
     'Phản biện kịch bản hiện tại và chỉ ra ba điểm yếu lớn nhất',
     'Đề xuất một hook mạnh hơn cho 5 giây đầu',

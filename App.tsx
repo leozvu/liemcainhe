@@ -15,6 +15,7 @@ import { createProductionDemoProject } from './services/demoProjectService';
 import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobService';
 import { syncLinkedCampaignFromProject } from './services/productionControlService';
 
+const StageContent = React.lazy(() => import('./components/StageContent'));
 const StageScript = React.lazy(() => import('./components/StageScript'));
 const StageAssets = React.lazy(() => import('./components/StageAssets'));
 const StageVoice = React.lazy(() => import('./components/StageVoice'));
@@ -259,6 +260,14 @@ function App() {
   const renderStage = () => {
     if (!project) return null;
     switch (project.stage) {
+      case 'content':
+        return (
+          <StageContent
+            project={project}
+            updateProject={updateProject}
+            onGoToScript={() => setStage('script')}
+          />
+        );
       case 'script':
         return <StageScript project={project} updateProject={updateProject} />;
       case 'assets':

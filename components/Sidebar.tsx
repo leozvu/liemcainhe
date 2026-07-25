@@ -8,6 +8,7 @@ import {
   Clapperboard,
   Cpu,
   Film,
+  Flame,
   Gauge,
   HelpCircle,
   LibraryBig,
@@ -35,6 +36,7 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
+  { id: 'content' as const, label: 'Xưởng nội dung', detail: 'Bắt trend và viết bài', number: '＋', icon: Flame, core: false },
   { id: 'script' as const, label: 'Kịch bản', detail: 'Phát triển câu chuyện', number: '01', icon: BookOpenText, core: true },
   { id: 'assets' as const, label: 'Tài nguyên', detail: 'Nhân vật và bối cảnh', number: '02', icon: UsersRound, core: true },
   { id: 'voice' as const, label: 'Giọng thoại', detail: 'Casting và bản thu', number: '03', icon: AudioLines, core: true },

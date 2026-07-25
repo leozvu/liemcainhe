@@ -83,8 +83,30 @@ TrendItem ──┬─→ ContentBrief ─→ ArticleDraft   (bài đăng)
 | Bốn trục điều khiển kèm `directive` | ✅ 24 lựa chọn |
 | Sinh bài qua `callChatApi` | ✅ `articleService.ts` |
 | `StoryBridge` sang Phase 01 | ✅ `storyBridgeService.ts` |
-| Giao diện | ⬜ tiếp theo |
+| Giao diện | ✅ chặng `content` trong sidebar |
 | Đăng đa nền tảng | ⬜ cần khoá và duyệt ứng dụng từng nền tảng |
+
+## Giao diện
+
+Chặng `content` đứng trước Kịch bản trong sidebar, đánh dấu không phải chặng lõi giống Kho sáng tạo. Ba khối theo đúng thứ tự làm việc: bảng xu hướng, brief, kết quả.
+
+Mỗi trục hiện mô tả của lựa chọn đang chọn ngay dưới ô chọn. Bốn trục chỉ hữu ích khi người dùng biết mỗi lựa chọn thực sự làm gì, mà nhãn thì quá ngắn để nói hết.
+
+Nút **Đưa sang Kịch bản** ghi đè `rawScript`, `targetDuration`, `language` và `visualStyle` của dự án đang mở rồi chuyển thẳng sang chặng Kịch bản. Có cảnh báo ghi đè ngay dưới nút.
+
+`stageForProjectStage` quy chặng `content` về `script`, vì Xưởng nội dung không phải chặng lõi nhưng vẫn cần một chặng để gắn tác vụ và tiến độ, và Kịch bản là nơi kết quả của nó đi tiếp.
+
+## Đã chạy thử trên trình duyệt
+
+| Việc | Kết quả |
+|---|---|
+| Mở chặng Xưởng nội dung | Dựng đủ ba khối, 13 nguồn trong ô chọn |
+| Bấm Lấy tin | 10 chủ đề từ Google Xu hướng, `GET /api-proxy/trends/google-trends` → 200 |
+| Đổi nguồn sang CafeF | 12 chủ đề, `GET /api-proxy/trends/cafef` → 200 |
+| Chọn một chủ đề | Ô chủ đề trong brief tự điền |
+| Bấm Viết bài khi chưa có khoá | Hiện đúng "Thiếu khóa API. Hãy cấu hình khóa API trong phần cài đặt" |
+| Lỗi console | Không có |
+| Màn hình 375px | Không tràn ngang |
 
 ## Cách sinh bài
 

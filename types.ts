@@ -179,7 +179,7 @@ export interface RenderLog {
   duration?: number;
 }
 
-export type ProjectStage = 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
+export type ProjectStage = 'content' | 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
 export type CoreStage = 'script' | 'assets' | 'voice' | 'director' | 'export';
 export type ProductionJobKind = 'script-analysis' | 'creative-director' | 'video-factory' | 'ai-supervisor' | 'auto-editor' | 'agency-review' | 'asset-image' | 'keyframe-image' | 'video' | 'voice' | 'cloud-sync' | 'export';
 export type ProductionJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
