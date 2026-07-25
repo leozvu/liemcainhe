@@ -759,7 +759,15 @@ export interface AutoEditorSettings {
   musicName?: string;
   musicVolume: number;
   duckingDb: number;
+  /** Nhịp nhạc nền, để cắt theo phách. Bỏ trống thì không cắt theo nhạc. */
+  musicBpm?: number;
   fps: 25 | 30;
+}
+
+export interface AutoEditorPacingOverride {
+  shotId: string;
+  duration: number;
+  transition: AutoEditorTransition;
 }
 
 export interface AutoEditorOutput {
@@ -779,6 +787,12 @@ export interface AutoEditorState {
   timeline: AutoEditorTimelineClip[];
   captions: AutoEditorCaptionCue[];
   outputs: AutoEditorOutput[];
+  /**
+   * Nhịp dựng đã áp cho từng shot. Lưu ở đây chứ không sửa thẳng timeline, vì
+   * timeline được dựng lại mỗi lần lập kế hoạch — sửa thẳng thì lần lập sau sẽ
+   * xoá mất.
+   */
+  pacing?: AutoEditorPacingOverride[];
   planSignature?: string;
   lastPlannedAt?: number;
   lastRenderedAt?: number;

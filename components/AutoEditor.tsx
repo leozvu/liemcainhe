@@ -35,8 +35,11 @@ import {
   ProjectState,
 } from '../types';
 import {
+  applyEditingRecommendations,
+  clearEditingRecommendations,
   createAutoEditorPlan,
   downloadAutoEditorSrt,
+  getAutoEditorEditingReport,
   failAutoEditorRender,
   finishAutoEditorRender,
   getAutoEditorSources,
@@ -46,6 +49,7 @@ import {
   updateAutoEditorSettings,
 } from '../services/autoEditorService';
 import { cancelAutoEditorRender, renderAutoEditorOutputInBrowser } from '../services/autoEditorRenderService';
+import { describeEditingReport } from '../services/editingIntelligenceService';
 import { useAlert } from './GlobalAlert';
 
 interface Props {
@@ -106,6 +110,7 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
   const state = useMemo(() => normalizeAutoEditorState(project.autoEditor, project), [project.autoEditor, project.brandKitSnapshot]);
   const summary = useMemo(() => getAutoEditorSummary(project), [project]);
   const sources = useMemo(() => getAutoEditorSources(project), [project]);
+  const editing = useMemo(() => getAutoEditorEditingReport(project), [project]);
   const logoAssets = project.brandKitSnapshot?.assets.filter((asset) => asset.type === 'logo' && asset.url) || [];
   const musicInputRef = useRef<HTMLInputElement>(null);
   const [renderingId, setRenderingId] = useState<string>();
@@ -133,6 +138,24 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
       showAlert('Đã lập timeline, phụ đề và đầu ra. Thao tác này không gọi API.', { type: 'success' });
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể lập timeline.', { type: 'error' });
+    }
+  };
+
+  const handleApplyPacing = () => {
+    try {
+      updateProject((previous) => createAutoEditorPlan(applyEditingRecommendations(previous)));
+      showAlert('Đã áp nhịp dựng và lập lại timeline. Không gọi API.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể áp nhịp dựng.', { type: 'error' });
+    }
+  };
+
+  const handleClearPacing = () => {
+    try {
+      updateProject((previous) => createAutoEditorPlan(clearEditingRecommendations(previous)));
+      showAlert('Đã trả nhịp về độ dài gốc của từng shot.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể bỏ nhịp đã áp.', { type: 'error' });
     }
   };
 
@@ -305,6 +328,7 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
                 <input ref={musicInputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => void handleMusicUpload(event.target.files?.[0])} />
                 <button type="button" onClick={() => musicInputRef.current?.click()} disabled={uploadingMusic} className="eg-button-secondary mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-40">{uploadingMusic ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {state.settings.musicName || 'Tải nhạc lên'}</button>
                 <label className="mt-4 block"><span className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-zinc-500"><span>Âm lượng nhạc</span><span>{Math.round(state.settings.musicVolume * 100)}%</span></span><input type="range" min="0" max="0.5" step="0.01" value={state.settings.musicVolume} onChange={(event) => patchSettings({ musicVolume: Number(event.target.value) })} className="mt-3 w-full accent-cyan-200" /></label>
+                <label className="mt-4 block"><span className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Nhịp nhạc (BPM)</span><input type="number" min="40" max="220" placeholder="Bỏ trống nếu không cắt theo nhạc" value={state.settings.musicBpm ?? ''} onChange={(event) => patchSettings({ musicBpm: Number(event.target.value) || undefined })} className="eg-input min-h-11 w-full px-3 text-xs" /><span className="mt-2 block text-[10px] leading-4 text-zinc-600">Có BPM thì “Áp nhịp đề xuất” sẽ dịch điểm cắt về phách gần nhất — chỉ dịch khi lệch dưới nửa phách.</span></label>
               </div>
               <div className="rounded-2xl border border-white/[.07] bg-black/15 p-4">
                 <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[.08] bg-white/[.03]"><Image className="h-4 w-4 text-cyan-100" /></span><div><strong className="block text-sm text-white">Logo Brand Kit</strong><span className="text-[10px] text-zinc-600">Đóng dấu vào mọi đầu ra</span></div></div><button type="button" onClick={() => patchSettings({ logoEnabled: !state.settings.logoEnabled })} aria-pressed={state.settings.logoEnabled} className={`min-h-11 rounded-xl border px-4 text-xs font-semibold ${state.settings.logoEnabled ? 'border-cyan-200/30 bg-cyan-200/[.08] text-cyan-100' : 'border-white/[.08] text-zinc-500'}`}>{state.settings.logoEnabled ? 'Đang bật' : 'Đang tắt'}</button></div>
@@ -341,6 +365,42 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
               {summary.issues.length === 0 ? <div className="rounded-2xl border border-emerald-200/15 bg-emerald-200/[.05] p-4"><div className="flex items-center gap-2 text-xs font-semibold text-emerald-100"><CheckCircle2 className="h-4 w-4" /> Sẵn sàng render</div><p className="mt-2 text-[10px] leading-4 text-emerald-100/60">Không phát hiện lỗi chặn trong timeline hiện tại.</p></div> : summary.issues.slice(0, 8).map((issue) => <div key={issue.id} className={`rounded-xl border p-3 ${issue.severity === 'blocked' ? 'border-rose-200/15 bg-rose-200/[.05]' : 'border-amber-200/15 bg-amber-200/[.05]'}`}><div className={`flex items-center gap-2 text-[11px] font-semibold ${issue.severity === 'blocked' ? 'text-rose-100' : 'text-amber-100'}`}><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {issue.label}</div><p className="mt-1 text-[10px] leading-4 text-zinc-600">{issue.detail}</p></div>)}
               {summary.issues.length > 8 && <p className="text-center text-[10px] text-zinc-600">Còn {summary.issues.length - 8} mục khác</p>}
             </div>
+          </section>
+
+          <section className="eg-panel p-5">
+            <div className="flex items-center justify-between gap-3"><div><div className="eg-kicker">Nhịp dựng</div><h3 className="mt-1 text-base font-semibold text-white">Trí tuệ dựng phim</h3></div><Scissors className="h-5 w-5 text-cyan-200/70" /></div>
+            <p className="mt-3 text-[10px] leading-4 text-zinc-600">{describeEditingReport(editing)}</p>
+
+            {editing.truncatedDialogue.length > 0 && (
+              <div className="mt-4 rounded-xl border border-rose-200/15 bg-rose-200/[.05] p-3">
+                <div className="flex items-center gap-2 text-[11px] font-semibold text-rose-100"><AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Cắt mất lời thoại</div>
+                <p className="mt-1 text-[10px] leading-4 text-zinc-600">{editing.truncatedDialogue.length} clip đang ngắn hơn câu thoại, thiếu nhiều nhất {Math.max(...editing.truncatedDialogue.map((item) => item.shortBy)).toFixed(1)}s.</p>
+              </div>
+            )}
+
+            <div className="mt-4 space-y-2">
+              {editing.pacing.filter((item) => item.significant).slice(0, 5).map((item) => {
+                const index = state.timeline.findIndex((clip) => clip.id === item.clipId);
+                return (
+                  <div key={item.clipId} className="rounded-xl border border-white/[.07] bg-black/15 p-3">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-200"><span>Cảnh {index >= 0 ? index + 1 : '—'}</span><span className="font-mono tabular-nums text-zinc-500">{item.currentDuration.toFixed(1)}s → {item.recommendedDuration.toFixed(1)}s</span></div>
+                    <p className="mt-1 text-[10px] leading-4 text-zinc-600">{item.reason}</p>
+                  </div>
+                );
+              })}
+              {editing.bRoll.slice(0, 3).map((item) => (
+                <div key={item.afterClipId} className="rounded-xl border border-amber-200/15 bg-amber-200/[.05] p-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-100"><Layers3 className="h-3.5 w-3.5 shrink-0" /> Nên chèn cảnh phụ ở giây {item.atSecond}</div>
+                  <p className="mt-1 text-[10px] leading-4 text-zinc-600">{item.reason}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              <button type="button" onClick={handleApplyPacing} disabled={!editing.pacing.length} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-40"><WandSparkles className="h-4 w-4" /> Áp nhịp đề xuất</button>
+              {state.pacing?.length ? <button type="button" onClick={handleClearPacing} className="min-h-11 rounded-xl border border-white/[.08] px-4 text-xs font-semibold text-zinc-500 hover:text-white">Trả về độ dài gốc</button> : null}
+            </div>
+            <p className="mt-3 text-[10px] leading-4 text-zinc-600">Toàn bộ phần này là tính toán tại chỗ — không gọi model, không tốn phí.</p>
           </section>
 
           <section className="eg-panel p-5">

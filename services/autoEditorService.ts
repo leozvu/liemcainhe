@@ -3,6 +3,7 @@ import {
   AutoEditorCaptionCue,
   AutoEditorOutput,
   AutoEditorOutputStatus,
+  AutoEditorPacingOverride,
   AutoEditorSettings,
   AutoEditorState,
   AutoEditorTimelineClip,
@@ -17,6 +18,12 @@ import {
   createProjectCheckpoint,
   patchProductionJob,
 } from './workflowService';
+import {
+  EditingReport,
+  analyzeTimeline,
+  recommendTransition,
+  snapToBeats,
+} from './editingIntelligenceService';
 
 const createId = (prefix: string): string => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -89,6 +96,7 @@ export const normalizeAutoEditorState = (
     timeline: Array.isArray(value.timeline) ? value.timeline : [],
     captions: Array.isArray(value.captions) ? value.captions : [],
     outputs: Array.isArray(value.outputs) ? value.outputs : [],
+    pacing: Array.isArray(value.pacing) ? value.pacing : undefined,
     updatedAt: Number(value.updatedAt) || now(),
   };
 };
@@ -143,10 +151,18 @@ export const getAutoEditorSources = (project: ProjectState): AutoEditorSource[] 
   ];
 };
 
-const buildTimeline = (project: ProjectState, settings: AutoEditorSettings): AutoEditorTimelineClip[] => {
+const buildTimeline = (
+  project: ProjectState,
+  settings: AutoEditorSettings,
+  pacing?: AutoEditorPacingOverride[],
+): AutoEditorTimelineClip[] => {
+  const overrides = new Map((pacing || []).map((item) => [item.shotId, item]));
   let offset = 0;
   return sourceShots(project, settings.sourceId).map((shot, index) => {
-    const duration = Math.max(1, Number(shot.interval?.duration) || 8);
+    const override = overrides.get(shot.id);
+    const duration = override
+      ? Math.max(1, override.duration)
+      : Math.max(1, Number(shot.interval?.duration) || 8);
     const take = settings.includeVoice ? selectedVoiceTake(project, shot.id) : undefined;
     const clip: AutoEditorTimelineClip = {
       id: `editor_clip_${shot.id}`,
@@ -157,7 +173,7 @@ const buildTimeline = (project: ProjectState, settings: AutoEditorSettings): Aut
       videoUrl: shot.interval?.videoUrl,
       voiceTakeId: take?.id,
       dialogue: shot.dialogue?.trim() || undefined,
-      transition: index === 0 ? 'cut' : settings.transition,
+      transition: index === 0 ? 'cut' : override?.transition || settings.transition,
     };
     offset += duration;
     return clip;
@@ -213,14 +229,20 @@ export const getAutoEditorLogoUrl = (project: ProjectState): string | undefined 
   return getLogoUrl(project, state.settings);
 };
 
-const editorSignature = (project: ProjectState, settings: AutoEditorSettings, timeline?: AutoEditorTimelineClip[]): string => {
-  const clips = timeline || buildTimeline(project, settings);
+const editorSignature = (
+  project: ProjectState,
+  settings: AutoEditorSettings,
+  timeline?: AutoEditorTimelineClip[],
+  pacing?: AutoEditorPacingOverride[],
+): string => {
+  const clips = timeline || buildTimeline(project, settings, pacing);
   const data = JSON.stringify({
     settings,
     logo: getLogoUrl(project, settings),
     clips: clips.map((clip) => ({
       shotId: clip.shotId,
       duration: clip.duration,
+      transition: clip.transition,
       videoUrl: clip.videoUrl,
       dialogue: clip.dialogue,
       voiceTakeId: clip.voiceTakeId,
@@ -253,7 +275,7 @@ export const updateAutoEditorSettings = (project: ProjectState, updates: Partial
 
 export const createAutoEditorPlan = (project: ProjectState): ProjectState => {
   const state = normalizeAutoEditorState(project.autoEditor, project);
-  const timeline = buildTimeline(project, state.settings);
+  const timeline = buildTimeline(project, state.settings, state.pacing);
   if (!timeline.length) throw new Error('Nguồn đã chọn chưa có shot để dựng.');
   const captions = state.settings.captionsEnabled ? buildCaptions(timeline) : [];
   const signature = editorSignature(project, state.settings, timeline);
@@ -305,7 +327,7 @@ export const createAutoEditorPlan = (project: ProjectState): ProjectState => {
 
 export const getAutoEditorPreflight = (project: ProjectState): AutoEditorPreflightIssue[] => {
   const state = normalizeAutoEditorState(project.autoEditor, project);
-  const timeline = state.timeline.length ? state.timeline : buildTimeline(project, state.settings);
+  const timeline = state.timeline.length ? state.timeline : buildTimeline(project, state.settings, state.pacing);
   const shotMap = new Map(project.shots.map((shot) => [shot.id, shot]));
   const issues: AutoEditorPreflightIssue[] = [];
   if (!timeline.length) issues.push({ id: 'no-shots', severity: 'blocked', label: 'Chưa có timeline', detail: 'Hãy chọn nguồn có storyboard hoặc biến thể đã tạo.' });
@@ -322,7 +344,7 @@ export const getAutoEditorPreflight = (project: ProjectState): AutoEditorPreflig
 
 export const getAutoEditorSummary = (project: ProjectState) => {
   const state = normalizeAutoEditorState(project.autoEditor, project);
-  const currentSignature = editorSignature(project, state.settings);
+  const currentSignature = editorSignature(project, state.settings, undefined, state.pacing);
   const issues = getAutoEditorPreflight(project);
   const totalDuration = state.timeline.reduce((sum, clip) => sum + clip.duration, 0);
   return {
@@ -334,6 +356,72 @@ export const getAutoEditorSummary = (project: ProjectState) => {
     totalDuration,
     readyClips: state.timeline.filter((clip) => clip.videoUrl).length,
     readyOutputs: state.outputs.filter((output) => output.status === 'ready').length,
+  };
+};
+
+/**
+ * Nhịp dựng hiện tại có gì đáng sửa.
+ *
+ * Đọc timeline đã lập nếu có, không thì dựng thử — để người dùng thấy vấn đề
+ * trước khi bấm lập kế hoạch, chứ không phải sau khi render xong mới biết.
+ */
+export const getAutoEditorEditingReport = (project: ProjectState): EditingReport => {
+  const state = normalizeAutoEditorState(project.autoEditor, project);
+  const timeline = state.timeline.length ? state.timeline : buildTimeline(project, state.settings, state.pacing);
+  return analyzeTimeline(timeline, project.shots);
+};
+
+/**
+ * Áp nhịp dựng đề xuất.
+ *
+ * Ghi vào `pacing` chứ không sửa thẳng timeline: timeline được dựng lại mỗi lần
+ * lập kế hoạch, nên sửa thẳng thì lần lập kế hoạch sau sẽ xoá mất. Sau khi áp,
+ * kế hoạch thành cũ và người dùng phải lập lại — đúng như vậy, vì độ dài clip
+ * đã đổi thì phụ đề và thời lượng render cũng phải tính lại.
+ *
+ * Có `musicBpm` thì dịch tiếp điểm cắt về phách gần nhất.
+ */
+export const applyEditingRecommendations = (project: ProjectState): ProjectState => {
+  const state = normalizeAutoEditorState(project.autoEditor, project);
+  const base = buildTimeline(project, state.settings, state.pacing);
+  if (!base.length) throw new Error('Chưa có timeline để chỉnh nhịp.');
+
+  const shotMap = new Map(project.shots.map((shot) => [shot.id, shot]));
+  const recommendations = analyzeTimeline(base, project.shots).pacing;
+
+  let retimed: AutoEditorTimelineClip[] = base.map((clip, index) => {
+    const recommendation = recommendations[index];
+    const previous = index > 0 ? shotMap.get(base[index - 1].shotId) : undefined;
+    return {
+      ...clip,
+      duration: recommendation?.recommendedDuration ?? clip.duration,
+      transition: index === 0
+        ? 'cut'
+        : recommendTransition(shotMap.get(clip.shotId), previous).transition,
+    };
+  });
+
+  const bpm = Number(state.settings.musicBpm) || 0;
+  if (state.settings.musicEnabled && bpm > 0) retimed = snapToBeats(retimed, bpm);
+
+  const pacing: AutoEditorPacingOverride[] = retimed.map((clip) => ({
+    shotId: clip.shotId,
+    duration: clip.duration,
+    transition: clip.transition,
+  }));
+
+  return {
+    ...project,
+    autoEditor: { ...state, pacing, updatedAt: now() },
+  };
+};
+
+/** Bỏ nhịp đã áp, quay về độ dài gốc của từng shot. */
+export const clearEditingRecommendations = (project: ProjectState): ProjectState => {
+  const state = normalizeAutoEditorState(project.autoEditor, project);
+  return {
+    ...project,
+    autoEditor: { ...state, pacing: undefined, updatedAt: now() },
   };
 };
 
