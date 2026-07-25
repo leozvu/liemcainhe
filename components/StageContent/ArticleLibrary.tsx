@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, FolderOpen, Save, Search, Trash2 } from 'lucide-react';
+import { BarChart3, CheckCircle2, FolderOpen, Save, Search, Trash2 } from 'lucide-react';
 import { BrandKit } from '../../types';
 import { ArticleDraft, ContentBrief, ReviewDecision, SavedArticle } from '../../types/content';
 import { inspectBrandCompliance } from '../../services/brandKitService';
@@ -11,8 +11,14 @@ import {
   saveArticle,
   searchArticles,
 } from '../../services/content/articleLibraryService';
-import { PublishLedgerEntry, readPublishHistory } from '../../services/content/publishLedgerService';
+import {
+  PublishLedgerEntry,
+  readPublishHistory,
+  refreshInsights,
+} from '../../services/content/publishLedgerService';
+import { describeInsights } from '../../services/content/insightsService';
 import { getPublishChannel } from '../../services/content/publishChannels';
+import { getPublishSecret } from '../../services/credentialVault';
 
 interface Props {
   /** Bài đang mở, để lưu vào thư viện. Không có thì chỉ xem lại bài cũ. */
@@ -101,6 +107,24 @@ const ArticleLibrary: React.FC<Props> = ({
     await refresh();
   };
 
+  /**
+   * Đọc số liệu về cho mọi bài đã đăng.
+   *
+   * Lấy token từ kho khoá theo từng kênh, nên kênh nào chưa nhập token thì
+   * bản ghi của kênh đó ghi rõ lý do thay vì im lặng bỏ qua.
+   */
+  const handleRefreshInsights = async () => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await refreshInsights((channelId) => getPublishSecret(channelId));
+      await refresh();
+      setNotice('Đã đọc lại số liệu của các bài đã đăng.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     await removeArticle(id);
     setConfirmingDelete(null);
@@ -116,15 +140,26 @@ const ArticleLibrary: React.FC<Props> = ({
             Dùng chung cho cả workspace. Bài cũ vẫn tìm lại được sau khi dự án đóng.
           </p>
         </div>
-        <button
-          type="button"
-          className="eg-button-secondary min-h-11 px-4"
-          onClick={() => void handleSave()}
-          disabled={!draft || busy}
-          title={draft ? 'Lưu bài đang mở vào thư viện' : 'Chưa có bài nào để lưu'}
-        >
-          <Save className="mr-2 inline h-4 w-4" />Lưu bài đang mở
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="eg-button-secondary min-h-11 px-4"
+            onClick={() => void handleRefreshInsights()}
+            disabled={busy}
+            title="Đọc lượt tiếp cận và tương tác của các bài đã đăng"
+          >
+            <BarChart3 className={`mr-2 inline h-4 w-4 ${busy ? 'animate-pulse' : ''}`} />Đọc số liệu
+          </button>
+          <button
+            type="button"
+            className="eg-button-secondary min-h-11 px-4"
+            onClick={() => void handleSave()}
+            disabled={!draft || busy}
+            title={draft ? 'Lưu bài đang mở vào thư viện' : 'Chưa có bài nào để lưu'}
+          >
+            <Save className="mr-2 inline h-4 w-4" />Lưu bài đang mở
+          </button>
+        </div>
       </div>
 
       {notice && (
@@ -167,12 +202,23 @@ const ArticleLibrary: React.FC<Props> = ({
                       {article.projectTitle && <span className="truncate">{article.projectTitle}</span>}
                     </div>
                     {published.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
+                      <div className="mt-2 space-y-1.5">
                         {published.map((entry) => (
-                          <span key={entry.fingerprint} className="inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-400/[.07] px-2 py-0.5 text-[10px] text-emerald-100">
-                            <CheckCircle2 className="h-3 w-3" />
-                            {getPublishChannel(entry.channelId)?.label ?? entry.channelId}
-                          </span>
+                          <div key={entry.fingerprint} className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-400/[.07] px-2 py-0.5 text-[10px] text-emerald-100">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {getPublishChannel(entry.channelId)?.label ?? entry.channelId}
+                            </span>
+                            <span
+                              className={`text-[10px] ${
+                                entry.insights && !entry.insights.unavailable
+                                  ? 'text-cyan-100/70'
+                                  : 'text-zinc-600'
+                              }`}
+                            >
+                              {entry.insights ? describeInsights(entry.insights) : 'Chưa đọc số liệu'}
+                            </span>
+                          </div>
                         ))}
                       </div>
                     )}

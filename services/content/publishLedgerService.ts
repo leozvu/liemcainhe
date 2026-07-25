@@ -1,4 +1,11 @@
-import { PublishChannelId, PublishCredentials, PublishPayload, PublishResult } from '../../types/content';
+import {
+  PostInsights,
+  PublishChannelId,
+  PublishCredentials,
+  PublishPayload,
+  PublishResult,
+} from '../../types/content';
+import { fetchPostInsights } from './insightsService';
 import { getPublishLedger, savePublishLedgerEntry } from '../storageService';
 import { publishToChannel } from './publishService';
 
@@ -29,6 +36,8 @@ export interface PublishLedgerEntry {
   postId?: string;
   url?: string;
   error?: string;
+  /** Số liệu hiệu quả, đọc về sau khi bài đã lên. */
+  insights?: PostInsights;
 }
 
 /**
@@ -199,6 +208,56 @@ export const publishWithGuard = async (
   }
 
   return { result };
+};
+
+/**
+ * Đọc số liệu về cho các bài đã đăng thành công.
+ *
+ * Chỉ đụng tới bản ghi có `postId` và trạng thái `success` — bài chưa lên thì
+ * không có gì để đo. Một kênh hỏng không làm dừng các kênh còn lại.
+ */
+export const refreshInsights = async (
+  credentialsFor: (channelId: PublishChannelId) => PublishCredentials,
+  options: {
+    store?: LedgerStore;
+    fetchInsights?: typeof fetchPostInsights;
+    /** Chỉ đọc lại bản ghi cũ hơn ngần này, tránh gọi mạng thừa. */
+    staleAfterMs?: number;
+    now?: () => number;
+  } = {},
+): Promise<PublishLedgerEntry[]> => {
+  const store = options.store ?? indexedDbStore;
+  const read = options.fetchInsights ?? fetchPostInsights;
+  const now = (options.now ?? Date.now)();
+  const staleAfter = options.staleAfterMs ?? 15 * 60 * 1000;
+
+  let entries: PublishLedgerEntry[] = [];
+  try {
+    entries = await store.readAll();
+  } catch {
+    return [];
+  }
+
+  const updated: PublishLedgerEntry[] = [];
+
+  for (const entry of entries) {
+    if (entry.status !== 'success' || !entry.postId) continue;
+    if (entry.insights && now - entry.insights.fetchedAt < staleAfter) {
+      updated.push(entry);
+      continue;
+    }
+
+    const insights = await read(entry.channelId, entry.postId, credentialsFor(entry.channelId));
+    const next = { ...entry, insights };
+    updated.push(next);
+    try {
+      await store.put(next);
+    } catch {
+      // Đọc được số liệu rồi thì không ghi được cũng vẫn trả về cho giao diện.
+    }
+  }
+
+  return updated;
 };
 
 /** Đọc nhật ký để hiện lịch sử đăng, mới nhất trước. */

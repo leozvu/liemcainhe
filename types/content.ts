@@ -255,6 +255,30 @@ export interface PublishPayload {
   link?: string;
 }
 
+/**
+ * Số liệu hiệu quả của một bài đã đăng.
+ *
+ * Mọi trường đều tuỳ chọn vì mỗi nền tảng trả một tập khác nhau, và tập đó
+ * còn đổi theo quyền của ứng dụng. Thiếu số nào thì không hiện số đó, không
+ * đoán và không quy về 0 — 0 lượt xem khác hẳn với chưa đọc được lượt xem.
+ */
+export interface PostInsights {
+  channelId: PublishChannelId;
+  postId: string;
+  fetchedAt: number;
+  /** Số lần bài hiện ra, tính cả trùng người. */
+  impressions?: number;
+  /** Số người khác nhau đã thấy bài. */
+  reach?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  /** Tổng tương tác, dùng khi nền tảng chỉ trả con số gộp. */
+  engagements?: number;
+  /** Nền tảng không cho đọc số liệu, kèm lý do. */
+  unavailable?: string;
+}
+
 export interface PublishResult {
   channelId: PublishChannelId;
   success: boolean;
