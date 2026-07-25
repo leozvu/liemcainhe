@@ -1,3 +1,8 @@
+// types/content.ts không import ngược lại file này nên không tạo vòng phụ thuộc.
+import type { ContentStudioState } from './types/content';
+
+export type { ContentStudioState };
+
 export interface CharacterVariation {
   id: string;
   name: string;
@@ -216,6 +221,7 @@ export interface ProjectSnapshot {
   aiSupervisor?: AISupervisorState;
   autoEditor?: AutoEditorState;
   agencyReview?: AgencyReviewState;
+  contentStudio?: ContentStudioState;
 }
 
 export interface ProjectCheckpoint {
@@ -826,6 +832,7 @@ export interface ProjectState {
   aiSupervisor?: AISupervisorState;
   autoEditor?: AutoEditorState;
   agencyReview?: AgencyReviewState;
+  contentStudio?: ContentStudioState;
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';

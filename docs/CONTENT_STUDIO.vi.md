@@ -87,6 +87,16 @@ TrendItem ──┬─→ ContentBrief ─→ ArticleDraft   (bài đăng)
 | Đăng bài dạng chữ | ✅ Facebook Page, Threads, Zalo OA |
 | Đăng video | ⬜ TikTok và YouTube nhận video, thuộc đường ống Phase 04 |
 
+## Lưu trữ
+
+Trạng thái Xưởng Nội dung nằm trong `ProjectState.contentStudio`, không phải state cục bộ của component. Nhờ vậy dùng luôn cơ chế tự lưu xuống IndexedDB và đồng bộ cloud sẵn có, không phải dựng đường lưu trữ riêng.
+
+Giữ: nguồn xu hướng đang chọn, brief, ô từ khoá, bài viết, truyện, thời lượng. Không giữ: trạng thái đang bận, thông báo, và **danh sách chủ đề nóng vừa tải** — chúng hết hạn rất nhanh, mở lại dự án hôm sau mà thấy bảng xu hướng của hôm qua thì tệ hơn bảng trống.
+
+`contentStudio` cũng nằm trong `ProjectSnapshot` để khôi phục checkpoint không xoá mất bài viết.
+
+Mọi thay đổi đều tính từ `prev` trong hàm cập nhật chứ không từ biến trong closure. Đọc từ closure sẽ mất ký tự khi gõ nhanh, vì React gộp nhiều lần cập nhật còn biến ngoài vẫn giữ giá trị của lần render cũ. Có test mô phỏng đúng tình huống này.
+
 ## Nối với phần còn lại của Egoric
 
 | Điểm nối | Cách làm |

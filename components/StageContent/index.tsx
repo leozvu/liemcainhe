@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowRight, Clapperboard, Copy, Download, Loader2, Sparkles } from 'lucide-react';
 import { ProjectState } from '../../types';
-import { ArticleDraft, ContentBrief, StoryBridge, TrendItem } from '../../types/content';
+import {
+  ArticleDraft,
+  ContentBrief,
+  ContentStudioState,
+  StoryBridge,
+  TrendItem,
+} from '../../types/content';
 import { TREND_SOURCES } from '../../services/content/trendSources';
 import { fetchTrendsWithFallback } from '../../services/content/trendService';
 import {
@@ -29,25 +35,66 @@ interface Props {
   onGoToScript?: () => void;
 }
 
+/** Trạng thái khởi đầu khi dự án chưa từng mở Xưởng Nội dung. */
+const EMPTY_STUDIO_STATE: ContentStudioState = {
+  sourceId: TREND_SOURCES[0].id,
+  brief: createDefaultBrief(''),
+  keywordText: '',
+  draft: null,
+  bridge: null,
+  durationSeconds: 60,
+  updatedAt: 0,
+};
+
 const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript }) => {
-  const [sourceId, setSourceId] = useState(TREND_SOURCES[0].id);
+  /**
+   * Nội dung đáng giữ nằm trong `project.contentStudio`, không phải state cục
+   * bộ, để chuyển tab hay đóng app không mất bài. Ghi vào dự án là đủ vì App
+   * đã tự lưu xuống IndexedDB và đồng bộ cloud sẵn.
+   *
+   * Chỉ những thứ thuần giao diện — đang bận, thông báo, danh sách tin vừa tải
+   * — mới ở lại đây, vì lưu chúng không có ý nghĩa gì sau khi đóng app.
+   */
+  const saved = project.contentStudio;
+
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [loadingTrends, setLoadingTrends] = useState(false);
-
-  const [brief, setBrief] = useState<ContentBrief>(createDefaultBrief(''));
-  const [keywordText, setKeywordText] = useState('');
-
-  const [draft, setDraft] = useState<ArticleDraft | null>(null);
-  const [bridge, setBridge] = useState<StoryBridge | null>(null);
-  const [duration, setDuration] = useState<ShortFilmDuration>(60);
-
   const [busy, setBusy] = useState<'article' | 'bridge' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const sourceId = saved?.sourceId ?? TREND_SOURCES[0].id;
+  const brief = saved?.brief ?? createDefaultBrief('');
+  const keywordText = saved?.keywordText ?? '';
+  const draft = saved?.draft ?? null;
+  const bridge = saved?.bridge ?? null;
+  const duration = (saved?.durationSeconds ?? 60) as ShortFilmDuration;
+
+  /**
+   * Mọi thay đổi đều tính từ `prev` chứ không từ biến trong closure.
+   *
+   * Đọc từ closure sẽ mất ký tự khi gõ nhanh, vì React gộp nhiều lần cập nhật
+   * và biến ngoài vẫn giữ giá trị của lần render cũ.
+   */
+  const patchStudio = (
+    patch: Partial<ContentStudioState> | ((current: ContentStudioState) => Partial<ContentStudioState>),
+  ) =>
+    updateProject((prev) => {
+      const current = prev.contentStudio ?? EMPTY_STUDIO_STATE;
+      const delta = typeof patch === 'function' ? patch(current) : patch;
+      return { ...prev, contentStudio: { ...current, ...delta, updatedAt: Date.now() } };
+    });
+
+  const setSourceId = (value: string) => patchStudio({ sourceId: value });
+  const setKeywordText = (value: string) => patchStudio({ keywordText: value });
+  const setDuration = (value: ShortFilmDuration) => patchStudio({ durationSeconds: value });
+  const setDraft = (value: ArticleDraft | null) => patchStudio({ draft: value });
+  const setBridge = (value: StoryBridge | null) => patchStudio({ bridge: value });
+
   const markdown = useMemo(() => (draft ? articleToMarkdown(draft) : ''), [draft]);
 
-  const patchBrief = (patch: Partial<ContentBrief>) => setBrief((prev) => ({ ...prev, ...patch }));
+  const patchBrief = (patch: Partial<ContentBrief>) =>
+    patchStudio((current) => ({ brief: { ...current.brief, ...patch } }));
 
   const handleLoadTrends = async () => {
     setLoadingTrends(true);

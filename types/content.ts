@@ -129,6 +129,30 @@ export interface ArticleDraft {
   readingMinutes: number;
 }
 
+/**
+ * Trạng thái Xưởng Nội dung được lưu cùng dự án.
+ *
+ * Nằm trong `ProjectState` để dùng luôn cơ chế tự lưu xuống IndexedDB và đồng
+ * bộ cloud sẵn có, thay vì dựng đường lưu trữ riêng. Chỉ giữ thứ đáng giữ:
+ * trạng thái tạm của giao diện như đang bận hay đang mở hướng dẫn thì để lại
+ * trong component.
+ *
+ * Không lưu danh sách chủ đề nóng đã tải vì chúng hết hạn rất nhanh; mở lại
+ * dự án hôm sau mà thấy bảng xu hướng của hôm qua thì tệ hơn là bảng trống.
+ */
+export interface ContentStudioState {
+  /** Nguồn xu hướng đang chọn. */
+  sourceId: string;
+  brief: ContentBrief;
+  /** Ô từ khoá còn ở dạng văn bản thô, giữ nguyên như người dùng đang gõ. */
+  keywordText: string;
+  draft: ArticleDraft | null;
+  bridge: StoryBridge | null;
+  /** Thời lượng phim ngắn đang chọn, tính bằng giây. */
+  durationSeconds: number;
+  updatedAt: number;
+}
+
 /** Kênh đăng bài. */
 export type PublishChannelId = 'facebook-page' | 'threads' | 'zalo-oa';
 
