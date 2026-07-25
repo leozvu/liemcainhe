@@ -1,5 +1,6 @@
 import { ModelDefinition, ModelType } from '../types/model';
 import { getApiKeyForModel, getModels } from './modelRegistry';
+import { ProviderHealth, getProviderHealth, shouldSkipProvider } from './providerHealthService';
 import { assertUsageAllowed, recordUsage } from './usageService';
 
 export interface ModelRoutingPolicy {
@@ -37,6 +38,24 @@ export const saveModelRoutingPolicy = (policy: ModelRoutingPolicy): void => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(policy));
 };
 
+/**
+ * Bỏ các model thuộc nhà cung cấp đang mất kết nối.
+ *
+ * Nếu lọc xong không còn gì thì trả lại nguyên danh sách: thà thử rồi nhận lỗi
+ * thật của nhà cung cấp, còn hơn báo "không có model khả dụng" — thông báo đó
+ * khiến người dùng đi tìm nhầm chỗ, tưởng mình cấu hình sai.
+ *
+ * Quy tắc không tự chuyển tuyến của KIE vẫn nguyên vẹn: khi preferred là KIE
+ * thì danh sách chỉ có một phần tử, lọc xong rỗng nên được khôi phục.
+ */
+export const applyCircuitBreaker = (
+  candidates: ModelDefinition[],
+  health: ProviderHealth[],
+): ModelDefinition[] => {
+  const alive = candidates.filter((model) => !shouldSkipProvider(health, model.providerId));
+  return alive.length ? alive : candidates;
+};
+
 export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition): ModelDefinition[] => {
   const policy = getModelRoutingPolicy();
   const models = getModels(type).filter((model) => model.isEnabled);
@@ -50,7 +69,8 @@ export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition
     .filter((model): model is ModelDefinition => Boolean(model))
     .filter((model) => !seen.has(model.id) && Boolean(seen.add(model.id)));
   const configured = ordered.filter((model) => Boolean(getApiKeyForModel(model.id)));
-  return (configured.length ? configured : ordered).slice(0, Math.max(1, policy.maxAttempts));
+  const usable = applyCircuitBreaker(configured.length ? configured : ordered, getProviderHealth());
+  return usable.slice(0, Math.max(1, policy.maxAttempts));
 };
 
 export const canFallbackFromModelError = (error: unknown): boolean => {
