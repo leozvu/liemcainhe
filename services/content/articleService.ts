@@ -1,5 +1,7 @@
+import { BrandKit } from '../../types';
 import { ArticleDraft, ArticleSection, ContentBrief } from '../../types/content';
 import { callChatApi } from '../adapters/chatAdapter';
+import { buildBrandKitPromptContext } from '../brandKitService';
 import { parseModelJson } from '../jsonResponse';
 import { buildAxisDirectives, getApproach, getAudience, getIntent, getVoice } from './contentAxes';
 
@@ -141,7 +143,13 @@ export const articleToMarkdown = (draft: ArticleDraft): string => {
 };
 
 export interface GenerateArticleOptions {
-  /** Mã tài nguyên để quy chi phí, thường là id chiến dịch hoặc id dự án. */
+  /**
+   * Brand Kit của khách hàng. Có thì tone of voice, từ bắt buộc, từ cấm và CTA
+   * đã duyệt được đưa vào prompt, nên bài ra đúng thương hiệu ngay từ đầu thay
+   * vì phải sửa ở vòng kiểm tra.
+   */
+  brandKit?: BrandKit | null;
+  /** Nhãn ngắn để quy chi phí về đúng thao tác. projectId tự gắn từ context. */
   usageResourceId?: string;
   /** Cho phép thay hàm gọi model khi kiểm thử. */
   chat?: typeof callChatApi;
@@ -156,11 +164,15 @@ export const generateArticle = async (
   }
 
   const chat = options.chat ?? callChatApi;
+  const systemPrompt = options.brandKit
+    ? `${VIETNAMESE_WRITING_RULES}\n\n${buildBrandKitPromptContext(options.brandKit)}`
+    : VIETNAMESE_WRITING_RULES;
+
   const response = await chat({
-    systemPrompt: VIETNAMESE_WRITING_RULES,
+    systemPrompt,
     prompt: buildArticlePrompt(brief),
     responseFormat: 'json',
-    usageResourceId: options.usageResourceId,
+    usageResourceId: options.usageResourceId ?? 'content-article',
   });
 
   return normalizeArticleDraft(parseModelJson(response), brief);

@@ -87,6 +87,18 @@ TrendItem ──┬─→ ContentBrief ─→ ArticleDraft   (bài đăng)
 | Đăng bài dạng chữ | ✅ Facebook Page, Threads, Zalo OA |
 | Đăng video | ⬜ TikTok và YouTube nhận video, thuộc đường ống Phase 04 |
 
+## Nối với phần còn lại của Egoric
+
+| Điểm nối | Cách làm |
+|---|---|
+| Brand Kit vào prompt | `buildBrandKitPromptContext(project.brandKitSnapshot)` được nối vào system prompt của cả viết bài lẫn dựng truyện. Tone of voice, từ bắt buộc, từ cấm và CTA đã duyệt đi vào ngay từ đầu, thay vì phải sửa ở vòng kiểm. |
+| Cổng kiểm thương hiệu | `inspectBrandCompliance` chạy trên **đoạn sắp đăng**, không phải bài đầy đủ. Vi phạm thì nút đăng bị khoá, kèm chốt chặn thứ hai trong hàm xử lý. |
+| Chi phí | `usageResourceId` dùng nhãn `content-article` và `content-story` theo đúng quy ước sẵn có. `projectId` tự gắn từ `setUsageProjectContext` trong `App.tsx`, nên chi phí Xưởng Nội dung đã vào Cost Dashboard và quy được về campaign qua liên kết project. |
+
+Vì sao kiểm trên đoạn sắp đăng chứ không phải bài đầy đủ: bài dài bị cắt cho vừa giới hạn kênh, mà đoạn bị cắt có thể chính là chỗ chứa từ bắt buộc hoặc CTA. Kiểm bài đầy đủ sẽ báo đạt trong khi thứ thật sự lên mạng lại thiếu.
+
+Không có Brand Kit thì bỏ qua vòng kiểm, hành vi giống như trước.
+
 ## Đăng bài
 
 Ba kênh nhận nội dung dạng chữ nên hợp với đầu ra của Xưởng Nội dung. TikTok và YouTube không có ở đây vì chúng nhận video — đó là đầu ra của Phase 04, một đường ống khác.

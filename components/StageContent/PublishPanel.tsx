@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ExternalLink, Loader2, Send, ShieldAlert, XCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, ExternalLink, Loader2, Send, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
+import { BrandKit } from '../../types';
 import { ArticleDraft, PublishChannelId, PublishResult } from '../../types/content';
 import { PUBLISH_CHANNELS } from '../../services/content/publishChannels';
 import {
@@ -8,10 +9,13 @@ import {
   publishToChannel,
   toPostText,
 } from '../../services/content/publishService';
+import { inspectBrandCompliance } from '../../services/brandKitService';
 import { getPublishSecret, setPublishSecret } from '../../services/credentialVault';
 
 interface Props {
   draft: ArticleDraft;
+  /** Brand Kit đã chốt của dự án. Không có thì bỏ qua vòng kiểm thương hiệu. */
+  brandKit?: BrandKit | null;
 }
 
 /**
@@ -21,7 +25,7 @@ interface Props {
  * lại được: nội dung sắp đăng luôn hiện ra để đọc lại trước, và nút đăng có
  * bước xác nhận riêng chứ không đăng ngay lần bấm đầu.
  */
-const PublishPanel: React.FC<Props> = ({ draft }) => {
+const PublishPanel: React.FC<Props> = ({ draft, brandKit }) => {
   const [channelId, setChannelId] = useState<PublishChannelId>('facebook-page');
   const [accessToken, setAccessToken] = useState('');
   const [accountId, setAccountId] = useState('');
@@ -34,6 +38,19 @@ const PublishPanel: React.FC<Props> = ({ draft }) => {
   const limit = CHANNEL_LIMITS[channelId];
   const postText = toPostText(draft, limit);
   const missing = findMissingCredentials(channelId, { accessToken, accountId });
+
+  /**
+   * Kiểm thương hiệu trên đúng đoạn sắp đăng, không phải trên bài đầy đủ.
+   *
+   * Bài dài bị cắt để vừa giới hạn kênh, mà đoạn bị cắt đi có thể chính là chỗ
+   * chứa từ bắt buộc hoặc CTA đã duyệt. Kiểm bài đầy đủ sẽ báo đạt trong khi
+   * thứ thật sự lên mạng lại thiếu.
+   */
+  const compliance = useMemo(
+    () => (brandKit ? inspectBrandCompliance(postText, brandKit) : null),
+    [postText, brandKit],
+  );
+  const blockedByBrand = Boolean(compliance && !compliance.passed);
 
   // Nạp lại token đã lưu trong phiên khi đổi kênh.
   useEffect(() => {
@@ -49,6 +66,12 @@ const PublishPanel: React.FC<Props> = ({ draft }) => {
   };
 
   const handlePublish = async () => {
+    // Chốt chặn thứ hai. Nút đã bị khoá khi vi phạm, nhưng nội dung có thể đổi
+    // sau lúc bấm xác nhận, và đăng bài thì không rút lại được.
+    if (blockedByBrand) {
+      setConfirming(false);
+      return;
+    }
     handleSaveCredentials();
     setSending(true);
     setResult(null);
@@ -159,6 +182,44 @@ const PublishPanel: React.FC<Props> = ({ draft }) => {
         </pre>
       </div>
 
+      {compliance && (
+        <div
+          className={`mt-4 rounded-xl border px-4 py-3 ${
+            compliance.passed
+              ? 'border-emerald-300/20 bg-emerald-400/[.05]'
+              : 'border-rose-300/30 bg-rose-500/[.08]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {compliance.passed ? (
+              <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-300" />
+            ) : (
+              <ShieldAlert className="h-4 w-4 shrink-0 text-rose-300" />
+            )}
+            <span className={`text-sm font-medium ${compliance.passed ? 'text-emerald-100' : 'text-rose-100'}`}>
+              Kiểm Brand Kit: {compliance.score}/100
+              {compliance.passed ? ' — đạt' : ' — chưa đạt, không đăng được'}
+            </span>
+          </div>
+
+          {compliance.violations.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-rose-100/85">
+              {compliance.violations.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          )}
+          {compliance.warnings.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-amber-100/70">
+              {compliance.warnings.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          )}
+          {!compliance.passed && (
+            <p className="mt-2 text-xs text-rose-100/70">
+              Sửa bài rồi viết lại, hoặc chỉnh Brand Kit nếu quy định đã thay đổi.
+            </p>
+          )}
+        </div>
+      )}
+
       {missing.length > 0 && (
         <p className="mt-3 text-xs text-amber-100/70">Còn thiếu: {missing.join(', ')}.</p>
       )}
@@ -169,7 +230,7 @@ const PublishPanel: React.FC<Props> = ({ draft }) => {
             type="button"
             className="eg-button-primary min-h-11 px-5"
             onClick={() => setConfirming(true)}
-            disabled={missing.length > 0 || sending}
+            disabled={missing.length > 0 || blockedByBrand || sending}
           >
             <Send className="mr-2 inline h-4 w-4" />Đăng lên {channel.label}
           </button>

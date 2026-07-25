@@ -92,7 +92,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
         .filter(Boolean);
       const result = await generateArticle(
         { ...brief, keywords },
-        { usageResourceId: `content:${project.id}` },
+        { brandKit: project.brandKitSnapshot },
       );
       setDraft(result);
       setBridge(null);
@@ -100,7 +100,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
 
   const handleBuildBridge = () =>
     runGuarded('bridge', async () => {
-      const options = { durationSeconds: duration, usageResourceId: `story:${project.id}` };
+      const options = { durationSeconds: duration, brandKit: project.brandKitSnapshot };
       const result = draft
         ? await buildStoryBridgeFromArticle(draft, brief, options)
         : await buildStoryBridgeFromTrend(
@@ -286,7 +286,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
           </section>
         )}
 
-        {draft && <PublishPanel draft={draft} />}
+        {draft && <PublishPanel draft={draft} brandKit={project.brandKitSnapshot} />}
 
         <section className="eg-panel mt-6 p-5" aria-labelledby="bridge-heading">
           <h2 id="bridge-heading" className="text-sm font-semibold text-white">Chuyển thành phim ngắn</h2>

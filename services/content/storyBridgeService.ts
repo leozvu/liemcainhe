@@ -1,5 +1,7 @@
+import { BrandKit } from '../../types';
 import { ArticleDraft, ContentBrief, StoryBridge, TrendItem } from '../../types/content';
 import { callChatApi } from '../adapters/chatAdapter';
+import { buildBrandKitPromptContext } from '../brandKitService';
 import { parseModelJson } from '../jsonResponse';
 import { getAudience, getVoice } from './contentAxes';
 
@@ -88,9 +90,14 @@ export const normalizeStoryBridge = (
 
 export interface BuildStoryBridgeOptions {
   durationSeconds?: ShortFilmDuration;
+  /** Brand Kit của khách hàng, đưa vào prompt để truyện không lệch thương hiệu. */
+  brandKit?: BrandKit | null;
   usageResourceId?: string;
   chat?: typeof callChatApi;
 }
+
+const systemPromptFor = (brandKit?: BrandKit | null): string =>
+  brandKit ? `${STORY_RULES}\n\n${buildBrandKitPromptContext(brandKit)}` : STORY_RULES;
 
 /** Dựng cầu nối từ một chủ đề nóng, chưa cần viết bài. */
 export const buildStoryBridgeFromTrend = async (
@@ -101,12 +108,12 @@ export const buildStoryBridgeFromTrend = async (
   const chat = options.chat ?? callChatApi;
 
   const response = await chat({
-    systemPrompt: STORY_RULES,
+    systemPrompt: systemPromptFor(options.brandKit),
     prompt: buildStoryPrompt(trend.title, duration, [
       `Chủ đề đang nóng trên ${trend.sourceLabel}, đứng hạng ${trend.rank}.`,
     ]),
     responseFormat: 'json',
-    usageResourceId: options.usageResourceId,
+    usageResourceId: options.usageResourceId ?? 'content-story',
   });
 
   return normalizeStoryBridge(parseModelJson(response), trend.title, duration);
@@ -136,10 +143,10 @@ export const buildStoryBridgeFromArticle = async (
   ].filter((line): line is string => Boolean(line));
 
   const response = await chat({
-    systemPrompt: STORY_RULES,
+    systemPrompt: systemPromptFor(options.brandKit),
     prompt: buildStoryPrompt(brief.topic, duration, context),
     responseFormat: 'json',
-    usageResourceId: options.usageResourceId,
+    usageResourceId: options.usageResourceId ?? 'content-story',
   });
 
   return normalizeStoryBridge(parseModelJson(response), brief.topic, duration);

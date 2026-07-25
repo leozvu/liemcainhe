@@ -21,6 +21,7 @@ import {
   normalizeStoryBridge,
   toFilmProjectSeed,
 } from '../services/content/storyBridgeService';
+import { inspectBrandCompliance, normalizeBrandKit } from '../services/brandKitService';
 import { ArticleDraft, ContentBrief, TrendItem } from '../types/content';
 
 const brief: ContentBrief = {
@@ -174,6 +175,73 @@ describe('sinh bài', () => {
       { chat: chat as never },
     );
     expect(chat.mock.calls[0][0].prompt).toContain('CafeF');
+  });
+});
+
+describe('tích hợp Brand Kit', () => {
+  const kit = normalizeBrandKit({
+    toneOfVoice: 'Điềm đạm, thực tế, không hô hào',
+    mandatoryTerms: ['Egoric'],
+    forbiddenTerms: ['cam kết lợi nhuận'],
+    ctas: ['Nhắn tin để được tư vấn'],
+  });
+
+  it('đưa tone, từ bắt buộc và từ cấm vào prompt viết bài', async () => {
+    const chat = vi.fn().mockResolvedValue(JSON.stringify(draftJson));
+    await generateArticle(brief, { chat: chat as never, brandKit: kit });
+
+    const sys = chat.mock.calls[0][0].systemPrompt;
+    expect(sys).toContain('BRAND KIT');
+    expect(sys).toContain('Điềm đạm, thực tế, không hô hào');
+    expect(sys).toContain('Egoric');
+    expect(sys).toContain('cam kết lợi nhuận');
+    // Quy tắc viết tiếng Việt vẫn phải còn, không bị Brand Kit thay thế.
+    expect(sys).toContain('Không viết hoa toàn bộ');
+  });
+
+  it('không có Brand Kit thì prompt giữ nguyên như cũ', async () => {
+    const chat = vi.fn().mockResolvedValue(JSON.stringify(draftJson));
+    await generateArticle(brief, { chat: chat as never });
+    expect(chat.mock.calls[0][0].systemPrompt).not.toContain('BRAND KIT');
+  });
+
+  it('truyện phim ngắn cũng nhận Brand Kit', async () => {
+    const chat = vi.fn().mockResolvedValue(
+      JSON.stringify({ logline: 'x', rawScript: 'Truyện.', characterHints: [] }),
+    );
+    await buildStoryBridgeFromTrend(
+      { title: 'A', sourceId: 'cafef', sourceLabel: 'CafeF', category: 'kinh_doanh', rank: 1 },
+      { chat: chat as never, brandKit: kit },
+    );
+    expect(chat.mock.calls[0][0].systemPrompt).toContain('BRAND KIT');
+  });
+
+  it('chặn được bài có từ cấm và bắt được bài thiếu từ bắt buộc', () => {
+    const viPham = inspectBrandCompliance('Chúng tôi cam kết lợi nhuận 20% mỗi tháng.', kit);
+    expect(viPham.passed).toBe(false);
+    expect(viPham.violations.some((v) => v.includes('cam kết lợi nhuận'))).toBe(true);
+    expect(viPham.violations.some((v) => v.includes('Egoric'))).toBe(true);
+
+    const dat = inspectBrandCompliance('Egoric giúp bạn dựng video. Nhắn tin để được tư vấn.', kit);
+    expect(dat.passed).toBe(true);
+    expect(dat.warnings).toEqual([]);
+  });
+});
+
+describe('nhãn chi phí theo quy ước sẵn có', () => {
+  it('viết bài và dựng truyện dùng nhãn riêng, không lặp lại projectId', async () => {
+    const chatBai = vi.fn().mockResolvedValue(JSON.stringify(draftJson));
+    await generateArticle(brief, { chat: chatBai as never });
+    expect(chatBai.mock.calls[0][0].usageResourceId).toBe('content-article');
+
+    const chatTruyen = vi.fn().mockResolvedValue(
+      JSON.stringify({ logline: 'x', rawScript: 'Truyện.', characterHints: [] }),
+    );
+    await buildStoryBridgeFromTrend(
+      { title: 'A', sourceId: 'cafef', sourceLabel: 'CafeF', category: 'kinh_doanh', rank: 1 },
+      { chat: chatTruyen as never },
+    );
+    expect(chatTruyen.mock.calls[0][0].usageResourceId).toBe('content-story');
   });
 });
 
