@@ -1,4 +1,5 @@
 import { ProductionJob, ProjectState } from '../types';
+import { reconcileInterruptedJobs } from './jobStateMachine';
 
 const isHosted = (): boolean =>
   typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
@@ -24,20 +25,31 @@ export const loadDurableJobs = async (projectId: string): Promise<ProductionJob[
   return Array.isArray(payload.jobs) ? payload.jobs : [];
 };
 
+/**
+ * Nạp lại hàng đợi job và đối chiếu những job bị ngắt.
+ *
+ * Chạy cả khi không có job từ cloud, vì job kẹt ở `running` nằm ngay trong dự
+ * án cục bộ: tab bị đóng giữa chừng thì không ai kịp đổi trạng thái. Bản cũ
+ * thoát sớm khi cloud rỗng nên bỏ sót đúng trường hợp hay gặp nhất.
+ */
 export const hydrateDurableJobs = async (project: ProjectState): Promise<ProjectState> => {
   const remoteJobs = await loadDurableJobs(project.id);
-  if (!remoteJobs.length) return project;
+  const localJobs = project.workflow?.jobs || [];
+  if (!remoteJobs.length && !localJobs.length) return project;
+
   const merged = new Map<string, ProductionJob>();
-  [...remoteJobs, ...(project.workflow?.jobs || [])].forEach((job) => {
+  [...remoteJobs, ...localJobs].forEach((job) => {
     const current = merged.get(job.id);
     if (!current || job.updatedAt >= current.updatedAt) merged.set(job.id, job);
   });
+
+  const jobs = reconcileInterruptedJobs(Array.from(merged.values()))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 100);
+
   return {
     ...project,
-    workflow: {
-      ...(project.workflow || { checkpoints: [], jobs: [] }),
-      jobs: Array.from(merged.values()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100),
-    },
+    workflow: { ...(project.workflow || { checkpoints: [], jobs: [] }), jobs },
   };
 };
 

@@ -204,6 +204,20 @@ export interface ProductionJob {
   attempts: number;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Vân tay của công việc này.
+   *
+   * Cùng loại, cùng tài nguyên, cùng đầu vào thì cùng khoá. Dùng để không gửi
+   * lại một tác vụ đã tồn tại, tránh bị trừ tiền hai lần cho cùng một thứ.
+   */
+  idempotencyKey?: string;
+  /**
+   * Mã tác vụ bên nhà cung cấp.
+   *
+   * Có mã này thì phiên sau đối chiếu được kết quả thay vì chạy lại. Không có
+   * thì một job bị ngắt giữa chừng là mất dấu hoàn toàn.
+   */
+  providerTaskId?: string;
 }
 
 export interface ProjectSnapshot {
