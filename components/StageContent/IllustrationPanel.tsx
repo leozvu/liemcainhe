@@ -7,6 +7,11 @@ import {
   planIllustrations,
   renderIllustration,
 } from '../../services/content/illustrationService';
+import {
+  PreflightReport,
+  describePreflight,
+  preflightPrompt,
+} from '../../services/promptPreflight';
 
 interface Props {
   draft: ArticleDraft;
@@ -28,6 +33,7 @@ const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, onChange }
   const [planning, setPlanning] = useState(false);
   const [renderingId, setRenderingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [preflight, setPreflight] = useState<{ id: string; report: PreflightReport } | null>(null);
 
   const handlePlan = async () => {
     setPlanning(true);
@@ -41,9 +47,29 @@ const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, onChange }
     }
   };
 
-  const handleRender = async (target: ArticleIllustration) => {
+  /**
+   * @param force bỏ qua cảnh báo thẩm định. Chỉ true khi người dùng đã đọc và
+   * vẫn muốn vẽ.
+   */
+  const handleRender = async (target: ArticleIllustration, force = false) => {
     setRenderingId(target.id);
     setError(null);
+
+    // Chấm prompt trước khi gọi model ảnh. Một lần chấm rẻ hơn một lần vẽ
+    // nhiều lần, nên chặn được một lần vẽ hỏng là đã có lãi.
+    if (!force) {
+      const report = await preflightPrompt(
+        { prompt: target.prompt, target: 'image', brandKit },
+        { usageResourceId: 'preflight-illustration' },
+      );
+      if (report.verdict !== 'pass') {
+        setPreflight({ id: target.id, report });
+        setRenderingId(null);
+        return;
+      }
+    }
+
+    setPreflight(null);
     const marked = illustrations.map((item) =>
       item.id === target.id ? { ...item, status: 'generating' as const } : item,
     );
@@ -145,6 +171,66 @@ const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, onChange }
                 aria-label="Prompt vẽ ảnh"
               />
               <p className="mt-1.5 text-xs text-zinc-500">Mô tả thay thế: {item.altText}</p>
+
+              {preflight?.id === item.id && (
+                <div
+                  className={`mt-3 rounded-xl border px-3 py-2.5 ${
+                    preflight.report.verdict === 'block'
+                      ? 'border-rose-300/30 bg-rose-500/[.08]'
+                      : 'border-amber-300/30 bg-amber-400/[.08]'
+                  }`}
+                  role="alert"
+                >
+                  <p
+                    className={`text-xs font-medium ${
+                      preflight.report.verdict === 'block' ? 'text-rose-50' : 'text-amber-50'
+                    }`}
+                  >
+                    {describePreflight(preflight.report)}
+                  </p>
+                  <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-zinc-300">
+                    {preflight.report.issues.map((issue, index) => (
+                      <li key={`${issue.code}-${index}`}>
+                        <span className={issue.severity === 'block' ? 'text-rose-200' : 'text-amber-100'}>
+                          {issue.message}
+                        </span>
+                        {issue.fix && <span className="block text-zinc-500">{issue.fix}</span>}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {preflight.report.revisedPrompt && (
+                      <button
+                        type="button"
+                        className="eg-button-secondary min-h-11 px-3 text-xs"
+                        onClick={() => {
+                          patchPrompt(item.id, preflight.report.revisedPrompt!);
+                          setPreflight(null);
+                        }}
+                      >
+                        Dùng bản sửa
+                      </button>
+                    )}
+                    {preflight.report.verdict === 'warn' && (
+                      <button
+                        type="button"
+                        className="eg-button-secondary min-h-11 px-3 text-xs"
+                        onClick={() => void handleRender(item, true)}
+                      >
+                        Vẫn vẽ
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="eg-button-secondary min-h-11 px-3 text-xs"
+                      onClick={() => setPreflight(null)}
+                    >
+                      Để tôi sửa
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {item.status === 'failed' && item.error && (
                 <p role="alert" className="mt-2 text-xs text-rose-200">{item.error}</p>
