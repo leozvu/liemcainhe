@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Clapperboard, Copy, Download, Loader2, Sparkles } from 'lucide-react';
+import { ArrowRight, Clapperboard, Copy, Download, Eye, Loader2, Pencil, Sparkles } from 'lucide-react';
 import { ProjectState } from '../../types';
 import {
   ArticleDraft,
@@ -25,7 +25,10 @@ import {
   buildStoryBridgeFromTrend,
   toFilmProjectSeed,
 } from '../../services/content/storyBridgeService';
+import { getCoverImage } from '../../services/content/illustrationService';
+import ArticleEditor from './ArticleEditor';
 import AxisPicker from './AxisPicker';
+import IllustrationPanel from './IllustrationPanel';
 import PublishPanel from './PublishPanel';
 import TrendBoard from './TrendBoard';
 
@@ -62,6 +65,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const [busy, setBusy] = useState<'article' | 'bridge' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const sourceId = saved?.sourceId ?? TREND_SOURCES[0].id;
   const brief = saved?.brief ?? createDefaultBrief('');
@@ -92,6 +96,13 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const setBridge = (value: StoryBridge | null) => patchStudio({ bridge: value });
 
   const markdown = useMemo(() => (draft ? articleToMarkdown(draft) : ''), [draft]);
+
+  const cover = draft ? getCoverImage(draft) : undefined;
+  /** Ảnh đã vẽ xong của một mục, dùng khi xem trước bài. */
+  const sectionImage = (index: number): string | undefined =>
+    draft?.illustrations?.find(
+      (item) => item.purpose === 'section' && item.sectionIndex === index && item.status === 'done',
+    )?.imageUrl;
 
   const patchBrief = (patch: Partial<ContentBrief>) =>
     patchStudio((current) => ({ brief: { ...current.brief, ...patch } }));
@@ -299,7 +310,16 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
                   {draft.sections.length} mục · đọc khoảng {draft.readingMinutes} phút
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="eg-button-secondary min-h-11 px-4"
+                  onClick={() => setEditing((value) => !value)}
+                  aria-pressed={editing}
+                >
+                  {editing ? <Eye className="mr-2 inline h-4 w-4" /> : <Pencil className="mr-2 inline h-4 w-4" />}
+                  {editing ? 'Xem bài' : 'Sửa bài'}
+                </button>
                 <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={() => void handleCopy()}>
                   <Copy className="mr-2 inline h-4 w-4" />Chép Markdown
                 </button>
@@ -309,28 +329,61 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
               </div>
             </div>
 
-            <article className="mt-5 border-t eg-divider pt-5">
-              <h3 className="eg-display text-xl font-semibold text-white">{draft.title}</h3>
-              <p className="mt-2 font-medium text-zinc-300">{draft.sapo}</p>
-              {draft.sections.map((section, index) => (
-                <div key={`${section.heading}-${index}`} className="mt-5">
-                  {section.heading && <h4 className="text-sm font-semibold text-cyan-100">{section.heading}</h4>}
-                  <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{section.body}</p>
-                </div>
-              ))}
-              {draft.hashtags.length > 0 && (
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {draft.hashtags.map((tag) => <span key={tag} className="eg-chip">#{tag}</span>)}
-                </div>
-              )}
-            </article>
+            <div className="mt-5 border-t eg-divider pt-5">
+              {editing ? (
+                <ArticleEditor draft={draft} onChange={setDraft} />
+              ) : (
+                <>
+                  <article>
+                    {cover && (
+                      <img
+                        src={cover}
+                        alt=""
+                        className="mb-4 w-full rounded-xl border border-white/[.07]"
+                        loading="lazy"
+                      />
+                    )}
+                    <h3 className="eg-display text-xl font-semibold text-white">{draft.title}</h3>
+                    <p className="mt-2 font-medium text-zinc-300">{draft.sapo}</p>
+                    {draft.sections.map((section, index) => (
+                      <div key={`${section.heading}-${index}`} className="mt-5">
+                        {section.heading && <h4 className="text-sm font-semibold text-cyan-100">{section.heading}</h4>}
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{section.body}</p>
+                        {sectionImage(index) && (
+                          <img
+                            src={sectionImage(index)}
+                            alt=""
+                            className="mt-3 w-full rounded-lg border border-white/[.07]"
+                            loading="lazy"
+                          />
+                        )}
+                      </div>
+                    ))}
+                    {draft.hashtags.length > 0 && (
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        {draft.hashtags.map((tag) => <span key={tag} className="eg-chip">#{tag}</span>)}
+                      </div>
+                    )}
+                  </article>
 
-            <div className="mt-5 border-t eg-divider pt-4">
-              <div className="eg-kicker">Cho công cụ tìm kiếm</div>
-              <p className="mt-1.5 text-xs text-zinc-400"><strong className="text-zinc-300">{draft.seoTitle}</strong></p>
-              <p className="mt-1 text-xs text-zinc-500">{draft.metaDescription}</p>
+                  <div className="mt-5 border-t eg-divider pt-4">
+                    <div className="eg-kicker">Cho công cụ tìm kiếm</div>
+                    <p className="mt-1.5 text-xs text-zinc-400"><strong className="text-zinc-300">{draft.seoTitle}</strong></p>
+                    <p className="mt-1 text-xs text-zinc-500">{draft.metaDescription}</p>
+                  </div>
+                </>
+              )}
             </div>
           </section>
+        )}
+
+        {draft && (
+          <IllustrationPanel
+            draft={draft}
+            brief={brief}
+            brandKit={project.brandKitSnapshot}
+            onChange={(illustrations) => setDraft({ ...draft, illustrations })}
+          />
         )}
 
         {draft && <PublishPanel draft={draft} brandKit={project.brandKitSnapshot} />}

@@ -1,3 +1,5 @@
+import type { AspectRatio } from './model';
+
 /**
  * Mô hình dữ liệu cho Xưởng Nội dung của Egoric Film Studio.
  *
@@ -116,6 +118,29 @@ export interface ArticleSection {
   body: string;
 }
 
+/** Vai trò của một ảnh trong bài. */
+export type IllustrationPurpose = 'cover' | 'section';
+
+/**
+ * Một ảnh minh hoạ cho bài viết.
+ *
+ * Tách prompt khỏi ảnh để người dùng đọc và sửa prompt trước khi bấm tạo —
+ * mỗi lần tạo ảnh đều tốn tiền, nên không tự sinh hàng loạt.
+ */
+export interface ArticleIllustration {
+  id: string;
+  purpose: IllustrationPurpose;
+  /** Mục nào trong bài. Chỉ có với `purpose: 'section'`. */
+  sectionIndex?: number;
+  prompt: string;
+  /** Mô tả thay thế cho người dùng trình đọc màn hình. */
+  altText: string;
+  aspectRatio: AspectRatio;
+  imageUrl?: string;
+  status: 'draft' | 'generating' | 'done' | 'failed';
+  error?: string;
+}
+
 /** Bài viết hoàn chỉnh do mô hình sinh ra. */
 export interface ArticleDraft {
   title: string;
@@ -127,6 +152,8 @@ export interface ArticleDraft {
   metaDescription: string;
   /** Ước lượng thời gian đọc, tính bằng phút. */
   readingMinutes: number;
+  /** Ảnh minh hoạ. Chỉ có sau khi người dùng chủ động yêu cầu. */
+  illustrations?: ArticleIllustration[];
 }
 
 /**
