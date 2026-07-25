@@ -415,4 +415,12 @@ export const clearShotStaleFlag = (shot: Shot, target: 'voice' | 'keyframes' | '
   },
 });
 
-export const stageForProjectStage = (stage: ProjectStage): CoreStage => stage === 'prompts' ? 'script' : stage;
+/**
+ * Quy một chặng bất kỳ về chặng lõi gần nhất.
+ *
+ * Kho sáng tạo và Xưởng nội dung không phải chặng lõi nhưng vẫn cần một chặng
+ * để gắn tác vụ và tiến độ; cả hai đều đổ về Kịch bản vì đó là nơi kết quả của
+ * chúng đi tiếp.
+ */
+export const stageForProjectStage = (stage: ProjectStage): CoreStage =>
+  stage === 'prompts' || stage === 'content' ? 'script' : stage;

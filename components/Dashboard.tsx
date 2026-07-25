@@ -52,6 +52,7 @@ interface Props {
 }
 
 const STAGE_META: Record<ProjectState['stage'], { label: string; step: number }> = {
+  content: { label: 'Xưởng nội dung', step: 1 },
   script: { label: 'Kịch bản', step: 1 },
   assets: { label: 'Tài nguyên', step: 2 },
   voice: { label: 'Giọng thoại', step: 3 },

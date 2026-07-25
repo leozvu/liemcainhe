@@ -7,7 +7,39 @@ const API_TARGETS = {
   '/api-proxy/fpt': 'https://api.fpt.ai',
   '/api-proxy/viettel': 'https://viettelai.vn',
   '/api-proxy/elevenlabs': 'https://api.elevenlabs.io',
+  '/api-proxy/facebook': 'https://graph.facebook.com',
+  '/api-proxy/threads': 'https://graph.threads.net',
+  '/api-proxy/zalo': 'https://openapi.zalo.me',
 };
+
+/**
+ * Feed xu hướng Việt Nam cho Xưởng Nội dung.
+ *
+ * Tách khỏi API_TARGETS vì mười ba nguồn nằm trên nhiều tên miền, không khớp
+ * mẫu "một tiền tố tới một host". Trình duyệt chỉ gửi lên `id`, worker tra
+ * bảng này rồi mới gọi ra ngoài — proxy vẫn không nhận đích từ người dùng.
+ *
+ * Bảng này là bản sao của services/content/trendSources.ts vì worker chạy độc
+ * lập, không import được TypeScript. tests/trendSources.test.ts khẳng định hai
+ * bên luôn khớp nhau.
+ */
+const TREND_TARGETS = {
+  'google-trends': 'https://trends.google.com/trending/rss?geo=VN',
+  vnexpress: 'https://vnexpress.net/rss/tin-moi-nhat.rss',
+  dantri: 'https://dantri.com.vn/rss/home.rss',
+  tuoitre: 'https://tuoitre.vn/rss/tin-moi-nhat.rss',
+  thanhnien: 'https://thanhnien.vn/rss/home.rss',
+  kenh14: 'https://kenh14.vn/star.rss',
+  soha: 'https://soha.vn/rss/home.rss',
+  '24h': 'https://www.24h.com.vn/upload/rss/tintuctrongngay.rss',
+  nld: 'https://nld.com.vn/rss/home.rss',
+  vietnamplus: 'https://www.vietnamplus.vn/rss/tinmoinhat.rss',
+  'tuoitre-giaitri': 'https://tuoitre.vn/rss/giai-tri.rss',
+  cafef: 'https://cafef.vn/thi-truong-chung-khoan.rss',
+  'vnexpress-congnghe': 'https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss',
+};
+
+const TREND_PREFIX = '/api-proxy/trends/';
 
 const json = (payload, status = 200) => new Response(JSON.stringify(payload), {
   status,
@@ -30,6 +62,8 @@ const ALLOWED_PROXY_HEADERS = new Set([
   'speed',
   'format',
   'xi-api-key',
+  // Zalo OA truyền token qua header tuỳ biến này thay vì Authorization.
+  'access_token',
 ]);
 
 async function enforceProxyRateLimit(env, email, bucket, limit = 180) {
@@ -1240,6 +1274,39 @@ export default {
       } catch (error) {
         console.error('Reviews API error', error);
         return json({ error: error instanceof Error ? error.message : 'Reviews API thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname.startsWith(TREND_PREFIX)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return json({ error: 'Feed xu hướng chỉ nhận GET.' }, 405);
+      }
+      const email = getAuthenticatedEmail(request);
+      if (!email) return json({ error: 'Hãy đăng nhập trước khi đọc bảng xu hướng.' }, 401);
+      if (!(await enforceProxyRateLimit(env, email, 'trends'))) {
+        return json({ error: 'Bạn đang gửi quá nhiều yêu cầu. Hãy chờ một phút rồi thử lại.' }, 429);
+      }
+
+      const sourceId = decodeURIComponent(url.pathname.slice(TREND_PREFIX.length));
+      const feedUrl = Object.prototype.hasOwnProperty.call(TREND_TARGETS, sourceId)
+        ? TREND_TARGETS[sourceId]
+        : undefined;
+      if (!feedUrl) return json({ error: `Nguồn xu hướng không hợp lệ: ${sourceId}` }, 404);
+
+      try {
+        const upstream = await fetch(feedUrl, {
+          headers: {
+            'user-agent': 'Mozilla/5.0 (compatible; EgoricFilmStudio/1.0)',
+            accept: 'application/rss+xml, application/xml, text/xml, */*',
+          },
+        });
+        const headers = new Headers();
+        headers.set('content-type', upstream.headers.get('content-type') ?? 'application/xml; charset=utf-8');
+        headers.set('cache-control', 'no-store');
+        headers.set('x-content-type-options', 'nosniff');
+        return new Response(upstream.body, { status: upstream.status, headers });
+      } catch (error) {
+        return json({ error: `Không đọc được nguồn ${sourceId}: ${error instanceof Error ? error.message : 'lỗi mạng'}` }, 502);
       }
     }
 

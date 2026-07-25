@@ -1,6 +1,8 @@
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+// Plugin viết bằng .mjs để chạy được ở Node thuần, không cần bước biên dịch trước.
+import { trendProxyPlugin } from './scripts/trend-proxy-plugin.mjs';
 
 export default defineConfig(() => {
     return {
@@ -48,6 +50,21 @@ export default defineConfig(() => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/elevenlabs/, ''),
           },
+          '/api-proxy/facebook': {
+            target: 'https://graph.facebook.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/facebook/, ''),
+          },
+          '/api-proxy/threads': {
+            target: 'https://graph.threads.net',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/threads/, ''),
+          },
+          '/api-proxy/zalo': {
+            target: 'https://openapi.zalo.me',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/zalo/, ''),
+          },
         },
       },
       preview: {
@@ -94,9 +111,24 @@ export default defineConfig(() => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api-proxy\/elevenlabs/, ''),
           },
+          '/api-proxy/facebook': {
+            target: 'https://graph.facebook.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/facebook/, ''),
+          },
+          '/api-proxy/threads': {
+            target: 'https://graph.threads.net',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/threads/, ''),
+          },
+          '/api-proxy/zalo': {
+            target: 'https://openapi.zalo.me',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy\/zalo/, ''),
+          },
         },
       },
-      plugins: [react()],
+      plugins: [react(), trendProxyPlugin()],
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
