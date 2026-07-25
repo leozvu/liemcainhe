@@ -51,6 +51,12 @@ Hai bảo hiểm quan trọng:
 1. **Lọc xong rỗng thì trả lại nguyên danh sách.** Thà thử rồi nhận lỗi thật của nhà cung cấp, còn hơn báo "không có model khả dụng" — thông báo đó khiến người dùng đi tìm nhầm chỗ, tưởng mình cấu hình sai.
 2. **Quy tắc không tự chuyển tuyến của KIE vẫn nguyên vẹn.** Khi model được chọn thuộc KIE thì danh sách chỉ có một phần tử; lọc xong rỗng nên được khôi phục, không có chuyện tự gọi model khác rồi trừ credit ngoài dự kiến.
 
+## Giao diện
+
+Trung tâm vận hành → tab **Sức khỏe nhà cung cấp**. Đọc từ nhật ký đã ghi, không gọi mạng, nên mở bảng không tốn phí và không đụng hạn mức của ai. Tự làm mới mỗi phút vì nhật ký chỉ đổi khi có lời gọi AI mới.
+
+Chọn được cửa sổ 1 giờ, 6 giờ hoặc 24 giờ. Mỗi nhà cung cấp hiện trạng thái, số lượt, tỷ lệ thành công, trung vị thời gian phản hồi và bảng đếm theo loại lỗi.
+
 ## Kiểm chứng
 
 ```bash
