@@ -309,10 +309,17 @@ export const createProjectForCampaignDeliverable = (
     'BRIEF:',
     campaign.brief || 'Hãy phát triển kịch bản phù hợp với mục tiêu chiến dịch.',
   ].filter((line) => line !== '').join('\n');
+  const previousProjectId = deliverable.projectId;
+  const previousProjectStillUsed = previousProjectId
+    ? campaign.deliverables.some((item) => item.id !== deliverableId && item.projectId === previousProjectId)
+    : false;
   const nextCampaign: AgencyCampaign = {
     ...campaign,
     status: campaign.status === 'brief' ? 'planning' : campaign.status,
-    projectIds: Array.from(new Set([...campaign.projectIds, project.id])),
+    projectIds: Array.from(new Set([
+      ...campaign.projectIds.filter((id) => id !== previousProjectId || previousProjectStillUsed),
+      project.id,
+    ])),
     deliverables: campaign.deliverables.map((item) => item.id === deliverableId ? {
       ...item,
       projectId: project.id,

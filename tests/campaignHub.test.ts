@@ -63,6 +63,37 @@ describe('Campaign Hub', () => {
     expect(created.campaign.deliverables[0].status).toBe('in-progress');
   });
 
+  it('thay liên kết project đã mất bằng project mới mà không giữ id mồ côi', () => {
+    const client = createAgencyClient({ name: 'Egoric Client', brandName: 'Egoric Client' });
+    const campaign = createAgencyCampaign({
+      clientId: client.id,
+      name: 'Campaign cần khôi phục',
+      objective: 'awareness',
+      brief: 'Tạo lại không gian nội dung từ brief chiến dịch.',
+      targetAudience: 'Khách hàng mới',
+      owner: 'Egoric Team',
+      budget: 5_000_000,
+      currency: 'VND',
+      deliverables: [createCampaignDeliverable({ title: 'Video chính' })],
+    });
+    const staleProjectId = 'proj_khong_con_ton_tai';
+    const campaignWithBrokenLink = {
+      ...campaign,
+      projectIds: [staleProjectId],
+      deliverables: campaign.deliverables.map((deliverable) => ({ ...deliverable, projectId: staleProjectId })),
+    };
+
+    const recovered = createProjectForCampaignDeliverable(
+      campaignWithBrokenLink,
+      client,
+      campaignWithBrokenLink.deliverables[0].id,
+    );
+
+    expect(recovered.project.id).not.toBe(staleProjectId);
+    expect(recovered.campaign.deliverables[0].projectId).toBe(recovered.project.id);
+    expect(recovered.campaign.projectIds).toEqual([recovered.project.id]);
+  });
+
   it('cập nhật một deliverable mà không làm thay đổi các đầu ra khác', () => {
     const campaign = createAgencyCampaign({
       clientId: 'client_1',

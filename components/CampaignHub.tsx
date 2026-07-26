@@ -347,6 +347,49 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
     setCampaigns((current) => current.map((item) => item.id === next.id ? next : item));
   };
 
+  /**
+   * Khôi phục liên kết campaign → project khi dữ liệu campaign đã được đồng bộ
+   * từ cloud nhưng project tương ứng không còn trên thiết bị hiện tại.
+   */
+  const createAndPersistDeliverableProject = async (
+    campaign: AgencyCampaign,
+    client: AgencyClient,
+    deliverable: CampaignDeliverable,
+  ): Promise<ProjectState> => {
+    const created = createProjectForCampaignDeliverable(campaign, client, deliverable.id);
+    await Promise.all([saveAgencyCampaign(created.campaign), saveProjectToDB(created.project)]);
+    setCampaigns((current) => current.map((item) => item.id === created.campaign.id ? created.campaign : item));
+    return created.project;
+  };
+
+  const resolveDeliverableProject = async (
+    campaign: AgencyCampaign,
+    client: AgencyClient,
+    deliverable: CampaignDeliverable,
+  ): Promise<ProjectState> => {
+    if (!deliverable.projectId) {
+      return createAndPersistDeliverableProject(campaign, client, deliverable);
+    }
+
+    let target = projectsById.get(deliverable.projectId);
+    if (!target) {
+      try {
+        target = await loadProjectFromDB(deliverable.projectId);
+      } catch (error) {
+        // Campaign/Brand Kit được đồng bộ cấp workspace, còn project có thể chỉ
+        // nằm trên trình duyệt cũ. Tự tạo lại project thay vì chặn người dùng.
+        if (error instanceof Error && error.message === 'Không tìm thấy dự án') {
+          return createAndPersistDeliverableProject(campaign, client, deliverable);
+        }
+        throw error;
+      }
+    }
+
+    const refreshed = { ...target, brandKitSnapshot: normalizeBrandKit(client.brandKit) };
+    await saveProjectToDB(refreshed);
+    return refreshed;
+  };
+
   const openDeliverableProject = async (
     campaign: AgencyCampaign,
     deliverable: CampaignDeliverable,
@@ -365,18 +408,8 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
         else if (destination === 'production' && onOpenProjectWithProductionControl) onOpenProjectWithProductionControl(destinationTarget);
         else onOpenProject(destinationTarget);
       };
-      if (deliverable.projectId) {
-        const cached = projectsById.get(deliverable.projectId);
-        const target = cached || await loadProjectFromDB(deliverable.projectId);
-        const refreshed = { ...target, brandKitSnapshot: normalizeBrandKit(client.brandKit) };
-        await saveProjectToDB(refreshed);
-        await openTarget(refreshed);
-        return;
-      }
-      const created = createProjectForCampaignDeliverable(campaign, client, deliverable.id);
-      await Promise.all([saveAgencyCampaign(created.campaign), saveProjectToDB(created.project)]);
-      setCampaigns((current) => current.map((item) => item.id === created.campaign.id ? created.campaign : item));
-      await openTarget(created.project);
+      const target = await resolveDeliverableProject(campaign, client, deliverable);
+      await openTarget(target);
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể mở không gian sản xuất.', { type: 'error' });
     } finally {
@@ -422,23 +455,7 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
   const launchPreProduction = async (campaign: AgencyCampaign, client: AgencyClient, deliverable: CampaignDeliverable) => {
     setOpeningDeliverableId(deliverable.id);
     try {
-      let targetProject: ProjectState;
-      if (deliverable.projectId) {
-        try {
-          targetProject = await loadProjectFromDB(deliverable.projectId);
-        } catch (error) {
-          const cached = projectsById.get(deliverable.projectId);
-          if (!cached) throw error;
-          targetProject = cached;
-        }
-        targetProject = { ...targetProject, brandKitSnapshot: normalizeBrandKit(client.brandKit) };
-        await saveProjectToDB(targetProject);
-      } else {
-        const created = createProjectForCampaignDeliverable(campaign, client, deliverable.id);
-        await Promise.all([saveAgencyCampaign(created.campaign), saveProjectToDB(created.project)]);
-        setCampaigns((current) => current.map((item) => item.id === created.campaign.id ? created.campaign : item));
-        targetProject = created.project;
-      }
+      const targetProject = await resolveDeliverableProject(campaign, client, deliverable);
       const prompt = buildCampaignPreProductionPrompt(campaign, client, deliverable);
       setShowPreProduction(false);
       if (onOpenProjectWithDirector) onOpenProjectWithDirector(targetProject, prompt);
