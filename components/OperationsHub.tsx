@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertCircle,
+  AtSign,
   AudioLines,
   BarChart3,
   CheckCircle2,
@@ -48,9 +49,10 @@ import {
 import { getCredentialVaultStatus } from '../services/credentialVault';
 import CostProfitDashboard from './CostProfitDashboard';
 import ProviderHealthPanel from './ProviderHealthPanel';
+import ManagedAccountsPanel from './ManagedAccountsPanel';
 import ReviewDeskPanel from './ReviewDeskPanel';
 
-type TabId = 'desk' | 'api' | 'health' | 'voice' | 'workflow' | 'review' | 'economics' | 'workspace';
+type TabId = (typeof TAB_META)[number]['id'];
 
 interface Props {
   isOpen: boolean;
@@ -64,6 +66,7 @@ interface Props {
 
 const TAB_META = [
   { id: 'desk' as const, label: 'Bàn duyệt', icon: ClipboardCheck },
+  { id: 'accounts' as const, label: 'Tài khoản đăng bài', icon: AtSign },
   { id: 'api' as const, label: 'API & định tuyến', icon: KeyRound },
   { id: 'health' as const, label: 'Sức khỏe nhà cung cấp', icon: HeartPulse },
   { id: 'voice' as const, label: 'Voice tiếng Việt', icon: AudioLines },
@@ -276,6 +279,8 @@ const OperationsHub: React.FC<Props> = ({
 
           <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">
             {tab === 'desk' && <ReviewDeskPanel isActive={isOpen && tab === 'desk'} />}
+
+            {tab === 'accounts' && <ManagedAccountsPanel isActive={isOpen && tab === 'accounts'} />}
 
             {tab === 'health' && <ProviderHealthPanel isActive={isOpen && tab === 'health'} />}
 
