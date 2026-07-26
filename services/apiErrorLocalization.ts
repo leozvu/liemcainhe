@@ -1,5 +1,19 @@
 const REQUEST_ID_PATTERN = /(?:request\s*id|request_id)\s*[:：]\s*([a-z0-9_-]+)/i;
-const VIETNAMESE_MARKERS = /[ăâđêôơưĂÂĐÊÔƠƯ]|\b(không|lỗi|vui lòng|thất bại|hết hạn|tài khoản|yêu cầu)\b/i;
+/**
+ * Ranh giới từ nhận biết Unicode, không dùng `\b`.
+ *
+ * `\b` của JavaScript chỉ hiểu `[A-Za-z0-9_]`. Bảy cụm hiện tại tình cờ đều bắt
+ * đầu và kết thúc bằng chữ ASCII nên `\b` vẫn chạy — nhưng thêm một cụm như
+ * "đăng nhập" hay "dữ liệu" là nó **im lặng không khớp nữa**, và không có gì
+ * báo. Dùng lookaround để cái bẫy đó không chờ người sau.
+ */
+const VIETNAMESE_MARKERS = new RegExp(
+  '[ăâđêôơưĂÂĐÊÔƠƯ]|' +
+    ['không', 'lỗi', 'vui lòng', 'thất bại', 'hết hạn', 'tài khoản', 'yêu cầu']
+      .map((phrase) => `(?<!\\p{L})${phrase}(?!\\p{L})`)
+      .join('|'),
+  'iu',
+);
 const CJK_PATTERN = /[㐀-鿿]/;
 
 const withRequestId = (message: string, raw: string): string => {

@@ -319,6 +319,41 @@ const deleteWorkspaceItem = async (storeName: string, id: string): Promise<void>
   });
 };
 
+/**
+ * Đọc/ghi thô một kho workspace bất kỳ, phục vụ đồng bộ cloud.
+ *
+ * Không ràng buộc `{ id: string }` như `putWorkspaceItem`, vì sổ cái đăng bài
+ * khoá theo `fingerprint`. Lớp đồng bộ biết kho nào khoá theo trường nào.
+ */
+export const readWorkspaceStore = async <T>(storeName: string): Promise<T[]> => {
+  const db = await openDB();
+  return readStoreItems<T>(db, storeName);
+};
+
+export const writeWorkspaceStore = async (storeName: string, items: unknown[]): Promise<void> => {
+  if (!items.length) return;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    items.forEach((item) => store.put(item));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const deleteFromWorkspaceStore = async (storeName: string, keys: string[]): Promise<void> => {
+  if (!keys.length) return;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    keys.forEach((key) => store.delete(key));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const getAllAgencyClients = async (): Promise<AgencyClient[]> => {
   const db = await openDB();
   const clients = await readStoreItems<AgencyClient>(db, CLIENT_STORE_NAME);

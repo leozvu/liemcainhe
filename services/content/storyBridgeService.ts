@@ -1,9 +1,10 @@
 import { BrandKit } from '../../types';
-import { ArticleDraft, ContentBrief, StoryBridge, TrendItem } from '../../types/content';
+import { ArticleDraft, ContentBrief, CreativeDirection, StoryBridge, TrendItem } from '../../types/content';
 import { callChatApi } from '../adapters/chatAdapter';
 import { buildBrandKitPromptContext } from '../brandKitService';
 import { parseModelJson } from '../jsonResponse';
 import { getAudience, getVoice } from './contentAxes';
+import { buildCreativeDirectionPromptContext } from './creativeDirectionService';
 
 /**
  * Chuyển một chủ đề hoặc một bài viết thành đầu vào cho Phase 01.
@@ -92,12 +93,23 @@ export interface BuildStoryBridgeOptions {
   durationSeconds?: ShortFilmDuration;
   /** Brand Kit của khách hàng, đưa vào prompt để truyện không lệch thương hiệu. */
   brandKit?: BrandKit | null;
+  /** Hướng sáng tạo đã chốt ở Xưởng Nội dung, dùng chung cho bài và phim. */
+  creativeDirection?: CreativeDirection | null;
   usageResourceId?: string;
   chat?: typeof callChatApi;
 }
 
-const systemPromptFor = (brandKit?: BrandKit | null): string =>
-  brandKit ? `${STORY_RULES}\n\n${buildBrandKitPromptContext(brandKit)}` : STORY_RULES;
+const systemPromptFor = (
+  brandKit?: BrandKit | null,
+  creativeDirection?: CreativeDirection | null,
+): string =>
+  [
+    STORY_RULES,
+    brandKit ? buildBrandKitPromptContext(brandKit) : '',
+    buildCreativeDirectionPromptContext(creativeDirection),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
 /** Dựng cầu nối từ một chủ đề nóng, chưa cần viết bài. */
 export const buildStoryBridgeFromTrend = async (
@@ -108,7 +120,7 @@ export const buildStoryBridgeFromTrend = async (
   const chat = options.chat ?? callChatApi;
 
   const response = await chat({
-    systemPrompt: systemPromptFor(options.brandKit),
+    systemPrompt: systemPromptFor(options.brandKit, options.creativeDirection),
     prompt: buildStoryPrompt(trend.title, duration, [
       `Chủ đề đang nóng trên ${trend.sourceLabel}, đứng hạng ${trend.rank}.`,
     ]),
@@ -143,7 +155,7 @@ export const buildStoryBridgeFromArticle = async (
   ].filter((line): line is string => Boolean(line));
 
   const response = await chat({
-    systemPrompt: systemPromptFor(options.brandKit),
+    systemPrompt: systemPromptFor(options.brandKit, options.creativeDirection ?? brief.creativeDirection),
     prompt: buildStoryPrompt(brief.topic, duration, context),
     responseFormat: 'json',
     usageResourceId: options.usageResourceId ?? 'content-story',

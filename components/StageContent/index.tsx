@@ -57,6 +57,7 @@ import AxisPicker from './AxisPicker';
 import IllustrationPanel from './IllustrationPanel';
 import PublishPanel from './PublishPanel';
 import TrendBoard from './TrendBoard';
+import CreativeDirectionPanel from './CreativeDirectionPanel';
 
 interface Props {
   project: ProjectState;
@@ -153,6 +154,17 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const patchBrief = (patch: Partial<ContentBrief>) =>
     patchStudio((current) => ({ brief: { ...current.brief, ...patch } }));
 
+  /** Đổi hướng sáng tạo làm bài và truyện cũ hết hiệu lực. */
+  const setCreativeDirection = (creativeDirection: ContentBrief['creativeDirection']) => {
+    setReviewDecision(undefined);
+    patchStudio((current) => ({
+      brief: { ...current.brief, creativeDirection },
+      draft: null,
+      bridge: null,
+    }));
+    setNotice('Đã cập nhật hướng sáng tạo. Hãy tạo lại bài viết hoặc phim ngắn.');
+  };
+
   const handleLoadTrends = async () => {
     setLoadingTrends(true);
     setError(null);
@@ -212,7 +224,11 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
 
   const handleBuildBridge = () =>
     runGuarded('bridge', async () => {
-      const options = { durationSeconds: duration, brandKit: project.brandKitSnapshot };
+      const options = {
+        durationSeconds: duration,
+        brandKit: project.brandKitSnapshot,
+        creativeDirection: brief.creativeDirection,
+      };
       const result = draft
         ? await buildStoryBridgeFromArticle(draft, brief, options)
         : await buildStoryBridgeFromTrend(
@@ -380,6 +396,8 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
             )}
           </div>
         </section>
+
+        <CreativeDirectionPanel brief={brief} onChange={setCreativeDirection} />
 
         {draft && (
           <section className="eg-panel mt-6 p-5" aria-labelledby="draft-heading">

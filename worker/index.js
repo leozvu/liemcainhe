@@ -94,6 +94,16 @@ const hashOwner = async (email) => {
 
 const safeProjectId = (value) => /^[a-zA-Z0-9_-]{3,120}$/.test(value || '') ? value : null;
 const safeReviewId = (value) => /^[a-zA-Z0-9_-]{6,180}$/.test(value || '') ? value : null;
+// Danh sách trắng chứ không phải kiểm định dạng: tên bộ dữ liệu đi thẳng vào
+// câu truy vấn, và số bộ là hữu hạn nên không có lý do gì để nhận tên tự do.
+const WORKSPACE_COLLECTIONS = new Set([
+  'agencyClients',
+  'agencyCampaigns',
+  'articleLibrary',
+  'publishLedger',
+  'managedAccounts',
+]);
+const safeCollection = (value) => (WORKSPACE_COLLECTIONS.has(value) ? value : null);
 const safeReviewToken = (value) => /^[a-zA-Z0-9_-]{40,180}$/.test(value || '') ? value : null;
 const cleanText = (value, limit) => String(value || '').trim().slice(0, limit);
 const createReviewToken = () => {
@@ -231,6 +241,68 @@ async function handleCloudApi(request, env, url) {
       await deleteMediaPrefix(env.MEDIA, `${owner}/${projectId}/`);
       return json({ deleted: true });
     }
+  }
+
+  /**
+   * Dữ liệu cấp workspace: khách hàng, chiến dịch, thư viện bài, sổ cái đăng
+   * bài, sổ tài khoản. Năm bộ này trước đây chỉ nằm trong IndexedDB của đúng
+   * một trình duyệt.
+   *
+   * `deleted_at` là bia mộ: xoá mà không để lại dấu thì máy khác sẽ đẩy bản ghi
+   * cũ lên lại và thứ vừa xoá sống dậy.
+   */
+  if (url.pathname === '/api/cloud/workspace' && request.method === 'GET') {
+    const collection = safeCollection(url.searchParams.get('collection'));
+    if (!collection) return json({ error: 'Bộ dữ liệu không hợp lệ.' }, 400);
+
+    const since = Number(url.searchParams.get('since')) || 0;
+    const result = await env.DB.prepare(
+      `SELECT item_id AS id, payload_json AS payload, updated_at AS updatedAt, deleted_at AS deletedAt
+       FROM egoric_workspace_items
+       WHERE owner_email = ? AND collection = ? AND updated_at > ?
+       ORDER BY updated_at ASC LIMIT 2000`
+    ).bind(email, collection, since).all();
+
+    const records = (result.results || []).map((row) => ({
+      id: row.id,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt || undefined,
+      payload: row.payload ? JSON.parse(row.payload) : null,
+    }));
+    return json({ records });
+  }
+
+  if (url.pathname === '/api/cloud/workspace' && request.method === 'PUT') {
+    const body = await request.json().catch(() => null);
+    const collection = safeCollection(body?.collection);
+    if (!collection || !Array.isArray(body?.records)) {
+      return json({ error: 'Dữ liệu đồng bộ không hợp lệ.' }, 400);
+    }
+    if (body.records.length > 500) return json({ error: 'Mỗi lượt tối đa 500 bản ghi.' }, 413);
+
+    const statements = [];
+    for (const record of body.records) {
+      if (!record || typeof record.id !== 'string' || !record.id) continue;
+      const payload = JSON.stringify(record.payload ?? null);
+      if (payload.length > 1_000_000) return json({ error: `Bản ghi ${record.id} quá lớn.` }, 413);
+      const updatedAt = Number(record.updatedAt) || Date.now();
+      const deletedAt = Number(record.deletedAt) || null;
+
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO egoric_workspace_items (owner_email, collection, item_id, payload_json, updated_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(owner_email, collection, item_id) DO UPDATE SET
+             payload_json = excluded.payload_json,
+             updated_at = excluded.updated_at,
+             deleted_at = excluded.deleted_at
+           WHERE excluded.updated_at >= egoric_workspace_items.updated_at`
+        ).bind(email, collection, record.id.slice(0, 200), payload, updatedAt, deletedAt)
+      );
+    }
+
+    if (statements.length) await env.DB.batch(statements);
+    return json({ written: statements.length });
   }
 
   if (url.pathname === '/api/cloud/media/import' && request.method === 'POST') {
@@ -531,6 +603,7 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('DELETE FROM egoric_media WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_jobs WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_projects WHERE owner_email = ?').bind(email),
+      env.DB.prepare('DELETE FROM egoric_workspace_items WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_usage_events WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_campaign_financials WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_system_events WHERE owner_email = ?').bind(email),

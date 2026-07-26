@@ -95,6 +95,49 @@ export interface AxisOption<T extends string> {
   directive: string;
 }
 
+/**
+ * Một lăng kính nâng cao trong Phòng chiến lược Egoric.
+ *
+ * Bốn trục phía trên vẫn là brief bắt buộc. Lăng kính chỉ dùng để tạo khác
+ * biệt có chủ đích giữa các phương án, và mỗi hướng chỉ được bật tối đa năm
+ * lăng kính để prompt không trở thành một mớ yêu cầu xung đột.
+ */
+export type CreativeLensKey =
+  | 'hook'
+  | 'tension'
+  | 'proof'
+  | 'emotion'
+  | 'narrator'
+  | 'culture'
+  | 'time'
+  | 'setting'
+  | 'format'
+  | 'structure'
+  | 'rhythm'
+  | 'language'
+  | 'perspective'
+  | 'participation'
+  | 'visualMotif';
+
+export interface CreativeLensSelection {
+  lens: CreativeLensKey;
+  optionId: string;
+}
+
+export type CreativeIntensity = 'an_toan' | 'can_bang' | 'tao_bao';
+
+/** Một hướng sáng tạo đã được chốt để dùng xuyên suốt bài viết và phim ngắn. */
+export interface CreativeDirection {
+  id: string;
+  name: string;
+  /** Lời hứa ngắn giúp người dùng hiểu đầu ra sẽ khác ở đâu. */
+  promise: string;
+  /** Lý do hướng này hợp với brief hiện tại. */
+  rationale: string;
+  intensity: CreativeIntensity;
+  selections: CreativeLensSelection[];
+}
+
 /** Đầu vào đã chốt của một lượt sản xuất nội dung. */
 export interface ContentBrief {
   topic: string;
@@ -108,6 +151,8 @@ export interface ContentBrief {
   notes?: string;
   /** Số chữ mong muốn của phần thân bài. */
   targetWords: number;
+  /** Hướng nâng cao đã chọn trong Phòng chiến lược. Bỏ trống thì dùng bốn trục. */
+  creativeDirection?: CreativeDirection;
   /** Nguồn xu hướng đã sinh ra chủ đề này, nếu có. */
   origin?: Pick<TrendItem, 'sourceId' | 'sourceLabel' | 'link'>;
 }

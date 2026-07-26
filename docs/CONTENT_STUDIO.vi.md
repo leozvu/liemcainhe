@@ -14,7 +14,7 @@ Ghi nhận cụ thể để về sau khỏi tranh cãi:
 
 | Thành phần | Nguồn |
 |---|---|
-| Mô hình dữ liệu (`types/content.ts`) | Thiết kế riêng. Bốn trục điều khiển, không phải ma trận đa chiều. |
+| Mô hình dữ liệu (`types/content.ts`) | Thiết kế riêng. Bốn trục brief bắt buộc và Phòng chiến lược Egoric tùy chọn. |
 | Danh mục nguồn xu hướng | Feed RSS công khai của báo Việt Nam. Danh sách và trọng số do dự án này chọn. |
 | Bộ đọc RSS | Viết riêng bằng biểu thức chính quy, không phụ thuộc thư viện ngoài. |
 | Lớp proxy | Theo đúng mẫu allowlist sẵn có của Egoric trong `docs/API_GATEWAY.vi.md`. |
@@ -32,6 +32,18 @@ Cố ý giữ nhỏ. Một ma trận hàng trăm lựa chọn nghe thì oai như
 | `audience` | Nói với ai | gen Z, dân văn phòng, chủ doanh nghiệp, phụ huynh, dân kỹ thuật, phổ thông |
 
 Mỗi lựa chọn mang theo một `directive` — câu chỉ dẫn được ghép vào prompt. Đó là chỗ trục thực sự tác động, không phải chỉ là nhãn hiển thị.
+
+## Phòng chiến lược Egoric
+
+Bốn trục vẫn là phần brief tối thiểu để team chạy nhanh. Khi cần tạo nhiều góc khác nhau cho cùng một chủ đề, người dùng mở Phòng chiến lược để chọn một hướng nâng cao.
+
+- 15 lăng kính chiến thuật: cơ chế mở đầu, lực căng, cách chứng minh, đường cảm xúc, vai người kể, chất liệu Việt Nam, khung thời gian, không gian, định dạng, kết cấu, nhịp, ngôn ngữ, điểm nhìn, hành vi sau nội dung và mô-típ hình ảnh.
+- Mỗi hướng chỉ kích hoạt tối đa 5 lăng kính. Giới hạn này ngăn prompt chứa quá nhiều yêu cầu xung đột.
+- Hệ thống đề xuất ba hướng ngay trên thiết bị bằng thuật toán xác định, không gọi model và không phát sinh chi phí API.
+- Người dùng có thể đổi cường độ hoặc thay từng lăng kính. Hướng đã chốt được lưu cùng brief và đi vào cả prompt viết bài lẫn prompt dựng phim ngắn.
+- Đổi hướng làm bài viết và truyện cũ hết hiệu lực, tránh việc giao diện hiển thị đầu ra được tạo từ một brief khác.
+
+Toàn bộ danh mục, directive, công thức đề xuất và giao diện của Phòng chiến lược nằm trong mã TypeScript của Egoric; không nhập runtime, template hay tài nguyên giao diện từ kho đã khảo sát trước đây.
 
 ## Nguồn xu hướng
 

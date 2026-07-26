@@ -5,6 +5,7 @@ import { buildBrandKitPromptContext } from '../brandKitService';
 import { parseModelJson } from '../jsonResponse';
 import { buildAxisDirectives, getApproach, getAudience, getIntent, getVoice } from './contentAxes';
 import { ClientMemory, buildMemoryPromptContext } from './clientMemoryService';
+import { buildCreativeDirectionPromptContext } from './creativeDirectionService';
 
 /**
  * Sinh bài viết từ một brief.
@@ -42,6 +43,11 @@ const buildArticlePrompt = (brief: ContentBrief): string => {
     '',
     `Độ dài phần thân bài: khoảng ${brief.targetWords} chữ.`,
   ];
+
+  const creativeDirection = buildCreativeDirectionPromptContext(brief.creativeDirection);
+  if (creativeDirection) {
+    parts.push('', creativeDirection);
+  }
 
   if (brief.keywords.length) {
     parts.push(
