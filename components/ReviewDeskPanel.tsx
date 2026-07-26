@@ -11,13 +11,18 @@ import {
 } from 'lucide-react';
 import { ReviewDecision } from '../types/content';
 import {
+  BatchDecisionResult,
   REVIEW_KIND_LABELS,
   ReviewQueueItem,
   ReviewSignal,
   buildReviewQueue,
   countQueue,
   decideArticle,
+  decideBatch,
   filterQueue,
+  groupQueueByDay,
+  groupQueueByProject,
+  partitionForBatch,
 } from '../services/reviewQueueService';
 import { listArticles } from '../services/content/articleLibraryService';
 
@@ -67,6 +72,10 @@ const ReviewDeskPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
   const [error, setError] = useState<string | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [grouping, setGrouping] = useState<'none' | 'day' | 'project'>('none');
+  const [batchIds, setBatchIds] = useState<string[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchResults, setBatchResults] = useState<BatchDecisionResult[] | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -84,6 +93,48 @@ const ReviewDeskPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
 
   const counts = useMemo(() => countQueue(items), [items]);
   const visible = useMemo(() => filterQueue(items, filter), [items, filter]);
+
+  /**
+   * Chỉ mục sạch mọi tín hiệu mới duyệt hàng loạt được.
+   *
+   * Mục có cảnh báo là mục máy đang phân vân — đúng chỗ cần mắt người, nên
+   * phải mở ra quyết riêng. Không có nút "duyệt tất cả" mù ở đây.
+   */
+  const batch = useMemo(() => partitionForBatch(visible), [visible]);
+  const selectedBatch = useMemo(
+    () => batch.eligible.filter((entry) => batchIds.includes(entry.id)),
+    [batch.eligible, batchIds],
+  );
+
+  // Bỏ chọn những mục không còn nằm trong danh sách sau khi lọc hoặc làm mới,
+  // để không âm thầm duyệt thứ người dùng không còn nhìn thấy.
+  useEffect(() => {
+    const allowed = new Set(batch.eligible.map((entry) => entry.id));
+    setBatchIds((previous) => previous.filter((id) => allowed.has(id)));
+  }, [batch.eligible]);
+
+  const groups = useMemo(() => {
+    if (grouping === 'day') return groupQueueByDay(visible);
+    if (grouping === 'project') return groupQueueByProject(visible);
+    return [{ key: 'all', label: '', items: visible }];
+  }, [visible, grouping]);
+
+  const runBatch = async (decision: ReviewDecision) => {
+    if (!selectedBatch.length) return;
+    setBatchBusy(true);
+    setError(null);
+    try {
+      const results = await decideBatch(selectedBatch, decision, { note: note.trim() || undefined });
+      setBatchResults(results);
+      setBatchIds([]);
+      setNote('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không ghi được quyết định hàng loạt.');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
 
   const decide = async (item: ReviewQueueItem, decision: ReviewDecision, withNote?: string) => {
     if (item.kind !== 'article') {
@@ -145,7 +196,121 @@ const ReviewDeskPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
             {option.label}
           </button>
         ))}
+
+        <span className="mx-1 w-px self-stretch bg-white/[.08]" aria-hidden />
+
+        {([
+          { value: 'none', label: 'Không gộp' },
+          { value: 'day', label: 'Theo ngày' },
+          { value: 'project', label: 'Theo dự án' },
+        ] as const).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setGrouping(option.value)}
+            aria-pressed={grouping === option.value}
+            className={`min-h-11 rounded-xl border px-4 text-xs font-medium transition-colors ${
+              grouping === option.value
+                ? 'border-cyan-200/25 bg-cyan-200/[.09] text-white'
+                : 'border-white/[.07] text-zinc-400 hover:bg-white/[.035] hover:text-zinc-200'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
+
+      {batch.eligible.length > 0 && (
+        <div className="mt-4 rounded-xl border border-white/[.08] bg-black/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-zinc-100">
+                {batch.eligible.length} mục sạch mọi vòng kiểm — duyệt hàng loạt được
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                {batch.needsAttention.length > 0 ? (
+                  <>
+                    {batch.needsAttention.length} mục còn lại có cảnh báo hoặc bị chặn, phải mở ra quyết
+                    riêng. Đó là chỗ máy đang phân vân — không gộp vào đây.
+                  </>
+                ) : (
+                  'Không mục nào có cảnh báo.'
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="min-h-11 rounded-xl border border-white/[.08] px-4 text-xs font-medium text-zinc-300 hover:bg-white/[.04]"
+              onClick={() =>
+                setBatchIds((previous) =>
+                  previous.length === batch.eligible.length ? [] : batch.eligible.map((entry) => entry.id),
+                )
+              }
+            >
+              {batchIds.length === batch.eligible.length ? 'Bỏ chọn hết' : 'Chọn hết mục sạch'}
+            </button>
+          </div>
+
+          {selectedBatch.length > 0 && (
+            <div className="mt-4 border-t eg-divider pt-4">
+              <label className="block">
+                <span className="eg-kicker">Ghi chú chung (tuỳ chọn)</span>
+                <input
+                  className="eg-input mt-2 w-full"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Áp cho cả lô"
+                />
+              </label>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="eg-button-primary min-h-11 px-5 text-xs"
+                  onClick={() => void runBatch('approved')}
+                  disabled={batchBusy}
+                >
+                  {batchBusy ? <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" /> : null}
+                  Duyệt {selectedBatch.length} mục
+                </button>
+                <button
+                  type="button"
+                  className="eg-button-secondary min-h-11 px-4 text-xs"
+                  onClick={() => void runBatch('changes-requested')}
+                  disabled={batchBusy}
+                >
+                  Yêu cầu sửa {selectedBatch.length} mục
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {batchResults && (
+        <div className="mt-4 rounded-xl border border-white/[.08] bg-black/20 p-4">
+          <p className="text-sm font-medium text-zinc-100">
+            Đã ghi {batchResults.filter((row) => row.ok).length}/{batchResults.length} mục
+          </p>
+          {batchResults.some((row) => !row.ok) && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-rose-100/85">
+              {batchResults
+                .filter((row) => !row.ok)
+                .map((row) => (
+                  <li key={row.itemId}>
+                    <strong>{row.title}</strong> — {row.error}
+                  </li>
+                ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            className="mt-3 min-h-11 text-xs font-medium text-cyan-200/80 hover:text-cyan-100"
+            onClick={() => setBatchResults(null)}
+          >
+            Đóng
+          </button>
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <p className="mt-6 text-sm text-zinc-500">
@@ -154,12 +319,36 @@ const ReviewDeskPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
             : 'Không có mục nào ở trạng thái này.'}
         </p>
       ) : (
-        <ul className="mt-5 space-y-3">
-          {visible.map((item) => {
+        groups.map((group) => (
+          <section key={group.key} className="mt-5">
+            {group.label && (
+              <h3 className="eg-kicker mb-2 flex items-baseline gap-2">
+                {group.label}
+                <span className="text-zinc-600">{group.items.length} mục</span>
+              </h3>
+            )}
+            <ul className="space-y-3">
+          {group.items.map((item) => {
             const meta = DECISION_META[item.decision];
+            const batchable = batch.eligible.some((entry) => entry.id === item.id);
             return (
               <li key={item.id} className="eg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
+                  {batchable && (
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 shrink-0 accent-cyan-300"
+                      checked={batchIds.includes(item.id)}
+                      aria-label={`Chọn ${item.title} để duyệt hàng loạt`}
+                      onChange={(e) =>
+                        setBatchIds((previous) =>
+                          e.target.checked
+                            ? [...previous, item.id]
+                            : previous.filter((id) => id !== item.id),
+                        )
+                      }
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       {item.kind === 'article' ? (
@@ -261,7 +450,9 @@ const ReviewDeskPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
               </li>
             );
           })}
-        </ul>
+            </ul>
+          </section>
+        ))
       )}
     </div>
   );

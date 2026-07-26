@@ -22,6 +22,17 @@ export interface ReviewSignal {
   label: string;
   status: 'pass' | 'warn' | 'fail';
   detail?: string;
+  /**
+   * Chỉ là thông tin, không phải điều đáng bận tâm.
+   *
+   * Phân biệt hai thứ hay bị gộp làm một: "vòng kiểm đã chạy và thấy có vấn
+   * đề" khác hẳn "vòng kiểm đã chạy và báo lại một sự thật trung tính". Bài
+   * đăng Facebook không có ảnh minh hoạ là chuyện bình thường — nói ra thì
+   * hữu ích, nhưng bắt người duyệt mở từng bài vì nó thì vô nghĩa.
+   *
+   * Tín hiệu advisory không làm mục mất quyền duyệt hàng loạt.
+   */
+  advisory?: boolean;
 }
 
 export interface ReviewQueueItem {
@@ -91,6 +102,9 @@ const articleSignals = (article: SavedArticle): ReviewSignal[] => {
     label: 'Ảnh',
     status: rendered > 0 ? 'pass' : 'warn',
     detail: rendered > 0 ? `${rendered} ảnh` : 'Chưa có ảnh nào',
+    // Bài đăng dạng chữ thì không có ảnh là bình thường. Nói ra để người duyệt
+    // biết, nhưng không vì thế mà bắt mở từng bài.
+    advisory: rendered === 0,
   });
 
   return signals;
@@ -222,6 +236,178 @@ export const countQueue = (items: ReviewQueueItem[]): QueueCounts => ({
   changesRequested: items.filter((item) => item.decision === 'changes-requested').length,
   blocked: items.filter((item) => item.blocked).length,
 });
+
+/* ────────────────────────  Duyệt hàng loạt  ──────────────────────── */
+
+/**
+ * Vì sao cần duyệt hàng loạt.
+ *
+ * Với hai mươi tài khoản đăng hằng ngày là khoảng 140 lượt duyệt mỗi tuần.
+ * Duyệt từng bài một thì người duyệt sẽ bắt đầu bấm mà không đọc — và lúc đó
+ * cổng duyệt còn tệ hơn không có, vì nó tạo cảm giác an toàn giả.
+ *
+ * Nhưng "duyệt tất cả" mù cũng chính là cái bẫy đó. Nên quy tắc ở đây:
+ * **chỉ những mục mà mọi vòng kiểm tự động đều sạch mới được duyệt hàng loạt.**
+ * Mục nào có cảnh báo là mục mà máy đang phân vân — đúng chỗ cần mắt người, và
+ * phải quyết riêng.
+ *
+ * Kết quả: sự chú ý của người duyệt dồn vào đúng phần máy không chắc, thay vì
+ * rải đều lên cả trăm mục mà phần lớn không có gì để xem.
+ */
+export interface BatchPartition {
+  /** Sạch mọi tín hiệu, duyệt hàng loạt được. */
+  eligible: ReviewQueueItem[];
+  /** Có cảnh báo hoặc bị chặn — phải mở ra quyết từng cái. */
+  needsAttention: ReviewQueueItem[];
+}
+
+export const partitionForBatch = (items: ReviewQueueItem[]): BatchPartition => {
+  const eligible: ReviewQueueItem[] = [];
+  const needsAttention: ReviewQueueItem[] = [];
+
+  items.forEach((item) => {
+    if (item.decision !== 'pending') return;
+
+    const decisive = item.signals.filter((signal) => !signal.advisory);
+    const clean =
+      item.kind === 'article' &&
+      !item.blocked &&
+      decisive.length > 0 &&
+      decisive.every((signal) => signal.status === 'pass');
+
+    if (clean) eligible.push(item);
+    else needsAttention.push(item);
+  });
+
+  return { eligible, needsAttention };
+};
+
+export interface BatchDecisionResult {
+  itemId: string;
+  title: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Ghi quyết định cho nhiều bài một lượt.
+ *
+ * Một bài hỏng không làm dừng các bài còn lại: người duyệt vừa bỏ ra vài phút
+ * đọc cả nhóm, mất hết công vì một bản ghi lỗi là cách chắc chắn khiến lần sau
+ * họ không dùng nữa.
+ *
+ * Vẫn đi qua `decideArticle` nên mọi hàng rào của nó còn nguyên — bài vi phạm
+ * Brand Kit vẫn bị chặn kể cả khi lọt vào danh sách.
+ */
+export const decideBatch = async (
+  items: ReviewQueueItem[],
+  decision: ReviewDecision,
+  options: {
+    reviewer?: string;
+    note?: string;
+    now?: () => number;
+    store?: ArticleStore;
+    /** Nạp bài từ thư viện. Thay được khi kiểm thử. */
+    loadArticles?: () => Promise<SavedArticle[]>;
+  } = {},
+): Promise<BatchDecisionResult[]> => {
+  const load = options.loadArticles ?? (() => listArticles(options.store));
+  const articles = await load();
+  const byId = new Map(articles.map((article) => [article.id, article]));
+
+  const results: BatchDecisionResult[] = [];
+
+  for (const item of items) {
+    if (item.kind !== 'article') {
+      results.push({
+        itemId: item.id,
+        title: item.title,
+        ok: false,
+        error: 'Video duyệt trong Trung tâm sản xuất của dự án.',
+      });
+      continue;
+    }
+
+    const article = byId.get(item.sourceId);
+    if (!article) {
+      results.push({ itemId: item.id, title: item.title, ok: false, error: 'Không tìm thấy bài trong thư viện.' });
+      continue;
+    }
+
+    try {
+      await decideArticle(article, decision, {
+        reviewer: options.reviewer,
+        note: options.note,
+        now: options.now,
+        store: options.store,
+      });
+      results.push({ itemId: item.id, title: item.title, ok: true });
+    } catch (error) {
+      results.push({
+        itemId: item.id,
+        title: item.title,
+        ok: false,
+        error: error instanceof Error ? error.message : 'Không ghi được quyết định.',
+      });
+    }
+  }
+
+  return results;
+};
+
+/* ──────────────────────────  Gom nhóm  ─────────────────────────── */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface QueueGroup {
+  key: string;
+  label: string;
+  items: ReviewQueueItem[];
+}
+
+/** Gom theo ngày, mới nhất trước, để nhìn ra tải của từng hôm. */
+export const groupQueueByDay = (items: ReviewQueueItem[], now = Date.now()): QueueGroup[] => {
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  const groups = new Map<string, ReviewQueueItem[]>();
+
+  items.forEach((item) => {
+    const day = new Date(item.updatedAt).setHours(0, 0, 0, 0);
+    const key = String(day);
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  });
+
+  return Array.from(groups.entries())
+    .sort((left, right) => Number(right[0]) - Number(left[0]))
+    .map(([key, groupItems]) => {
+      const day = Number(key);
+      const diffDays = Math.round((startOfToday - day) / DAY_MS);
+      const label =
+        diffDays === 0
+          ? 'Hôm nay'
+          : diffDays === 1
+            ? 'Hôm qua'
+            : new Date(day).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+      return { key, label, items: groupItems };
+    });
+};
+
+/** Gom theo dự án, để duyệt trọn một khách hàng một lượt. */
+export const groupQueueByProject = (items: ReviewQueueItem[]): QueueGroup[] => {
+  const groups = new Map<string, ReviewQueueItem[]>();
+
+  items.forEach((item) => {
+    const key = item.projectId ?? '';
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  });
+
+  return Array.from(groups.entries())
+    .map(([key, groupItems]) => ({
+      key,
+      label: groupItems[0]?.projectTitle || 'Không thuộc dự án nào',
+      items: groupItems,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, 'vi'));
+};
 
 /**
  * Ghi quyết định cho một bài viết.
