@@ -2,6 +2,7 @@ import {
   ArticleDraft,
   PublishChannelId,
   PublishCredentials,
+  PublishErrorDetail,
   PublishPayload,
   PublishResult,
 } from '../../types/content';
@@ -21,20 +22,36 @@ const asMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Lỗi mạng không xác định';
 
 /** Bóc thông báo lỗi của nhà cung cấp, vốn nằm ở vài chỗ khác nhau tuỳ nền tảng. */
-const readError = async (response: Response): Promise<string> => {
+/**
+ * Đọc lỗi và **giữ lại mã**, không chỉ lấy câu chữ.
+ *
+ * Bản cũ vứt mã đi nên không phân biệt được "token hết hạn" với "sai Page ID"
+ * — hai thứ đòi hai cách xử lý khác hẳn. Meta trả `error.code` kèm
+ * `error_subcode`; Zalo trả mã số ở `error` ngay trong thân phản hồi.
+ */
+const readErrorDetail = async (response: Response): Promise<PublishErrorDetail> => {
   try {
     const data = await response.json();
-    return (
-      data?.error?.message ||
-      data?.error?.error_user_msg ||
-      data?.message ||
-      data?.error_description ||
-      `Lỗi HTTP ${response.status}`
-    );
+    const error = data?.error;
+    return {
+      message:
+        error?.message ||
+        error?.error_user_msg ||
+        data?.message ||
+        data?.error_description ||
+        `Lỗi HTTP ${response.status}`,
+      httpStatus: response.status,
+      code: typeof error?.code === 'number' ? error.code : undefined,
+      subcode: typeof error?.error_subcode === 'number' ? error.error_subcode : undefined,
+      type: typeof error?.type === 'string' ? error.type : undefined,
+    };
   } catch {
-    return `Lỗi HTTP ${response.status}`;
+    return { message: `Lỗi HTTP ${response.status}`, httpStatus: response.status };
   }
 };
+
+const readError = async (response: Response): Promise<string> =>
+  (await readErrorDetail(response)).message;
 
 /**
  * Rút gọn bài viết thành một bài đăng.
@@ -91,7 +108,8 @@ const publishFacebookPage = async (
   );
 
   if (!response.ok) {
-    return { channelId: 'facebook-page', success: false, message: await readError(response) };
+    const detail = await readErrorDetail(response);
+    return { channelId: 'facebook-page', success: false, message: detail.message, errorDetail: detail };
   }
 
   const data = await response.json();
@@ -133,10 +151,12 @@ const publishThreads = async (
   });
 
   if (!created.ok) {
+    const detail = await readErrorDetail(created);
     return {
       channelId: 'threads',
       success: false,
-      message: `Không tạo được bài nháp: ${await readError(created)}`,
+      message: `Không tạo được bài nháp: ${detail.message}`,
+      errorDetail: detail,
     };
   }
 
@@ -182,7 +202,8 @@ const publishZaloOa = async (
   });
 
   if (!response.ok) {
-    return { channelId: 'zalo-oa', success: false, message: await readError(response) };
+    const detail = await readErrorDetail(response);
+    return { channelId: 'zalo-oa', success: false, message: detail.message, errorDetail: detail };
   }
 
   const data = await response.json();
@@ -192,6 +213,11 @@ const publishZaloOa = async (
       channelId: 'zalo-oa',
       success: false,
       message: data.message || `Zalo trả mã lỗi ${data.error}`,
+      errorDetail: {
+        message: data.message || `Zalo trả mã lỗi ${data.error}`,
+        httpStatus: response.status,
+        code: typeof data.error === 'number' ? data.error : undefined,
+      },
     };
   }
 

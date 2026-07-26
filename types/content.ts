@@ -316,12 +316,26 @@ export interface PostInsights {
   unavailable?: string;
 }
 
+/** Lỗi thô từ nền tảng, giữ nguyên mã để phân loại được nguyên nhân. */
+export interface PublishErrorDetail {
+  message: string;
+  httpStatus: number;
+  code?: number;
+  subcode?: number;
+  type?: string;
+}
+
 export interface PublishResult {
   channelId: PublishChannelId;
   success: boolean;
   message: string;
   postId?: string;
   url?: string;
+  /**
+   * Mã lỗi thô, để phân biệt "token hết hạn" với "sai Page ID".
+   * Chỉ có khi nền tảng trả lỗi có mã.
+   */
+  errorDetail?: PublishErrorDetail;
   /**
    * Không xác định được kết quả: lệnh đã gửi đi nhưng không nhận được phản hồi,
    * thường do đứt mạng. Bài **có thể đã lên**.

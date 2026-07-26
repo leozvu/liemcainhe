@@ -31,6 +31,7 @@ import {
   listAccounts,
   publishableAccounts,
   removeAccount,
+  updateAccount,
 } from '../../services/content/managedAccountService';
 import { inspectBrandCompliance } from '../../services/brandKitService';
 import { getPublishSecret, setPublishSecret } from '../../services/credentialVault';
@@ -200,13 +201,21 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
     setOutcomes(null);
 
     try {
+      const changed: ManagedAccount[] = [];
       const results = await publishToAccounts(
         selected,
         { text: postText },
         (id) => secrets[id] ?? {},
-        { force },
+        { force, onStatusChange: (account) => changed.push(account) },
       );
       setOutcomes(results);
+
+      // Ghi trạng thái mới xuống sổ rồi nạp lại, để lần đăng sau tài khoản đã
+      // hỏng không còn nằm trong danh sách chọn được.
+      if (changed.length) {
+        await Promise.all(changed.map((account) => updateAccount(account.id, { status: account.status })));
+        await reload();
+      }
     } finally {
       setSending(false);
       setConfirming(false);
@@ -629,6 +638,13 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                       </>
                     )}
                   </p>
+                  {row.statusChange && (
+                    <p className="mt-2 rounded-lg border border-rose-300/25 bg-rose-500/[.07] px-3 py-2 text-xs leading-relaxed text-rose-100">
+                      {row.statusChange.reason} Tài khoản đã được đánh dấu{' '}
+                      <strong>{row.statusChange.to === 'revoked' ? 'bị thu hồi' : 'hết token'}</strong> và
+                      tạm thời không chọn để đăng được nữa.
+                    </p>
+                  )}
                   {isDuplicate && (
                     <button
                       type="button"

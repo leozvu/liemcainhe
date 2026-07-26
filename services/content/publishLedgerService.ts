@@ -9,6 +9,7 @@ import {
 import { fetchPostInsights } from './insightsService';
 import { getPublishLedger, savePublishLedgerEntry } from '../storageService';
 import { publishToChannel } from './publishService';
+import { AccountStatusChange, applyAuthVerdict } from './tokenLifecycleService';
 
 /**
  * Nhật ký đăng bài và cơ chế chống đăng trùng.
@@ -216,6 +217,11 @@ export interface AccountPublishOutcome {
   managedAccountId: string;
   label: string;
   outcome: GuardedPublishOutcome;
+  /**
+   * Lỗi vừa rồi cho thấy token đã hỏng, kèm trạng thái mới của tài khoản.
+   * Chỉ có khi nguyên nhân đủ rõ để kết luận — hết hạn hoặc bị thu hồi.
+   */
+  statusChange?: AccountStatusChange;
 }
 
 /**
@@ -233,7 +239,13 @@ export const publishToAccounts = async (
   accounts: ManagedAccount[],
   payload: PublishPayload,
   credentialsFor: (managedAccountId: string) => PublishCredentials,
-  options: GuardedPublishOptions = {},
+  options: GuardedPublishOptions & {
+    /**
+     * Gọi khi trạng thái tài khoản đổi vì token hỏng. Người gọi chịu trách
+     * nhiệm ghi xuống sổ — lớp này không biết kho lưu tài khoản.
+     */
+    onStatusChange?: (account: ManagedAccount, change: AccountStatusChange) => void;
+  } = {},
 ): Promise<AccountPublishOutcome[]> => {
   const outcomes: AccountPublishOutcome[] = [];
 
@@ -248,7 +260,16 @@ export const publishToAccounts = async (
         { ...credentials, accountId: credentials.accountId || account.externalId },
         options,
       );
-      outcomes.push({ managedAccountId: account.id, label: account.label, outcome });
+
+      const verdict = applyAuthVerdict(account, outcome.result);
+      if (verdict.change) options.onStatusChange?.(verdict.account, verdict.change);
+
+      outcomes.push({
+        managedAccountId: account.id,
+        label: account.label,
+        outcome,
+        statusChange: verdict.change,
+      });
     } catch (error) {
       outcomes.push({
         managedAccountId: account.id,
