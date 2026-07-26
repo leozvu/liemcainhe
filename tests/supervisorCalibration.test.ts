@@ -106,14 +106,14 @@ describe('tính độ tin từng loại cảnh báo', () => {
   });
 
   it('hầu như luôn được chấp nhận thì đáng tin', () => {
-    const [stats] = computeCalibration(many('missing-media', 9, 1));
+    const [stats] = computeCalibration(many('missing-media', 27, 3));
     expect(stats.trust).toBe('trusted');
     expect(stats.overrideRate).toBe(0.1);
     expect(stats.suggestedSeverity).toBeUndefined();
   });
 
   it('bị bỏ qua quá nhiều thì coi là hay báo sai và đề nghị hạ mức', () => {
-    const [stats] = computeCalibration(many('hands', 3, 7));
+    const [stats] = computeCalibration(many('hands', 9, 21));
     expect(stats.trust).toBe('noisy');
     expect(stats.overrideRate).toBeGreaterThanOrEqual(NOISY_OVERRIDE_RATE);
     expect(stats.suggestedSeverity).toBe('info');
@@ -121,7 +121,7 @@ describe('tính độ tin từng loại cảnh báo', () => {
   });
 
   it('ở giữa thì để nguyên, không hạ vội', () => {
-    const [stats] = computeCalibration(many('logo', 7, 3));
+    const [stats] = computeCalibration(many('logo', 21, 9));
     expect(stats.trust).toBe('mixed');
     expect(stats.suggestedSeverity).toBeUndefined();
   });
@@ -137,7 +137,7 @@ describe('tính độ tin từng loại cảnh báo', () => {
 });
 
 describe('áp hiệu chỉnh lên cảnh báo', () => {
-  const noisy = computeCalibration(many('hands', 2, 8));
+  const noisy = computeCalibration(many('hands', 6, 24));
 
   it('hạ mức loại hay báo sai', () => {
     const [result] = calibrateIssues([issue({ kind: 'hands', severity: 'critical' })], noisy);
@@ -201,5 +201,56 @@ describe('tổng quan', () => {
 
   it('chưa có dữ liệu thì không bịa tỷ lệ', () => {
     expect(summarizeCalibration([]).overallOverrideRate).toBeNull();
+  });
+});
+
+/**
+ * Ba tầng theo số mẫu, chốt trong plan vòng 2 với Codex.
+ *
+ * Bản đầu chỉ có một ngưỡng là 5, và 5 mẫu đã đủ để tự hạ độ nặng cảnh báo.
+ * Với dữ liệu ít và lệch, đó là vòng lặp tự củng cố: vài lần bỏ qua ngẫu nhiên
+ * làm cảnh báo bị hạ cấp, hạ cấp khiến người duyệt bỏ qua nhiều hơn, và cảnh
+ * báo tắt hẳn.
+ */
+describe('ngưỡng dữ liệu ba tầng', () => {
+  it('dưới 10 mẫu: chưa kết luận, không có tỷ lệ', () => {
+    const [stats] = computeCalibration(many('hands', 2, 7));
+    expect(stats.tier).toBe('insufficient');
+    expect(stats.overrideRate).toBeNull();
+    expect(stats.suggestedSeverity).toBeUndefined();
+  });
+
+  it('10–29 mẫu: hiện tỷ lệ và độ tin, nhưng KHÔNG tự điều chỉnh', () => {
+    const [stats] = computeCalibration(many('hands', 2, 8));
+    expect(stats.tier).toBe('advisory');
+    expect(stats.overrideRate).toBe(0.8);
+    expect(stats.trust).toBe('noisy');
+    // Biết là hay báo sai, nhưng chưa được quyền hạ mức.
+    expect(stats.suggestedSeverity).toBeUndefined();
+  });
+
+  it('29 mẫu vẫn chưa được điều chỉnh — ranh giới phải chặt', () => {
+    const [stats] = computeCalibration(many('hands', 6, 23));
+    expect(stats.total).toBe(29);
+    expect(stats.suggestedSeverity).toBeUndefined();
+  });
+
+  it('đúng 30 mẫu thì mới được điều chỉnh', () => {
+    const [stats] = computeCalibration(many('hands', 6, 24));
+    expect(stats.total).toBe(30);
+    expect(stats.tier).toBe('actionable');
+    expect(stats.suggestedSeverity).toBe('info');
+  });
+
+  it('ở tầng advisory thì calibrateIssues không đổi gì cả', () => {
+    const advisory = computeCalibration(many('hands', 2, 8));
+    const [result] = calibrateIssues([issue({ kind: 'hands', severity: 'critical' })], advisory);
+    expect(result.severity).toBe('critical');
+  });
+
+  it('đủ mẫu nhưng đáng tin thì vẫn không hạ mức — ngưỡng không phải giấy phép', () => {
+    const trusted = computeCalibration(many('hands', 27, 3));
+    const [result] = calibrateIssues([issue({ kind: 'hands', severity: 'critical' })], trusted);
+    expect(result.severity).toBe('critical');
   });
 });

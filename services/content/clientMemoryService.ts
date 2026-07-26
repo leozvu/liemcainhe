@@ -152,9 +152,42 @@ export const buildClientMemory = (
   };
 };
 
-/** Trí nhớ có gì để dùng không. */
+/**
+ * Số quyết định tối thiểu trước khi trí nhớ được phép tác động vào prompt.
+ *
+ * Bản đầu **không có ngưỡng nào**: bài được duyệt đầu tiên đã đi thẳng vào
+ * prompt của bài thứ hai. Một quyết định thì chưa phải khuôn mẫu — nó có thể
+ * là bài duyệt vội, hoặc duyệt vì deadline. Học từ nó rồi đưa vào mọi bài sau
+ * là tự nhân bản một mẫu ngẫu nhiên.
+ *
+ * Dưới ngưỡng: trí nhớ vẫn được thu thập và hiện ra cho người dùng xem, nhưng
+ * `buildMemoryPromptContext` trả chuỗi rỗng — không tác động gì.
+ */
+export const MIN_MEMORY_DECISIONS = 10;
+
+/** Trí nhớ có gì để hiện cho người dùng xem không. */
 export const hasMemory = (memory: ClientMemory): boolean =>
   memory.approved.length > 0 || memory.rejected.length > 0;
+
+/**
+ * Số quyết định đã có, dùng cho cả ngưỡng lẫn chỗ hiện tiến độ.
+ *
+ * Dùng `rejectedCount` chứ không phải `rejected.length`: danh sách `rejected`
+ * đã bị cắt còn `MAX_REJECTIONS` mẫu đưa vào prompt. Đếm theo nó thì mười lần
+ * bị từ chối chỉ tính thành bốn, và ngưỡng khó đạt hơn dự định mà không ai
+ * hiểu vì sao.
+ */
+export const memorySampleCount = (memory: ClientMemory): number =>
+  memory.approvedCount + memory.rejectedCount;
+
+/**
+ * Trí nhớ đã đủ mẫu để tác động vào prompt chưa.
+ *
+ * Tách khỏi `hasMemory` có chủ ý: "có gì để xem" và "đủ căn cứ để dùng" là hai
+ * câu hỏi khác nhau, và gộp chúng chính là lỗi của bản đầu.
+ */
+export const isMemoryActionable = (memory: ClientMemory): boolean =>
+  memorySampleCount(memory) >= MIN_MEMORY_DECISIONS;
 
 /**
  * Biến trí nhớ thành khối ngữ cảnh cho prompt.
@@ -163,7 +196,9 @@ export const hasMemory = (memory: ClientMemory): boolean =>
  * lệnh cấm, và lệnh cấm đứng cuối thì nằm gần chỗ nó phải áp dụng nhất.
  */
 export const buildMemoryPromptContext = (memory: ClientMemory): string => {
-  if (!hasMemory(memory)) return '';
+  // Chưa đủ mẫu thì không tác động vào prompt. Trí nhớ vẫn tồn tại và vẫn hiện
+  // ra được cho người dùng — chỉ là chưa được quyền điều khiển.
+  if (!isMemoryActionable(memory)) return '';
 
   const parts: string[] = ['TRÍ NHỚ VỀ KHÁCH HÀNG NÀY — học từ những gì đã thực sự được duyệt:'];
 

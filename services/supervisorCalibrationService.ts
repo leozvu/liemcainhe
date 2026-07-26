@@ -42,8 +42,37 @@ const STORAGE_KEY = 'egoric_supervisor_calibration_v1';
  */
 const MAX_RECORDS = 1000;
 
-/** Số mẫu tối thiểu mới đủ căn cứ kết luận về một loại cảnh báo. */
-export const MIN_CALIBRATION_SAMPLE = 5;
+/**
+ * Ba tầng tin cậy theo số mẫu.
+ *
+ * Bản đầu để một ngưỡng duy nhất là 5, và **5 mẫu đã đủ để tự hạ độ nặng cảnh
+ * báo**. Con số đó tôi chọn không dựa trên gì cả. Với dữ liệu ít và lệch, nó
+ * tạo đúng vòng lặp tự củng cố: vài lần bỏ qua ngẫu nhiên làm cảnh báo bị hạ
+ * cấp, hạ cấp khiến người duyệt bỏ qua nhiều hơn, và cảnh báo tắt hẳn.
+ *
+ * Nay tách làm ba tầng — dưới 10 chỉ hiện số, 10–29 khuyến nghị nhưng không tự
+ * áp, từ 30 mới cho điều chỉnh.
+ */
+export const SAMPLE_DISPLAY_ONLY = 10;
+export const SAMPLE_RECOMMEND = 10;
+export const SAMPLE_AUTO_ADJUST = 30;
+
+/** Còn giữ tên cũ cho chỗ hiển thị tiến độ; nay trỏ vào tầng thấp nhất. */
+export const MIN_CALIBRATION_SAMPLE = SAMPLE_DISPLAY_ONLY;
+
+export type CalibrationTier = 'insufficient' | 'advisory' | 'actionable';
+
+/**
+ * Với ngần này mẫu thì được phép làm gì.
+ *
+ * `actionable` là tầng **duy nhất** cho phép đổi hành vi thật. Hai tầng dưới
+ * chỉ để người dùng nhìn.
+ */
+export const calibrationTier = (sampleCount: number): CalibrationTier => {
+  if (sampleCount >= SAMPLE_AUTO_ADJUST) return 'actionable';
+  if (sampleCount >= SAMPLE_RECOMMEND) return 'advisory';
+  return 'insufficient';
+};
 
 /** Tỷ lệ bị bỏ qua từ mức này trở lên thì coi là hay báo sai. */
 export const NOISY_OVERRIDE_RATE = 0.4;
@@ -129,6 +158,8 @@ export interface KindCalibration {
   /** Tỷ lệ bị bỏ qua, 0 đến 1. `null` khi chưa đủ mẫu. */
   overrideRate: number | null;
   trust: CalibrationTrust;
+  /** Với ngần này mẫu thì được phép làm gì: chỉ xem, khuyến nghị, hay điều chỉnh. */
+  tier: CalibrationTier;
   /**
    * Mức nghiêm trọng nên dùng thay cho mức gốc.
    *
@@ -169,10 +200,18 @@ export const computeCalibration = (records: CalibrationRecord[]): KindCalibratio
       total: list.length,
       accepted: list.length - overridden,
       overridden,
-      overrideRate: list.length >= MIN_CALIBRATION_SAMPLE ? Math.round(rate * 100) / 100 : null,
+      overrideRate: list.length >= SAMPLE_DISPLAY_ONLY ? Math.round(rate * 100) / 100 : null,
       trust,
-      // Chỉ hạ mức khi đã đủ mẫu và loại này thật sự hay báo sai.
-      suggestedSeverity: trust === 'noisy' ? 'info' : undefined,
+      tier: calibrationTier(list.length),
+      /**
+       * Chỉ đề xuất hạ mức khi đã đủ **30** mẫu.
+       *
+       * Dưới ngưỡng đó, `trust` vẫn được tính và hiện ra cho người dùng đọc,
+       * nhưng không có đề xuất nào — nghĩa là `calibrateIssues` không đổi gì.
+       * Đây là chỗ ranh giới "hiển thị" và "điều khiển" được vạch.
+       */
+      suggestedSeverity:
+        trust === 'noisy' && list.length >= SAMPLE_AUTO_ADJUST ? 'info' : undefined,
     });
   }
 
