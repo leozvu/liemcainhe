@@ -19,6 +19,7 @@ import {
 import { describeInsights } from '../../services/content/insightsService';
 import { getPublishChannel } from '../../services/content/publishChannels';
 import { getPublishSecret } from '../../services/credentialVault';
+import { listAccounts } from '../../services/content/managedAccountService';
 
 interface Props {
   /** Bài đang mở, để lưu vào thư viện. Không có thì chỉ xem lại bài cũ. */
@@ -114,14 +115,22 @@ const ArticleLibrary: React.FC<Props> = ({
   /**
    * Đọc số liệu về cho mọi bài đã đăng.
    *
-   * Lấy token từ kho khoá theo từng kênh, nên kênh nào chưa nhập token thì
-   * bản ghi của kênh đó ghi rõ lý do thay vì im lặng bỏ qua.
+   * Tra token theo đúng tài khoản đã đăng bài đó. Bản ghi trong sổ cái giữ
+   * `accountId` của nền tảng, còn kho khoá lưu theo id nội bộ, nên phải đi qua
+   * sổ tài khoản để bắc cầu. Tài khoản đã gỡ thì không còn token — bản ghi ghi
+   * rõ lý do thay vì im lặng bỏ qua.
    */
   const handleRefreshInsights = async () => {
     setBusy(true);
     setNotice(null);
     try {
-      await refreshInsights((channelId) => getPublishSecret(channelId));
+      const accounts = await listAccounts();
+      await refreshInsights((channelId, accountId) => {
+        const account = accounts.find(
+          (item) => item.channelId === channelId && item.externalId === accountId,
+        );
+        return account ? getPublishSecret(account.id) : {};
+      });
       await refresh();
       setNotice('Đã đọc lại số liệu của các bài đã đăng.');
     } finally {

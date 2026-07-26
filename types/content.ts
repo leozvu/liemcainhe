@@ -256,6 +256,36 @@ export interface PublishCredentials {
   accountId?: string;
 }
 
+/** Vì sao một tài khoản không đăng được nữa. */
+export type ManagedAccountStatus = 'active' | 'paused' | 'token-expired' | 'revoked';
+
+/**
+ * Một tài khoản thật trên nền tảng mà Egoric hoặc khách hàng sở hữu.
+ *
+ * Trước đây khoá đăng bài được lưu theo `channelId`, nên toàn app chỉ chứa được
+ * đúng một tài khoản mỗi nền tảng — nhập Fanpage thứ hai là ghi đè Fanpage thứ
+ * nhất. Thực thể này là thứ thay chỗ đó.
+ *
+ * `externalId` là ID trên nền tảng (Page ID, Threads User ID, OA ID). Nó nằm
+ * đây chứ không nằm trong kho khoá vì nó không phải bí mật, và sổ cái cần nó để
+ * tính vân tay chống trùng kể cả khi phiên đã hết và khoá đã bị xoá.
+ */
+export interface ManagedAccount {
+  id: string;
+  channelId: PublishChannelId;
+  /** Tên người dùng tự đặt, ví dụ "Fanpage Cà phê Hạnh — miền Nam". */
+  label: string;
+  externalId: string;
+  /** Khách hàng sở hữu. Bỏ trống nghĩa là kênh của chính Egoric. */
+  clientId?: string;
+  status: ManagedAccountStatus;
+  /** Hạn của access token, nếu nền tảng có cho biết. */
+  tokenExpiresAt?: number;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Nội dung đem đi đăng. Cùng một payload dùng cho mọi kênh. */
 export interface PublishPayload {
   text: string;

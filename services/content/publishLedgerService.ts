@@ -1,4 +1,5 @@
 import {
+  ManagedAccount,
   PostInsights,
   PublishChannelId,
   PublishCredentials,
@@ -210,14 +211,74 @@ export const publishWithGuard = async (
   return { result };
 };
 
+export interface AccountPublishOutcome {
+  /** Id của `ManagedAccount`, không phải id trên nền tảng. */
+  managedAccountId: string;
+  label: string;
+  outcome: GuardedPublishOutcome;
+}
+
+/**
+ * Đăng một nội dung lên nhiều tài khoản.
+ *
+ * Chạy **tuần tự**, không song song. Bắn đồng thời lên hai mươi tài khoản là
+ * cách nhanh nhất chạm trần tốc độ của nền tảng, và lúc đó lỗi trả về không
+ * phân biệt được với lỗi thật. Giới hạn tốc độ tử tế thuộc về Phase E; tuần tự
+ * là mặc định an toàn cho tới lúc đó.
+ *
+ * Một tài khoản hỏng **không** làm dừng các tài khoản còn lại — mỗi tài khoản
+ * là một lần đăng độc lập, có vân tay chống trùng riêng.
+ */
+export const publishToAccounts = async (
+  accounts: ManagedAccount[],
+  payload: PublishPayload,
+  credentialsFor: (managedAccountId: string) => PublishCredentials,
+  options: GuardedPublishOptions = {},
+): Promise<AccountPublishOutcome[]> => {
+  const outcomes: AccountPublishOutcome[] = [];
+
+  for (const account of accounts) {
+    const credentials = credentialsFor(account.id);
+    try {
+      const outcome = await publishWithGuard(
+        account.channelId,
+        payload,
+        // externalId là nguồn đáng tin cho vân tay: khoá trong phiên có thể đã
+        // bị xoá, nhưng tài khoản thì vẫn nằm trong sổ.
+        { ...credentials, accountId: credentials.accountId || account.externalId },
+        options,
+      );
+      outcomes.push({ managedAccountId: account.id, label: account.label, outcome });
+    } catch (error) {
+      outcomes.push({
+        managedAccountId: account.id,
+        label: account.label,
+        outcome: {
+          result: {
+            channelId: account.channelId,
+            success: false,
+            message: error instanceof Error ? error.message : 'Lỗi không xác định khi đăng.',
+          },
+        },
+      });
+    }
+  }
+
+  return outcomes;
+};
+
 /**
  * Đọc số liệu về cho các bài đã đăng thành công.
  *
  * Chỉ đụng tới bản ghi có `postId` và trạng thái `success` — bài chưa lên thì
  * không có gì để đo. Một kênh hỏng không làm dừng các kênh còn lại.
+ *
+ * `credentialsFor` nhận cả `accountId` vì một nền tảng nay có nhiều tài khoản,
+ * mỗi tài khoản một token: đọc số liệu bài của Page A bằng token Page B thì
+ * nền tảng trả về lỗi quyền, không phải số liệu.
  */
 export const refreshInsights = async (
-  credentialsFor: (channelId: PublishChannelId) => PublishCredentials,
+  credentialsFor: (channelId: PublishChannelId, accountId?: string) => PublishCredentials,
   options: {
     store?: LedgerStore;
     fetchInsights?: typeof fetchPostInsights;
@@ -247,7 +308,11 @@ export const refreshInsights = async (
       continue;
     }
 
-    const insights = await read(entry.channelId, entry.postId, credentialsFor(entry.channelId));
+    const insights = await read(
+      entry.channelId,
+      entry.postId,
+      credentialsFor(entry.channelId, entry.accountId),
+    );
     const next = { ...entry, insights };
     updated.push(next);
     try {

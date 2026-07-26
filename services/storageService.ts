@@ -7,13 +7,14 @@ import { normalizeAgencyClient } from './brandKitService';
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
 const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
 const CLIENT_STORE_NAME = 'agencyClients';
 const CAMPAIGN_STORE_NAME = 'agencyCampaigns';
 const PUBLISH_LEDGER_STORE_NAME = 'publishLedger';
 const ARTICLE_LIBRARY_STORE_NAME = 'articleLibrary';
+const MANAGED_ACCOUNT_STORE_NAME = 'managedAccounts';
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -43,6 +44,13 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
         const store = db.createObjectStore(PUBLISH_LEDGER_STORE_NAME, { keyPath: 'fingerprint' });
         store.createIndex('channelId', 'channelId', { unique: false });
         store.createIndex('startedAt', 'startedAt', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(MANAGED_ACCOUNT_STORE_NAME)) {
+        // Tài khoản đăng bài dùng chung cho cả workspace, không khoá theo dự án:
+        // một Fanpage phục vụ nhiều campaign của cùng khách hàng.
+        const store = db.createObjectStore(MANAGED_ACCOUNT_STORE_NAME, { keyPath: 'id' });
+        store.createIndex('channelId', 'channelId', { unique: false });
+        store.createIndex('clientId', 'clientId', { unique: false });
       }
       if (!db.objectStoreNames.contains(ARTICLE_LIBRARY_STORE_NAME)) {
         // Thư viện dùng chung cho cả workspace, không khoá theo dự án, để tìm
@@ -361,6 +369,17 @@ export const saveArticleToLibrary = async <T extends { id: string }>(article: T)
 
 export const deleteArticleFromLibrary = async (id: string): Promise<void> =>
   deleteWorkspaceItem(ARTICLE_LIBRARY_STORE_NAME, id);
+
+export const getManagedAccounts = async <T>(): Promise<T[]> => {
+  const db = await openDB();
+  return readStoreItems<T>(db, MANAGED_ACCOUNT_STORE_NAME);
+};
+
+export const saveManagedAccount = async <T extends { id: string }>(account: T): Promise<void> =>
+  putWorkspaceItem(MANAGED_ACCOUNT_STORE_NAME, account);
+
+export const deleteManagedAccount = async (id: string): Promise<void> =>
+  deleteWorkspaceItem(MANAGED_ACCOUNT_STORE_NAME, id);
 
 export const savePublishLedgerEntry = async <T extends { fingerprint: string }>(
   entry: T,

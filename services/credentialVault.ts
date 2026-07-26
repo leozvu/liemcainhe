@@ -104,11 +104,21 @@ export const clearModelCredentials = (): void => {
   writeVault(state);
 };
 
-export const getPublishSecret = (channelId: string): StoredPublishCredentials =>
-  readVault().publishCredentials[channelId] || {};
+/**
+ * Khoá đăng bài, lưu theo **từng tài khoản** chứ không theo nền tảng.
+ *
+ * `managedAccountId` là id của `ManagedAccount`. Trường `accountId` bên trong là
+ * id trên nền tảng (Page ID, OA ID) — hai thứ khác nhau, đừng lẫn: một agency
+ * quản mười Fanpage thì có mười `managedAccountId` nhưng cùng một `channelId`.
+ *
+ * Bản trước khoá theo `channelId` nên nhập tài khoản thứ hai là ghi đè tài
+ * khoản thứ nhất, im lặng.
+ */
+export const getPublishSecret = (managedAccountId: string): StoredPublishCredentials =>
+  readVault().publishCredentials[managedAccountId] || {};
 
 export const setPublishSecret = (
-  channelId: string,
+  managedAccountId: string,
   credentials: StoredPublishCredentials,
 ): void => {
   const state = readVault();
@@ -117,14 +127,25 @@ export const setPublishSecret = (
     accountId: normalizedSecret(credentials.accountId),
   };
   if (normalized.accessToken || normalized.accountId) {
-    state.publishCredentials[channelId] = normalized;
+    state.publishCredentials[managedAccountId] = normalized;
   } else {
-    delete state.publishCredentials[channelId];
+    delete state.publishCredentials[managedAccountId];
   }
   writeVault(state);
 };
 
-export const clearPublishSecret = (channelId: string): void => setPublishSecret(channelId, {});
+export const clearPublishSecret = (managedAccountId: string): void =>
+  setPublishSecret(managedAccountId, {});
+
+/** Xoá khoá của những tài khoản đã bị gỡ, để kho không giữ rác qua cả phiên. */
+export const prunePublishSecrets = (keepIds: string[]): void => {
+  const state = readVault();
+  const keep = new Set(keepIds);
+  Object.keys(state.publishCredentials).forEach((id) => {
+    if (!keep.has(id)) delete state.publishCredentials[id];
+  });
+  writeVault(state);
+};
 
 export const clearVoiceSecret = (providerId: string): void => setVoiceSecret(providerId, {});
 
@@ -138,7 +159,7 @@ export const getCredentialVaultStatus = () => {
     providerCount: Object.keys(state.providerKeys).length,
     modelCount: Object.keys(state.modelKeys).length,
     voiceProviderCount: Object.values(state.voiceCredentials).filter((item) => Boolean(item.apiKey)).length,
-    publishChannelCount: Object.values(state.publishCredentials).filter((item) => Boolean(item.accessToken)).length,
+    publishAccountCount: Object.values(state.publishCredentials).filter((item) => Boolean(item.accessToken)).length,
     persistence: 'session' as const,
   };
 };
