@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
+  Compass,
   ClipboardList,
   Clock3,
   ExternalLink,
@@ -56,6 +57,7 @@ import {
   getAllAgencyCampaigns,
   getAllAgencyClients,
   loadProjectFromDB,
+  createNewProjectState,
   saveAgencyCampaign,
   saveAgencyClient,
   saveProjectToDB,
@@ -184,6 +186,7 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [openingDeliverableId, setOpeningDeliverableId] = useState<string | null>(null);
+  const [openingCreativeStrategy, setOpeningCreativeStrategy] = useState(false);
   const [showPreProduction, setShowPreProduction] = useState(false);
   const [brandKitClientId, setBrandKitClientId] = useState<string | null>(null);
 
@@ -347,33 +350,72 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
   const openDeliverableProject = async (
     campaign: AgencyCampaign,
     deliverable: CampaignDeliverable,
-    destination: 'workspace' | 'production' | 'review' = 'workspace',
+    destination: 'workspace' | 'content' | 'production' | 'review' = 'workspace',
   ) => {
     setOpeningDeliverableId(deliverable.id);
     try {
       const client = clientsById.get(campaign.clientId);
       if (!client) throw new Error('Hồ sơ khách hàng của chiến dịch không còn tồn tại.');
-      const openTarget = (target: ProjectState) => {
-        if (destination === 'review' && onOpenProjectWithClientReview) onOpenProjectWithClientReview(target);
-        else if (destination === 'production' && onOpenProjectWithProductionControl) onOpenProjectWithProductionControl(target);
-        else onOpenProject(target);
+      const openTarget = async (target: ProjectState) => {
+        const destinationTarget = destination === 'content'
+          ? { ...target, stage: 'content' as const, lastModified: Date.now() }
+          : target;
+        if (destination === 'content') await saveProjectToDB(destinationTarget);
+        if (destination === 'review' && onOpenProjectWithClientReview) onOpenProjectWithClientReview(destinationTarget);
+        else if (destination === 'production' && onOpenProjectWithProductionControl) onOpenProjectWithProductionControl(destinationTarget);
+        else onOpenProject(destinationTarget);
       };
       if (deliverable.projectId) {
         const cached = projectsById.get(deliverable.projectId);
         const target = cached || await loadProjectFromDB(deliverable.projectId);
         const refreshed = { ...target, brandKitSnapshot: normalizeBrandKit(client.brandKit) };
         await saveProjectToDB(refreshed);
-        openTarget(refreshed);
+        await openTarget(refreshed);
         return;
       }
       const created = createProjectForCampaignDeliverable(campaign, client, deliverable.id);
       await Promise.all([saveAgencyCampaign(created.campaign), saveProjectToDB(created.project)]);
       setCampaigns((current) => current.map((item) => item.id === created.campaign.id ? created.campaign : item));
-      openTarget(created.project);
+      await openTarget(created.project);
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể mở không gian sản xuất.', { type: 'error' });
     } finally {
       setOpeningDeliverableId(null);
+    }
+  };
+
+  /**
+   * Lối tắt từ Campaign Hub vào đúng tính năng mới.
+   *
+   * Ưu tiên đầu ra của chiến dịch đang chạy để Brand Kit và brief đi theo.
+   * Workspace chưa có campaign thì dùng dự án gần nhất; trống hoàn toàn mới
+   * tạo một dự án nội dung độc lập.
+   */
+  const openCreativeStrategy = async () => {
+    setOpeningCreativeStrategy(true);
+    try {
+      const campaign = activeCampaigns[0] ?? campaigns[0];
+      const deliverable = campaign?.deliverables[0];
+      if (campaign && deliverable) {
+        await openDeliverableProject(campaign, deliverable, 'content');
+        return;
+      }
+
+      const recentProject = [...projects].sort((a, b) => b.lastModified - a.lastModified)[0];
+      if (recentProject) {
+        const target = { ...recentProject, stage: 'content' as const, lastModified: Date.now() };
+        await saveProjectToDB(target);
+        onOpenProject(target);
+        return;
+      }
+
+      const created = { ...createNewProjectState(), stage: 'content' as const, title: 'Chiến dịch nội dung mới' };
+      await saveProjectToDB(created);
+      onOpenProject(created);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể mở Xưởng nội dung.', { type: 'error' });
+    } finally {
+      setOpeningCreativeStrategy(false);
     }
   };
 
@@ -479,6 +521,45 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="relative mt-5 overflow-hidden rounded-2xl border border-cyan-200/20 bg-[linear-gradient(105deg,rgba(22,48,57,.76),rgba(10,18,24,.92))] p-5 shadow-xl shadow-black/15 md:p-6" aria-labelledby="creative-strategy-launch-title">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-200/[.1] blur-3xl" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-200/[.09] text-cyan-50">
+              <Compass className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="eg-kicker">Mới trong bản này</span>
+                <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100">0 credit</span>
+              </div>
+              <h2 id="creative-strategy-launch-title" className="mt-2 text-lg font-semibold text-white md:text-xl">
+                Phòng chiến lược Egoric · 15 lăng kính sáng tạo
+              </h2>
+              <p className="mt-2 max-w-3xl text-xs leading-5 text-zinc-400">
+                Nhận ba hướng phù hợp với brief, chọn cường độ và đưa cùng một creative direction
+                xuyên suốt bài viết lẫn phim ngắn. Đề xuất chạy ngay trên thiết bị, không gọi API.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="eg-chip border-white/[.08] bg-black/15 text-zinc-300">3 hướng tự động</span>
+                <span className="eg-chip border-white/[.08] bg-black/15 text-zinc-300">Tối đa 5 lăng kính/hướng</span>
+                <span className="eg-chip border-white/[.08] bg-black/15 text-zinc-300">Gắn Brand Kit</span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void openCreativeStrategy()}
+            disabled={openingCreativeStrategy || openingDeliverableId !== null}
+            className="eg-button-primary inline-flex min-h-12 shrink-0 items-center justify-center gap-2 px-6 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {openingCreativeStrategy || openingDeliverableId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <Compass className="h-4 w-4" />}
+            Mở Xưởng nội dung
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       </section>
 
@@ -626,6 +707,7 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-200/15 bg-cyan-200/[.055] text-cyan-100"><Film className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1"><h4 className="truncate text-sm font-semibold text-white">{deliverable.title}</h4><p className="mt-1 text-[10px] text-zinc-600">{PLATFORM_LABELS[deliverable.platform]} · {deliverable.aspectRatio} · {deliverable.duration}s · {deliverable.quantity} phiên bản</p></div>
                   <select value={deliverable.status} onChange={(event) => void changeDeliverableStatus(selectedCampaign, deliverable.id, event.target.value as DeliverableStatus)} className="eg-input min-w-40 px-3 text-xs">{(Object.keys(DELIVERABLE_STATUS_LABELS) as DeliverableStatus[]).map((status) => <option key={status} value={status}>{DELIVERABLE_STATUS_LABELS[status]}</option>)}</select>
+                  <button type="button" onClick={() => void openDeliverableProject(selectedCampaign, deliverable, 'content')} disabled={openingDeliverableId !== null} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><Compass className="h-4 w-4" /> Viết nội dung</button>
                   <button type="button" onClick={() => void openDeliverableProject(selectedCampaign, deliverable, 'review')} disabled={openingDeliverableId !== null} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><MessageSquareText className="h-4 w-4" /> Gửi duyệt</button>
                   <button type="button" onClick={() => void openDeliverableProject(selectedCampaign, deliverable, 'production')} disabled={openingDeliverableId !== null} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><ListChecks className="h-4 w-4" /> Bảng team</button>
                   <button type="button" onClick={() => void openDeliverableProject(selectedCampaign, deliverable)} disabled={openingDeliverableId !== null} className="eg-button-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-bold disabled:opacity-50">{openingDeliverableId === deliverable.id ? <Loader2 className="h-4 w-4 animate-spin" /> : deliverable.projectId ? <ExternalLink className="h-4 w-4" /> : <Plus className="h-4 w-4" />} {deliverable.projectId ? 'Mở project' : 'Tạo project'}</button>
