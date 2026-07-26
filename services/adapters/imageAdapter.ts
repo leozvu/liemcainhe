@@ -1,12 +1,16 @@
 import { ImageModelDefinition, ImageGenerateOptions, AspectRatio } from '../../types/model';
-import { getApiKeyForModel, getApiBaseUrlForModel, getActiveImageModel } from '../modelRegistry';
+import { getApiKeyForModel, getApiBaseUrlForModel, getActiveImageModel, getProviderById } from '../modelRegistry';
 import { ApiKeyError } from './chatAdapter';
+import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import {
   shouldUseImagesGenerationsEndpoint,
   callImagesGenerationsApi,
   extractImageFromApiResponse,
   normalizeImageResult,
 } from '../imageGenerationHelpers';
+import { callReplicateImageApi } from './replicateAdapter';
+import { callKieImageApi } from './kieAdapter';
+import { executeWithModelFallback } from '../modelRoutingService';
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
@@ -34,21 +38,28 @@ const retryOperation = async <T>(
   throw lastError;
 };
 
-export const callImageApi = async (
+const callImageApiOnce = async (
   options: ImageGenerateOptions,
   model?: ImageModelDefinition
 ): Promise<string> => {
   const activeModel = model || getActiveImageModel();
   if (!activeModel) {
-    throw new Error('没有可用的图片模型');
+    throw new Error('Không có mô hình tạo ảnh khả dụng');
   }
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('API Key 缺失，请在设置中配置 API Key');
+    throw new ApiKeyError('Thiếu khóa API. Hãy cấu hình khóa API trong phần cài đặt');
   }
   
   const apiBase = getApiBaseUrlForModel(activeModel.id);
+  const provider = getProviderById(activeModel.providerId);
+  if (provider?.protocol === 'replicate') {
+    return callReplicateImageApi(options, activeModel, apiKey, apiBase);
+  }
+  if (provider?.protocol === 'kie') {
+    return callKieImageApi(options, activeModel, apiKey, apiBase);
+  }
   const apiModel = activeModel.apiModel || activeModel.id;
   const customEndpoint = activeModel.endpoint;
   const aspectRatio = options.aspectRatio || activeModel.params.defaultAspectRatio;
@@ -68,28 +79,28 @@ export const callImageApi = async (
   let finalPrompt = options.prompt;
   if (options.referenceImages && options.referenceImages.length > 0) {
     finalPrompt = `
-      ⚠️⚠️⚠️ CRITICAL REQUIREMENTS - CHARACTER CONSISTENCY ⚠️⚠️⚠️
-      
-      Reference Images Information:
-      - The FIRST image is the Scene/Environment reference.
-      - Any subsequent images are Character references (Base Look or Variation).
-      
-      Task:
-      Generate a cinematic shot matching this prompt: "${options.prompt}".
-      
-      ⚠️ ABSOLUTE REQUIREMENTS (NON-NEGOTIABLE):
-      1. Scene Consistency:
-         - STRICTLY maintain the visual style, lighting, and environment from the scene reference.
-      
-      2. Character Consistency - HIGHEST PRIORITY:
-         If characters are present in the prompt, they MUST be IDENTICAL to the character reference images:
-         • Facial Features: Eyes (color, shape, size), nose structure, mouth shape, facial contours must be EXACTLY the same
-         • Hairstyle & Hair Color: Length, color, texture, and style must be PERFECTLY matched
-         • Clothing & Outfit: Style, color, material, and accessories must be IDENTICAL
-         • Body Type: Height, build, proportions must remain consistent
-         
-      ⚠️ DO NOT create variations or interpretations of the character - STRICT REPLICATION ONLY!
-      ⚠️ Character appearance consistency is THE MOST IMPORTANT requirement!
+      ⚠️⚠️⚠️ YÊU CẦU QUAN TRỌNG — NHẤT QUÁN NHÂN VẬT ⚠️⚠️⚠️
+
+      Thông tin ảnh tham chiếu:
+      - Ảnh ĐẦU TIÊN là tham chiếu bối cảnh hoặc môi trường.
+      - Các ảnh tiếp theo là tham chiếu nhân vật, gồm tạo hình cơ bản hoặc biến thể.
+
+      Nhiệm vụ:
+      Tạo cảnh quay điện ảnh phù hợp với câu lệnh: "${options.prompt}".
+
+      ⚠️ YÊU CẦU BẮT BUỘC:
+      1. Nhất quán bối cảnh:
+         - Giữ nghiêm ngặt phong cách hình ảnh, ánh sáng và môi trường từ ảnh tham chiếu.
+
+      2. Nhất quán nhân vật — ƯU TIÊN CAO NHẤT:
+         Nếu câu lệnh có nhân vật, họ phải giống hệt ảnh tham chiếu:
+         • Khuôn mặt: mắt, mũi, miệng và đường nét phải hoàn toàn giống nhau.
+         • Kiểu tóc và màu tóc: độ dài, màu sắc, chất tóc và kiểu tóc phải khớp chính xác.
+         • Trang phục: kiểu dáng, màu sắc, chất liệu và phụ kiện phải giống hệt.
+         • Vóc dáng: chiều cao, thể hình và tỷ lệ cơ thể phải nhất quán.
+
+      ⚠️ Không tạo biến thể hoặc diễn giải lại nhân vật; chỉ tái tạo đúng tham chiếu.
+      ⚠️ Sự nhất quán về ngoại hình nhân vật là yêu cầu quan trọng nhất.
     `;
   }
 
@@ -125,13 +136,13 @@ export const callImageApi = async (
 
     if (!res.ok) {
       if (res.status === 400) {
-        throw new Error('内容安全拦截：该提示词可能包含不安全或违规内容。请编辑关键帧/图片提示词，避免暴力、血腥、敏感描述后重试。');
+        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh câu lệnh khung hình hoặc ảnh, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
       }
       if (res.status === 500) {
-        throw new Error('当前请求较多，暂时未能处理成功，请稍后重试。');
+        throw new Error('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.');
       }
       
-      let errorMessage = `HTTP 错误: ${res.status}`;
+      let errorMessage = `Lỗi HTTP: ${res.status}`;
       try {
         const errorText = await res.text();
         try {
@@ -141,7 +152,7 @@ export const callImageApi = async (
           if (errorText) errorMessage = errorText;
         }
       } catch (_) {}
-      throw new Error(errorMessage);
+      throw new Error(localizeApiErrorMessage(errorMessage, res.status));
     }
 
     return await res.json();
@@ -151,7 +162,22 @@ export const callImageApi = async (
   if (extracted) {
     return normalizeImageResult(extracted);
   }
-  throw new Error(`图片生成失败：模型 ${apiModel} 未返回图片数据`);
+  throw new Error(`Tạo ảnh thất bại: mô hình ${apiModel} không trả về dữ liệu ảnh`);
+};
+
+export const callImageApi = async (
+  options: ImageGenerateOptions,
+  model?: ImageModelDefinition,
+): Promise<string> => {
+  const preferred = model || getActiveImageModel();
+  if (!preferred) throw new Error('Không có mô hình tạo ảnh khả dụng');
+  return executeWithModelFallback({
+    type: 'image',
+    preferred,
+    inputSize: options.prompt.length,
+    resourceId: options.usageResourceId,
+    operation: (candidate) => callImageApiOnce(options, candidate as ImageModelDefinition),
+  });
 };
 
 export const isAspectRatioSupported = (

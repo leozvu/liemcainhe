@@ -1,8 +1,8 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState, useRef, useEffect } from 'react';
 import { Film } from 'lucide-react';
 import { ProjectState } from '../../types';
-import { downloadMasterVideo, downloadSourceAssets } from '../../services/exportService';
+import { downloadEditorialPackage, downloadMasterVideo, downloadSourceAssets } from '../../services/exportService';
+import { cancelBrowserMasterRender, renderMasterVideoInBrowser } from '../../services/browserMasterRenderService';
 import { STYLES } from './constants';
 import {
   calculateEstimatedDuration,
@@ -32,6 +32,10 @@ const StageExport: React.FC<Props> = ({ project }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadPhase, setDownloadPhase] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isRenderingMaster, setIsRenderingMaster] = useState(false);
+  const [renderPhase, setRenderPhase] = useState('');
+  const [renderProgress, setRenderProgress] = useState(0);
+  const renderCancelledRef = useRef(false);
 
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const [assetsPhase, setAssetsPhase] = useState('');
@@ -54,7 +58,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
         playPromise
           .then(() => setIsPlaying(true))
           .catch(err => {
-            console.warn('Auto-play failed:', err);
+            console.warn('Tự động phát video thất bại:', err);
             setIsPlaying(false);
           });
       }
@@ -119,8 +123,8 @@ const StageExport: React.FC<Props> = ({ project }) => {
         setDownloadProgress(0);
       }, 2000);
     } catch (error) {
-      console.error('Download failed:', error);
-      showAlert(`导出失败: ${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
+      console.error('Tải tệp thất bại:', error);
+      showAlert(`Xuất tệp thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
       setIsDownloading(false);
       setDownloadPhase('');
       setDownloadProgress(0);
@@ -131,7 +135,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
     if (isDownloadingAssets) return;
     
     if (!hasDownloadableAssets(project)) {
-      showAlert('没有可下载的资源。请先生成角色、场景或镜头素材。', { type: 'warning' });
+      showAlert('Chưa có tài nguyên để tải xuống. Hãy tạo nhân vật, bối cảnh hoặc cảnh quay trước.', { type: 'warning' });
       return;
     }
     
@@ -150,11 +154,50 @@ const StageExport: React.FC<Props> = ({ project }) => {
         setAssetsProgress(0);
       }, 2000);
     } catch (error) {
-      console.error('Assets download failed:', error);
-      showAlert(`下载源资源失败: ${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
+      console.error('Tải tài nguyên thất bại:', error);
+      showAlert(`Tải tài nguyên gốc thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`, { type: 'error' });
       setIsDownloadingAssets(false);
       setAssetsPhase('');
       setAssetsProgress(0);
+    }
+  };
+
+  const handleRenderMaster = async () => {
+    if (isRenderingMaster || progress < 100) return;
+    renderCancelledRef.current = false;
+    setIsRenderingMaster(true);
+    setRenderProgress(0);
+    setRenderPhase('Đang chuẩn bị…');
+    try {
+      await renderMasterVideoInBrowser(project, ({ phase, progress: nextProgress }) => {
+        setRenderPhase(phase);
+        setRenderProgress(nextProgress);
+      });
+      showAlert('Đã ghép và tải bản master MP4. Quá trình chạy trên thiết bị nên không tốn credit AI.', { type: 'success' });
+    } catch (error) {
+      if (renderCancelledRef.current) {
+        showAlert('Đã hủy ghép bản master.', { type: 'info' });
+      } else {
+        showAlert(`Ghép MP4 thất bại: ${error instanceof Error ? error.message : 'Lỗi không xác định'}. Bạn vẫn có thể tải gói dựng ZIP.`, { type: 'error' });
+      }
+    } finally {
+      setIsRenderingMaster(false);
+      setRenderPhase('');
+      setRenderProgress(0);
+    }
+  };
+
+  const handleCancelRender = () => {
+    renderCancelledRef.current = true;
+    cancelBrowserMasterRender();
+  };
+
+  const handleExportTimeline = async () => {
+    try {
+      await downloadEditorialPackage(project);
+      showAlert('Đã tạo gói EDL, FCPXML và phụ đề SRT.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể xuất timeline', { type: 'error' });
     }
   };
 
@@ -164,13 +207,13 @@ const StageExport: React.FC<Props> = ({ project }) => {
         <div className="flex items-center gap-4">
           <h2 className={STYLES.header.title}>
             <Film className="w-5 h-5 text-cyan-300" />
-            制片导出
-            <span className={STYLES.header.subtitle}>Rendering & Export</span>
+            Xuất bản
+            <span className={STYLES.header.subtitle}>KẾT XUẤT VÀ XUẤT BẢN</span>
           </h2>
         </div>
         <div className="flex items-center gap-2">
           <span className={STYLES.header.status}>
-            Status: {progress === 100 ? 'READY' : 'IN PROGRESS'}
+            Trạng thái: {progress === 100 ? 'SẴN SÀNG' : 'ĐANG XỬ LÝ'}
           </span>
         </div>
       </div>
@@ -185,7 +228,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
               estimatedDuration={estimatedDuration}
             />
             
-            <TimelineVisualizer shots={project.shots} />
+            <TimelineVisualizer project={project} />
             
             <ActionButtons
               completedShotsCount={completedShots.length}
@@ -196,8 +239,16 @@ const StageExport: React.FC<Props> = ({ project }) => {
                 phase: downloadPhase,
                 progress: downloadProgress
               }}
+              renderState={{
+                isDownloading: isRenderingMaster,
+                phase: renderPhase,
+                progress: renderProgress,
+              }}
               onPreview={openVideoPlayer}
+              onRenderMaster={() => void handleRenderMaster()}
+              onCancelRender={handleCancelRender}
               onDownloadMaster={handleDownloadMaster}
+              onExportTimeline={() => void handleExportTimeline()}
             />
           </div>
 

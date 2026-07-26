@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { LEGACY_ONBOARDING_STORAGE_KEY, ONBOARDING_STORAGE_KEY, ONBOARDING_PAGES, TOTAL_PAGES } from './constants';
+import { ONBOARDING_STORAGE_KEY, ONBOARDING_PAGES, TOTAL_PAGES } from './constants';
 import ProgressDots from './ProgressDots';
 import WelcomePage from './WelcomePage';
 import WorkflowPage from './WorkflowPage';
@@ -11,15 +11,13 @@ import ActionPage from './ActionPage';
 interface OnboardingProps {
   onComplete: () => void;
   onQuickStart?: (option: 'script' | 'example') => void;
-  currentApiKey?: string;
-  onSaveApiKey?: (key: string) => void;
 }
 
-const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, currentApiKey = '', onSaveApiKey }) => {
+const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart }) => {
   const [currentPage, setCurrentPage] = useState(ONBOARDING_PAGES.WELCOME);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // 处理页面切换动画
+  // Điều khiển chuyển cảnh giữa các bước.
   const handlePageChange = (newPage: number) => {
     if (newPage === currentPage || isAnimating) return;
     setIsAnimating(true);
@@ -53,20 +51,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, curre
 
   const markOnboardingComplete = () => {
     localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
-    localStorage.removeItem(LEGACY_ONBOARDING_STORAGE_KEY);
   };
 
-  // 处理 API Key 保存
-  const handleSaveApiKey = (key: string) => {
-    onSaveApiKey?.(key);
-  };
-
-  // 跳过 API Key 配置，直接进入最后一页
+  // Cho phép cấu hình khóa API sau.
   const handleSkipApiKey = () => {
     handlePageChange(ONBOARDING_PAGES.ACTION);
   };
 
-  // 渲染当前页面
+  // Hiển thị bước hiện tại.
   const renderPage = () => {
     switch (currentPage) {
       case ONBOARDING_PAGES.WELCOME:
@@ -77,9 +69,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, curre
         return <HighlightPage onNext={handleNext} />;
       case ONBOARDING_PAGES.API_KEY:
         return (
-          <ApiKeyPage 
-            currentApiKey={currentApiKey} 
-            onSaveApiKey={handleSaveApiKey}
+          <ApiKeyPage
             onNext={handleNext}
             onSkip={handleSkipApiKey}
           />
@@ -93,24 +83,24 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, curre
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
-      {/* 背景遮罩 */}
+      {/* Lớp nền */}
       <div 
         className="absolute inset-0 bg-slate-950/90 backdrop-blur-xl"
         onClick={handleSkip}
       />
 
-      {/* 弹窗容器 */}
+      {/* Hộp hướng dẫn */}
       <div className="relative z-10 w-full max-w-lg mx-4 bg-slate-950/90 border border-cyan-200/15 rounded-[1.75rem] shadow-2xl shadow-cyan-950/30 overflow-hidden animate-in zoom-in-95 fade-in duration-300 backdrop-blur-xl">
-        {/* 关闭按钮 */}
+        {/* Nút đóng */}
         <button
           onClick={handleSkip}
           className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-white transition-colors rounded-xl hover:bg-white/10"
-          aria-label="关闭引导"
+          aria-label="Đóng hướng dẫn"
         >
           <X className="w-4 h-4" />
         </button>
 
-        {/* 内容区域 */}
+        {/* Nội dung */}
         <div 
           className={`p-8 pt-12 transition-opacity duration-150 ${
             isAnimating ? 'opacity-0' : 'opacity-100'
@@ -119,7 +109,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, curre
           {renderPage()}
         </div>
 
-        {/* 进度指示 */}
+        {/* Tiến độ */}
         <div className="pb-6">
           <ProgressDots 
             currentPage={currentPage} 
@@ -131,22 +121,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onQuickStart, curre
   );
 };
 
-// 检查是否需要显示引导
+// Kiểm tra trạng thái hiển thị hướng dẫn.
 export const shouldShowOnboarding = (): boolean => {
-  const isComplete =
-    localStorage.getItem(ONBOARDING_STORAGE_KEY) === 'true' ||
-    localStorage.getItem(LEGACY_ONBOARDING_STORAGE_KEY) === 'true';
-  if (isComplete) {
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
-    localStorage.removeItem(LEGACY_ONBOARDING_STORAGE_KEY);
-  }
-  return !isComplete;
+  return localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'true';
 };
 
-// 重置引导状态（用于帮助菜单中重新触发）
+// Đặt lại hướng dẫn để có thể mở lại từ menu trợ giúp.
 export const resetOnboarding = (): void => {
   localStorage.removeItem(ONBOARDING_STORAGE_KEY);
-  localStorage.removeItem(LEGACY_ONBOARDING_STORAGE_KEY);
 };
 
 export default Onboarding;

@@ -55,8 +55,8 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       type: options?.type || 'info',
       onConfirm: options?.onConfirm,
       onCancel: options?.onCancel,
-      confirmText: options?.confirmText || '确定',
-      cancelText: options?.cancelText || '取消',
+      confirmText: options?.confirmText || 'Xác nhận',
+      cancelText: options?.cancelText || 'Hủy',
       showCancel: options?.showCancel || false
     });
   }, []);
@@ -87,10 +87,10 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getTitle = () => {
     if (alertState.title) return alertState.title;
     switch (alertState.type) {
-      case 'success': return '成功';
-      case 'error': return '错误';
-      case 'warning': return '警告';
-      default: return '提示';
+      case 'success': return 'Thành công';
+      case 'error': return 'Lỗi';
+      case 'warning': return 'Cảnh báo';
+      default: return 'Thông báo';
     }
   };
 

@@ -79,15 +79,15 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
                 {character.status === 'failed' ? (
                   <>
                     <AlertCircle className="w-8 h-8 mb-2 text-red-500" />
-                    <span className="text-[10px] text-red-500 mb-2">生成失败</span>
+                    <span className="text-[10px] text-red-500 mb-2">Tạo ảnh thất bại</span>
                     <ImageUploadButton
                       variant="inline"
                       size="small"
                       onUpload={onUpload}
                       onGenerate={onGenerate}
                       isGenerating={isGenerating}
-                      uploadLabel="上传"
-                      generateLabel="重试"
+                      uploadLabel="Tải lên"
+                      generateLabel="Thử lại"
                     />
                   </>
                 ) : (
@@ -99,8 +99,8 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
                       onUpload={onUpload}
                       onGenerate={onGenerate}
                       isGenerating={isGenerating}
-                      uploadLabel="上传"
-                      generateLabel="生成"
+                      uploadLabel="Tải lên"
+                      generateLabel="Tạo ảnh"
                     />
                   </>
                 )}
@@ -192,7 +192,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
               className="w-full py-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 border border-white/10 hover:border-cyan-300/30 transition-colors"
             >
               <Shirt className="w-3 h-3" />
-              服装变体
+              Biến thể trang phục
             </button>
 
             {character.referenceImage && (
@@ -203,7 +203,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
                   onUpload={onUpload}
                   onGenerate={onGenerate}
                   isGenerating={isGenerating}
-                  uploadLabel="上传"
+                  uploadLabel="Tải lên"
                 />
               </div>
             )}
@@ -214,7 +214,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
               className="w-full py-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 border border-white/10 hover:border-cyan-300/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <FolderPlus className="w-3 h-3" />
-              从资产库替换
+              Thay từ thư viện
             </button>
           </div>
         </div>
@@ -225,8 +225,8 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           <PromptEditor
             prompt={character.visualPrompt || ''}
             onSave={onPromptSave}
-            label="角色提示词"
-            placeholder="输入角色的视觉描述..."
+            label="Câu lệnh nhân vật"
+            placeholder="Nhập mô tả hình ảnh nhân vật..."
           />
         </div>
 
@@ -238,12 +238,12 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           {isGenerating ? (
             <>
               <Loader2 className="w-3 h-3 animate-spin" />
-              生成中...
+              Đang tạo...
             </>
           ) : (
             <>
               <Sparkles className="w-3 h-3" />
-              {character.referenceImage ? '重新生成图片' : '生成角色图片'}
+              {character.referenceImage ? 'Tạo lại ảnh' : 'Tạo ảnh nhân vật'}
             </>
           )}
         </button>
@@ -254,7 +254,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           className="w-full py-2 mt-2 bg-white/[0.06] hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 hover:border-cyan-300/30 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <FolderPlus className="w-3 h-3" />
-          加入资产库
+          Thêm vào thư viện
         </button>
 
         <button
@@ -263,7 +263,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           className="w-full py-2 mt-2 bg-transparent hover:bg-red-950/10 text-red-400 hover:text-red-300 border border-red-500/50 hover:border-red-400 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Trash2 className="w-3 h-3" />
-          删除角色
+          Xóa nhân vật
         </button>
       </div>
     </div>

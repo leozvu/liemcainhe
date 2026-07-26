@@ -52,24 +52,24 @@ const ConfigPanel: React.FC<Props> = ({
       <div className="h-16 px-5 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.03]">
         <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-cyan-300" />
-          项目配置
+          Cấu hình dự án
         </h2>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
         <div className="space-y-2">
-          <label className={STYLES.label}>项目标题</label>
+          <label className={STYLES.label}>Tên dự án</label>
           <input 
             type="text"
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
             className={STYLES.input}
-            placeholder="输入项目名称..."
+            placeholder="Nhập tên dự án..."
           />
         </div>
 
         <div className="space-y-2">
-          <label className={STYLES.label}>输出语言</label>
+          <label className={STYLES.label}>Ngôn ngữ đầu ra</label>
           <div className="relative">
             <select
               value={language}
@@ -87,13 +87,13 @@ const ConfigPanel: React.FC<Props> = ({
         </div>
 
         <OptionSelector
-          label="目标时长"
+          label="Thời lượng mục tiêu"
           options={DURATION_OPTIONS}
           value={duration}
           onChange={onDurationChange}
           customInput={customDurationInput}
           onCustomInputChange={onCustomDurationChange}
-          customPlaceholder="输入时长 (如: 90s, 3m)"
+          customPlaceholder="Nhập thời lượng (ví dụ: 90s, 3m)"
           gridCols={2}
         />
 
@@ -103,22 +103,22 @@ const ConfigPanel: React.FC<Props> = ({
             value={model}
             onChange={onModelChange}
             disabled={isProcessing}
-            label="分镜生成模型"
+            label="Mô hình tạo bảng phân cảnh"
           />
           <p className="text-[9px] text-slate-500">
-            内置 GPT-5.2 / GPT-5.4，可在 <span className="text-cyan-300">模型配置</span> 中添加自定义对话模型
+            Có sẵn GPT-5.2 / GPT-5.4; bạn có thể thêm mô hình hội thoại trong <span className="text-cyan-300">Cấu hình mô hình</span>
           </p>
         </div>
 
         <OptionSelector
-          label="视觉风格"
+          label="Phong cách hình ảnh"
           icon={<Wand2 className="w-3 h-3" />}
           options={VISUAL_STYLE_OPTIONS}
           value={visualStyle}
           onChange={onVisualStyleChange}
           customInput={customStyleInput}
           onCustomInputChange={onCustomStyleChange}
-          customPlaceholder="输入风格 (如: 水彩风格, 像素艺术)"
+          customPlaceholder="Nhập phong cách (ví dụ: màu nước, pixel art)"
           gridCols={2}
         />
       </div>
@@ -136,12 +136,12 @@ const ConfigPanel: React.FC<Props> = ({
           {isProcessing ? (
             <>
               <BrainCircuit className="w-4 h-4 animate-spin" />
-              智能分析中...
+              Đang phân tích...
             </>
           ) : (
             <>
               <Wand2 className="w-4 h-4" />
-              生成分镜脚本
+              Tạo bảng phân cảnh
             </>
           )}
         </button>

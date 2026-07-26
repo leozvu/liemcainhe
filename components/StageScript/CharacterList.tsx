@@ -23,7 +23,7 @@ const CharacterList: React.FC<Props> = ({
   return (
     <section>
       <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-        <Users className="w-3 h-3" /> 演员表
+        <Users className="w-3 h-3" /> Danh sách nhân vật
       </h3>
       <div className="space-y-3">
         {characters.map(c => (
@@ -42,10 +42,10 @@ const CharacterList: React.FC<Props> = ({
                   onChange={(val) => onEdit(c.id, val)}
                   onSave={() => onSave(c.id, editingPrompt)}
                   onCancel={onCancel}
-                  placeholder="输入角色视觉描述..."
+                  placeholder="Nhập mô tả hình ảnh nhân vật..."
                   rows={4}
                   mono={true}
-                  emptyText="暂无视觉描述"
+                  emptyText="Chưa có mô tả hình ảnh"
                 />
               </div>
             </div>

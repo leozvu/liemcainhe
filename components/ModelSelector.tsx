@@ -1,6 +1,5 @@
 /**
- * 模型选择器组件
- * 用于在各功能模块中选择要使用的模型
+ * Bộ chọn mô hình dùng chung cho các chức năng tạo nội dung.
  */
 
 import React from 'react';
@@ -29,9 +28,9 @@ interface ModelSelectorProps {
 }
 
 const typeLabels: Record<ModelType, string> = {
-  chat: '对话模型',
-  image: '图片模型',
-  video: '视频模型',
+  chat: 'Mô hình hội thoại',
+  image: 'Mô hình hình ảnh',
+  video: 'Mô hình video',
 };
 
 const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -42,7 +41,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   compact = false,
   label,
 }) => {
-  // 获取对应类型的模型列表（仅启用的模型）
+  // Chỉ lấy các mô hình đúng loại và đang được bật.
   const getModels = (): ModelDefinition[] => {
     let models: ModelDefinition[] = [];
     switch (type) {
@@ -133,7 +132,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
 export default ModelSelector;
 
 /**
- * 视频模型选择器（带 Sora/Veo 模式显示）
+ * Bộ chọn mô hình video kèm thông tin chế độ hỗ trợ.
  */
 export const VideoModelSelector: React.FC<{
   value: string;
@@ -146,7 +145,7 @@ export const VideoModelSelector: React.FC<{
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-        视频模型
+        Mô hình video
       </label>
       <div className="relative">
         <select
@@ -157,7 +156,7 @@ export const VideoModelSelector: React.FC<{
         >
           {models.map((model) => {
             const videoModel = model as VideoModelDefinition;
-            const modeLabel = videoModel.params.mode === 'async' ? '异步' : '同步';
+            const modeLabel = videoModel.params.mode === 'async' ? 'Bất đồng bộ' : 'Đồng bộ';
             return (
               <option key={model.id} value={model.id}>
                 {model.name} ({modeLabel})
@@ -169,9 +168,9 @@ export const VideoModelSelector: React.FC<{
       </div>
       {selectedModel && (
         <p className="text-[9px] text-zinc-600">
-          模式: {selectedModel.params.mode === 'async' ? '异步（需要轮询）' : '同步（直接返回）'}
+          Chế độ: {selectedModel.params.mode === 'async' ? 'Bất đồng bộ (cần thăm dò)' : 'Đồng bộ (trả kết quả trực tiếp)'}
           {selectedModel.params.supportedDurations.length > 1 && 
-            ` · 支持时长: ${selectedModel.params.supportedDurations.join('/')}秒`
+            ` · Thời lượng hỗ trợ: ${selectedModel.params.supportedDurations.join('/')} giây`
           }
         </p>
       )}

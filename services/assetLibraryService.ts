@@ -8,7 +8,7 @@ const generateId = (prefix: string): string => {
 const cloneCharacterVariation = (variation: Character['variations'][number]) => ({
   ...variation,
   id: generateId('var'),
-  status: variation.referenceImage ? 'completed' : 'pending'
+  status: variation.referenceImage ? 'completed' as const : 'pending' as const
 });
 
 export const createLibraryItemFromCharacter = (character: Character): AssetLibraryItem => {
@@ -57,7 +57,7 @@ export const cloneSceneForProject = (scene: Scene): Scene => {
 
 export const applyLibraryItemToProject = (project: ProjectState, item: AssetLibraryItem): ProjectState => {
   if (!project.scriptData) {
-    throw new Error('项目尚未生成角色和场景，无法导入资产。');
+    throw new Error('Dự án chưa có nhân vật và bối cảnh nên chưa thể nhập tài nguyên.');
   }
 
   const newData = { ...project.scriptData };

@@ -16,8 +16,8 @@ export const handleImageUpload = async (file: File): Promise<string> => {
   try {
     return await convertImageToBase64(file);
   } catch (e: any) {
-    console.error('图片上传失败:', e);
-    throw new Error(e.message || '图片上传失败');
+    console.error('Tải ảnh lên thất bại:', e);
+    throw new Error(e.message || 'Tải ảnh lên thất bại');
   }
 };
 

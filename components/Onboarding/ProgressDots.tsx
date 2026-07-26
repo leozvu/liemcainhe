@@ -18,7 +18,7 @@ const ProgressDots: React.FC<ProgressDotsProps> = ({ currentPage, onPageChange }
               ? 'bg-white scale-125'
               : 'bg-zinc-600 hover:bg-zinc-500'
           }`}
-          aria-label={`跳转到第 ${index + 1} 页`}
+          aria-label={`Chuyển đến trang ${index + 1}`}
         />
       ))}
     </div>

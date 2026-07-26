@@ -30,7 +30,7 @@ const SceneSection: React.FC<Props> = ({
 
   return (
     <CollapsibleSection
-      title="场景"
+      title="Bối cảnh"
       icon={<MapPin className="w-5 h-5" />}
       count={scenes.length}
       isExpanded={isExpanded}
@@ -49,7 +49,7 @@ const SceneSection: React.FC<Props> = ({
               onClick={() => onStartEdit('scene', scene.id, scene.visualPrompt || '')}
               className={STYLES.button.edit}
             >
-              编辑
+              Chỉnh sửa
             </button>
           </div>
 
@@ -63,7 +63,7 @@ const SceneSection: React.FC<Props> = ({
             />
           ) : (
             <p className={STYLES.display.base}>
-              {scene.visualPrompt || '未设置提示词'}
+              {scene.visualPrompt || 'Chưa có câu lệnh'}
             </p>
           )}
         </div>

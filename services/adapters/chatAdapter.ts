@@ -1,10 +1,24 @@
-import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_CHAT_MODEL_ID } from '../../types/model';
-import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel } from '../modelRegistry';
+import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_PROVIDER_ID } from '../../types/model';
+import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel, getProviderById } from '../modelRegistry';
+import { localizeApiErrorMessage } from '../apiErrorLocalization';
+import { verifyProviderApiKey } from '../providerService';
+import { executeWithModelFallback } from '../modelRoutingService';
+import { callKieChatApi } from './kieAdapter';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ApiKeyError';
+  }
+}
+
+class ProviderHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ProviderHttpError';
+    this.status = status;
   }
 }
 
@@ -20,9 +34,11 @@ const retryOperation = async <T>(
       return await operation();
     } catch (error: any) {
       lastError = error;
-      if (error.message?.includes('400') || 
-          error.message?.includes('401') || 
-          error.message?.includes('403')) {
+      const status = Number(error?.status);
+      const nonRetryableClientError = status >= 400
+        && status < 500
+        && ![408, 409, 429].includes(status);
+      if (nonRetryableClientError || error instanceof ApiKeyError) {
         throw error;
       }
       if (i < maxRetries - 1) {
@@ -41,21 +57,25 @@ const cleanJsonResponse = (response: string): string => {
   return cleaned.trim();
 };
 
-export const callChatApi = async (
+const callChatApiOnce = async (
   options: ChatOptions,
   model?: ChatModelDefinition
 ): Promise<string> => {
   const activeModel = model || getActiveChatModel();
   if (!activeModel) {
-    throw new Error('没有可用的对话模型');
+    throw new Error('Không có mô hình hội thoại khả dụng');
   }
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('API Key 缺失，请在设置中配置 API Key');
+    throw new ApiKeyError('Thiếu khóa API. Hãy cấu hình khóa API trong phần cài đặt');
   }
   
   const apiBase = getApiBaseUrlForModel(activeModel.id);
+  const provider = getProviderById(activeModel.providerId);
+  if (provider?.protocol === 'kie') {
+    return callKieChatApi(options, activeModel, apiKey, apiBase);
+  }
   const endpoint = activeModel.endpoint || '/v1/chat/completions';
   const apiModel = activeModel.apiModel || activeModel.id;
   
@@ -70,7 +90,13 @@ export const callChatApi = async (
     messages.push({ role: 'system', content: options.systemPrompt });
   }
   
-  messages.push({ role: 'user', content: options.prompt });
+  const userContent = options.imageUrls?.length
+    ? [
+        { type: 'text', text: options.prompt },
+        ...options.imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+      ]
+    : options.prompt;
+  messages.push({ role: 'user', content: userContent });
   
   const requestBody: any = {
     model: apiModel,
@@ -112,7 +138,7 @@ export const callChatApi = async (
       });
       
       if (!res.ok) {
-        let errorMessage = `HTTP 错误: ${res.status}`;
+        let errorMessage = `Lỗi HTTP: ${res.status}`;
         try {
           const errorData = await res.json();
           errorMessage = errorData.error?.message || errorMessage;
@@ -120,7 +146,7 @@ export const callChatApi = async (
           const errorText = await res.text();
           if (errorText) errorMessage = errorText;
         }
-        throw new Error(errorMessage);
+        throw new ProviderHttpError(localizeApiErrorMessage(errorMessage, res.status), res.status);
       }
       
       return res;
@@ -140,49 +166,30 @@ export const callChatApi = async (
     clearTimeout(timeoutId);
     
     if (error.name === 'AbortError') {
-      throw new Error(`请求超时 (${timeout / 1000}秒)`);
+      throw new Error(`Yêu cầu hết thời gian chờ (${timeout / 1000} giây)`);
     }
     
     throw error;
   }
 };
 
+export const callChatApi = async (
+  options: ChatOptions,
+  model?: ChatModelDefinition,
+): Promise<string> => {
+  const preferred = model || getActiveChatModel();
+  if (!preferred) throw new Error('Không có mô hình hội thoại khả dụng');
+  return executeWithModelFallback({
+    type: 'chat',
+    preferred,
+    inputSize: options.prompt.length + (options.systemPrompt?.length || 0),
+    resourceId: options.usageResourceId,
+    operation: (candidate) => callChatApiOnce(options, candidate as ChatModelDefinition),
+  });
+};
+
 export const verifyApiKey = async (apiKey: string, baseUrl?: string): Promise<{ success: boolean; message: string }> => {
-  try {
-    const url = baseUrl || 'https://api.gitcc.com';
-    
-    const response = await fetch(`${url}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: DEFAULT_CHAT_MODEL_ID,
-        messages: [{ role: 'user', content: '仅返回1' }],
-        temperature: 0.1,
-        max_tokens: 5,
-      }),
-    });
-
-    if (!response.ok) {
-      let errorMessage = `验证失败: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (e) {
-        // ignore
-      }
-      return { success: false, message: errorMessage };
-    }
-
-    const data = await response.json();
-    if (data.choices?.[0]?.message?.content !== undefined) {
-      return { success: true, message: 'API Key 验证成功' };
-    } else {
-      return { success: false, message: '返回格式异常' };
-    }
-  } catch (error: any) {
-    return { success: false, message: error.message || '网络错误' };
-  }
+  // baseUrl chỉ được giữ trong chữ ký để không làm hỏng mã gọi cũ.
+  void baseUrl;
+  return verifyProviderApiKey(DEFAULT_PROVIDER_ID, apiKey);
 };

@@ -49,8 +49,8 @@ export const STATUS_STYLES = {
 };
 
 export const STATUS_LABELS = {
-  completed: '✓ 已生成',
-  generating: '生成中',
-  failed: '失败',
-  idle: '待生成'
+  completed: '✓ Đã tạo',
+  generating: 'Đang tạo',
+  failed: 'Thất bại',
+  idle: 'Chờ tạo'
 };

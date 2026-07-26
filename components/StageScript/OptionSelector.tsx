@@ -71,7 +71,7 @@ const OptionSelector: React.FC<Props> = ({
       {helpText && (
         <div className="pt-1 px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl">
           <p className="text-[10px] text-zinc-500 leading-relaxed">
-            💡 提示：{helpText}
+            Gợi ý: {helpText}
             {helpLink && (
               <>
                 {' '}

@@ -31,16 +31,16 @@ export const validateConfig = (config: {
   visualStyle: string;
 }): { valid: boolean; error: string | null } => {
   if (!config.script.trim()) {
-    return { valid: false, error: '请输入剧本内容。' };
+    return { valid: false, error: 'Hãy nhập nội dung kịch bản.' };
   }
   if (!config.duration) {
-    return { valid: false, error: '请选择目标时长。' };
+    return { valid: false, error: 'Hãy chọn thời lượng mục tiêu.' };
   }
   if (!config.model) {
-    return { valid: false, error: '请选择或输入模型名称。' };
+    return { valid: false, error: 'Hãy chọn hoặc nhập tên mô hình.' };
   }
   if (!config.visualStyle) {
-    return { valid: false, error: '请选择或输入视觉风格。' };
+    return { valid: false, error: 'Hãy chọn hoặc nhập phong cách hình ảnh.' };
   }
   return { valid: true, error: null };
 };

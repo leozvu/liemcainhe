@@ -1,7 +1,7 @@
-// Author: forsearch | Updated: 2026-04-30
 import { AspectRatio } from '../types/model';
+import { localizeApiErrorMessage } from './apiErrorLocalization';
 
-/** qwen-image / dall-e 等应走 OpenAI Images API，而非 chat/completions */
+/** Các mô hình ảnh dùng giao thức OpenAI Images thay vì chat/completions. */
 export const shouldUseImagesGenerationsEndpoint = (
   apiModel: string,
   customEndpoint?: string
@@ -53,7 +53,7 @@ const extractDataUrlFromText = (text: string): string | null => {
   return null;
 };
 
-/** 从 chat/completions 或 images/generations 等多种响应体中提取图片 */
+/** Trích xuất ảnh từ nhiều kiểu phản hồi của gateway. */
 export const extractImageFromApiResponse = (response: unknown): string | null => {
   if (!response || typeof response !== 'object') return null;
   const r = response as Record<string, unknown>;
@@ -154,7 +154,7 @@ export const urlToImageDataUrl = async (url: string): Promise<string> => {
   if (url.startsWith('data:image/')) return url;
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`图片下载失败: HTTP ${response.status}`);
+    throw new Error(`Tải ảnh thất bại: HTTP ${response.status}`);
   }
   const blob = await response.blob();
   return new Promise((resolve, reject) => {
@@ -162,9 +162,9 @@ export const urlToImageDataUrl = async (url: string): Promise<string> => {
     reader.onloadend = () => {
       const result = reader.result as string;
       if (result?.startsWith('data:')) resolve(result);
-      else reject(new Error('图片转换失败'));
+      else reject(new Error('Chuyển đổi hình ảnh thất bại'));
     };
-    reader.onerror = () => reject(new Error('图片读取失败'));
+    reader.onerror = () => reject(new Error('Không thể đọc hình ảnh'));
     reader.readAsDataURL(blob);
   });
 };
@@ -174,13 +174,13 @@ export const normalizeImageResult = async (raw: string): Promise<string> => {
     try {
       return await urlToImageDataUrl(raw);
     } catch (e) {
-      // 阿里云 OSS 等外链常因 CORS 无法在页面内 fetch 转 base64，但 <img src> 可直接显示
-      console.warn('图片转 base64 失败，使用原始 URL 显示:', e);
+      // Một số liên kết ảnh ngoài không cho phép tải bằng fetch do CORS nhưng vẫn hiển thị được qua img.
+      console.warn('Không thể chuyển ảnh sang base64, sẽ hiển thị URL gốc:', e);
       return raw;
     }
   }
   if (raw.startsWith('data:image/') && raw.length < 100) {
-    throw new Error('图片数据无效（base64 为空）');
+    throw new Error('Dữ liệu hình ảnh không hợp lệ (base64 trống)');
   }
   return raw;
 };
@@ -209,7 +209,7 @@ export const callImagesGenerationsApi = async (params: {
   });
 
   if (!res.ok) {
-    let errorMessage = `图片生成失败: HTTP ${res.status}`;
+    let errorMessage = `Tạo ảnh thất bại: HTTP ${res.status}`;
     try {
       const errBody = await res.json();
       errorMessage = (errBody as { error?: { message?: string } }).error?.message || errorMessage;
@@ -217,14 +217,14 @@ export const callImagesGenerationsApi = async (params: {
       const text = await res.text();
       if (text) errorMessage = text;
     }
-    throw new Error(errorMessage);
+    throw new Error(localizeApiErrorMessage(errorMessage, res.status));
   }
 
   const data = await res.json();
   const extracted = extractImageFromApiResponse(data);
   if (!extracted) {
     throw new Error(
-      `图片生成失败：模型 ${params.model} 的 /v1/images/generations 未返回图片数据，请检查模型名称与账户权限。`
+      `Tạo ảnh thất bại: /v1/images/generations của model ${params.model} không trả về dữ liệu. Hãy kiểm tra tên model và quyền tài khoản.`
     );
   }
   return normalizeImageResult(extracted);

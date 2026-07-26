@@ -1,4 +1,4 @@
-import { ProjectState, RenderLog } from '../../types';
+import { ProjectState, RenderLog, VoiceTake } from '../../types';
 
 export const collectRenderLogs = (project: ProjectState): RenderLog[] => {
   const logs = project.renderLogs || [];
@@ -19,8 +19,30 @@ export const calculateProgress = (project: ProjectState): number => {
   return totalShots > 0 ? Math.round((completedShots / totalShots) * 100) : 0;
 };
 
+export const getSelectedVoiceTakes = (project: ProjectState): VoiceTake[] => {
+  const voiceStudio = project.voiceStudio;
+  if (!voiceStudio) return [];
+
+  return project.shots.flatMap((shot) => {
+    const takeId = voiceStudio.selectedTakeByShot[shot.id];
+    const take = voiceStudio.takes.find((item) => item.id === takeId);
+    return take?.status === 'ready' && take.audioUrl ? [take] : [];
+  });
+};
+
+export const getVoiceStats = (project: ProjectState) => {
+  const dialogueShots = project.shots.filter((shot) => Boolean(shot.dialogue?.trim()));
+  const selectedTakes = getSelectedVoiceTakes(project);
+
+  return {
+    required: dialogueShots.length,
+    ready: selectedTakes.filter((take) => dialogueShots.some((shot) => shot.id === take.shotId)).length,
+    selectedTakes,
+  };
+};
+
 export const formatTimestamp = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  return new Date(timestamp).toLocaleString('vi-VN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -38,7 +60,8 @@ export const hasDownloadableAssets = (project: ProjectState): boolean => {
   return (
     (project.scriptData?.characters.some(c => c.referenceImage || c.variations?.some(v => v.referenceImage))) ||
     (project.scriptData?.scenes.some(s => s.referenceImage)) ||
-    (project.shots.some(s => s.keyframes?.some(k => k.imageUrl) || s.interval?.videoUrl))
+    (project.shots.some(s => s.keyframes?.some(k => k.imageUrl) || s.interval?.videoUrl)) ||
+    getSelectedVoiceTakes(project).length > 0
   );
 };
 
@@ -52,13 +75,15 @@ export const getLogStats = (logs: RenderLog[]) => {
 
 export const getLogTypeIcon = (type: string): string => {
   const iconMap: Record<string, string> = {
-    'character': '👤',
-    'character-variation': '👤',
-    'scene': '🎬',
-    'keyframe': '🖼️',
-    'video': '🎥'
+    'character': 'NV',
+    'character-variation': 'BT',
+    'scene': 'BC',
+    'keyframe': 'KF',
+    'video': 'VD',
+    'voice': 'GN',
+    'script-parsing': 'KB',
   };
-  return iconMap[type] || '📝';
+  return iconMap[type] || 'ND';
 };
 
 export const getStatusColorClass = (status: string): string => {

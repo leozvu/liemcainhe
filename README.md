@@ -1,345 +1,109 @@
-# Print Film  
-
-[中文介绍](https://github.com/yuanzhongqiao/deep-printfilm/blob/main/README%20-%20cn.md)
-
-AI Comic & Short Drama Studio is an AI creation workspace designed for creators of short dramas, comic dramas, motion comics and film storyboards. It aims to rapidly turn story ideas into previewable, exportable and editable visual assets and video clips.
-
-The project adopts a Script-to-Asset-to-Keyframe workflow: finalize the plot and storyboards first, then generate character and scene assets, followed by creating keyframes and videos in the AI workspace, with unified preview and export at the final stage.
-
-#  Produce  Short Videos | Film By  AI    
-
-Make Moives by AI
-
-
-
-Short videos by AI :  www.printfilm.com
-
-Films  Moive  and  Drama   use   PrintFilm-Pro
-
-Windows Application OR Website
-
-Windows : setup file :
-
-通过网盘分享的文件：AI 漫剧工场 Setup 0.2.0.exe
-链接: https://pan.baidu.com/s/1ZehWgPNtfKFndYgH8PVhHQ 提取码: 2cae 
---来自百度网盘超级会员v4的分享
-
-
-# Project Launch
-
-## Local Development
-```bash
-npm install
-npm run dev
-```
-After startup, access the local address displayed in the terminal. The Vite development environment proxies `/api-proxy` to the GitCC API for local debugging.
-
-
-## Build Production Version
-```bash
-npm run build
-npm run preview
-```
-
-
-## Docker Deployment
-```bash
-docker-compose up -d --build
-docker-compose logs -f
-docker-compose down
-```
-- Access via port **3005** by default.  
-- Compose generates:  
-  - `ai-manga-studio:latest` image  
-  - `ai-manga-studio-app` container  
-  - `ai-manga-studio-network` network  
-- Nginx hosts frontend static files and proxies `/api-proxy` to the GitCC API.
-
-
-## Docker Command Method
-```bash
-docker build -t ai-manga-studio .
-docker run -d -p 3005:80 --name ai-manga-studio-app ai-manga-studio
-docker logs -f ai-manga-studio-app
-docker stop ai-manga-studio-app
-```
-
-
-## Desktop Version
-```bash
-npm run electron:dev
-npm run electron:build
-npm run electron:build:win
-```
-- `electron:dev`: Builds the frontend first, then launches the Electron window.  
-- `electron:build`: Uses `electron-builder` to generate desktop installation packages.  
-- Windows installers are output to the `release/` directory with the product name **AI Manga Studio**.  
-- The desktop version includes a built-in local HTTP server that hosts the frontend and proxies `/api-proxy` to the GitCC API.
-
-
-## Quick Start
-1. After launching the app, fill in your **GitCC API Key** in *Model Configuration*.  
-2. Go to **Phase 01: Plot Creation**: Enter a story idea to generate a script and storyboard.  
-3. Go to **Phase 02: Scene & Characters**: Generate character design sheets, costume variations, and scene images.  
-4. Go to **Phase 03: AI Workbench**: Generate keyframes and video clips one by one.  
-5. Go to **Phase 04: Production & Export**: Preview and download keyframes, videos, and project assets.  
-- To adjust prompts, use **Asset Management** for centralized viewing/editing.
-
-
-## Common Commands
-```bash
-npm install
-npm run dev
-npm run build
-npm run preview
-npm run electron:dev
-npm run electron:build
-docker-compose up -d --build
-docker-compose down
-```
-
-# AI 漫剧工场
-
-> **AI 一站式短剧/漫剧生成平台**  
-> *Industrial AI Motion Comic & Video Workbench*
-
-
-**AI 漫剧工场** 是一个面向短剧、漫剧、动态漫画与影视分镜创作者的 AI 生产工作台，目标是把故事创意快速转化为可预览、可导出、可继续剪辑的视觉资产与视频片段。
-
-项目采用 **Script-to-Asset-to-Keyframe** 工作流：先完成剧情与分镜，再生成角色/场景资产，随后在 AI工作台中制作关键帧与视频，最后统一预览和导出。
-
-## 界面展示
-
-### 项目管理
-
-![项目管理](./images/项目管理.png)
-
-### Phase 01: 剧情创作
-
-![剧本创作](./images/剧本创作.png)
-![剧情创作](./images/剧本与故事.png)
-
-### Phase 02: 场景角色
-
-![角色场景](./images/角色场景.png)
-![场景](./images/场景.png)
-
-### Phase 03: AI工作台
-
-![AI工作台](./images/导演工作台.png)
-![镜头与帧](./images/镜头与帧.png)
-
-### Phase 04: 制片导出
-
-![制片导出](./images/成片导出.png)
-
-### 资产管理
-
-![资产管理](./images/提示词管理.png)
-
-## 核心理念：关键帧驱动
-
-传统 Text-to-Video 往往难以稳定控制角色、构图和镜头起止画面。AI 漫剧工场引入动画与影视制作中的关键帧思路：
-
-1. **先画后动**：先生成镜头的起始帧与结束帧。
-2. **插值生成**：通过视频模型在关键帧之间生成运动过渡。
-3. **资产约束**：画面生成会参考角色定妆、服装变体和场景概念图，提升角色一致性与场景连续性。
-4. **流程化生产**：每个阶段都围绕同一个项目状态推进，减少反复复制提示词和手工整理资产的成本。
-
-## 核心功能模块
-
-### Phase 01: 剧情创作
-
-剧情创作阶段用于把故事、小说片段或短剧创意整理为可生产的结构化内容。
-
-- **智能剧本拆解**：输入故事大纲或正文，AI 自动生成剧本结构、角色、场景和分镜。
-- **分镜规划**：按目标时长和节奏生成镜头列表，包含动作、台词、画面提示词等信息。
-- **视觉化翻译**：将文字描述转为更适合图像生成模型使用的画面提示词。
-- **手动编辑**：支持编辑角色描述、场景描述、镜头动作、台词和分镜画面提示词。
-- **项目配置**：支持目标时长、语言、模型和视觉风格等基础参数。
-
-### Phase 02: 场景角色
-
-场景角色阶段用于沉淀后续画面生成需要使用的核心视觉资产。
-
-- **角色定妆**：为每个角色生成标准参考图。
-- **服装变体**：为角色维护多套造型，如日常、战斗、受伤、礼服等。
-- **场景概念图**：为故事中的关键场景生成环境参考图。
-- **图片上传**：支持手动上传角色、服装或场景图片作为参考资产。
-- **批量生成**：可以按角色或场景批量生成资产，减少重复操作。
-
-### Phase 03: AI工作台
-
-AI工作台是关键帧与视频片段制作的核心区域。
-
-- **镜头管理**：以网格和工作台形式管理所有镜头。
-- **关键帧生成**：为镜头生成起始帧和结束帧，便于控制构图和动作变化。
-- **上下文参考**：生成时会结合当前场景、角色定妆和服装变体，提升连续性。
-- **镜头拆分**：支持将长镜头拆分为子镜头，细化动作节奏。
-- **视频生成**：支持基于关键帧的视频生成流程，并记录渲染日志与状态。
-
-### Phase 04: 制片导出
-
-制片导出阶段用于集中预览、检查和下载项目成果。
-
-- **时间轴预览**：按镜头顺序查看已生成的视频片段。
-- **视频播放**：支持逐段预览镜头成片。
-- **渲染日志**：集中查看角色、场景、关键帧和视频生成记录。
-- **资产下载**：导出关键帧、视频片段和项目资产，便于进入后期剪辑流程。
-
-### 资产管理
-
-资产管理用于集中查看和调整项目中的提示词资产。
-
-- **角色提示词**：查看与编辑角色、服装变体相关提示词。
-- **场景提示词**：查看与编辑场景描述和图像提示词。
-- **关键帧提示词**：查看与编辑镜头关键帧提示词。
-- **视频提示词**：查看和调整视频生成描述。
-- **搜索与筛选**：按角色、场景、镜头和状态快速定位资产。
-
-## 技术架构
-
-- **前端框架**：React 19 + TypeScript + Vite
-- **界面样式**：Tailwind CSS + 工业风深色界面
-- **图标库**：lucide-react
-- **本地存储**：IndexedDB，用于保存项目、角色、场景、镜头和生成记录
-- **AI 接口**：GitCC API，兼容 OpenAI 风格接口
-- **图片/视频资产**：支持 Base64、远程 URL、关键帧图像与视频片段
-- **桌面端**：Electron + electron-builder
-- **容器部署**：Docker + Nginx
-
-## AI 能力
-
-项目默认围绕 GitCC API 提供的文本、图像与视频模型组织工作流：
-
-- **文本模型**：用于剧本拆解、角色/场景分析、提示词改写和视频描述生成。
-- **图像模型**：用于角色定妆、服装变体、场景概念图和关键帧生成。
-- **视频模型**：用于根据提示词、起始帧或起止关键帧生成视频片段。
-
-模型配置可以在应用内调整，适配不同上游模型名称、接口路径和参数。
-
-## 数据与隐私
-
-- 项目数据主要保存在浏览器 IndexedDB 中。
-- API Key 保存在本地配置中，用于调用 GitCC API。
-- 应用不依赖自建业务后端，开发和桌面端会通过代理解决浏览器跨域问题。
-- 若清理浏览器站点数据，项目内容也会被清除，请按需导出备份。
-
-## 项目启动
-
-### 本地开发
+# Egoric Film Studio
+
+> Xưởng sản xuất phim ngắn, truyện tranh chuyển động và bảng phân cảnh bằng AI của Egoric Agency.
+
+Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu luôn được tự lưu trên thiết bị; bản deploy hỗ trợ sao lưu dự án và media lên cloud theo tài khoản ChatGPT.
+
+## Quy trình sản xuất
+
+1. **Sáng tạo kịch bản** — phân tích cốt truyện, nhân vật, bối cảnh và bảng phân cảnh.
+2. **Nhân vật & bối cảnh** — tạo concept, biến thể trang phục và ảnh tham chiếu.
+3. **Xưởng giọng Việt** — casting giọng ba miền, tổng hợp bản nháp hoặc duyệt nhiều bản thu của diễn viên thật.
+4. **Xưởng dựng** — sản xuất khung hình chính đầu/cuối và video cho từng cảnh quay.
+5. **Xuất bản** — xem timeline, tải gói dựng, CMX 3600 EDL, FCPXML, phụ đề SRT và toàn bộ tài nguyên gốc.
+
+Kho sáng tạo là khu vực nâng cao để tìm kiếm và chỉnh câu lệnh nhân vật, bối cảnh, khung hình chính và video.
+
+## Quy trình V2
+
+- **Trung tâm sản xuất** hiển thị readiness thật của năm công đoạn và đề xuất bước tiếp theo.
+- **Preflight** kiểm tra mô hình, API và nhà cung cấp voice trước khi gọi tác vụ có thể tính phí.
+- **Hàng đợi sản xuất** ghi tiến độ, lỗi và tác vụ bị gián đoạn cho các đợt tạo ảnh, thoại, video và cloud.
+- **Dependency tracking** đánh dấu cảnh cần tạo lại khi kịch bản, casting, tài nguyên hoặc keyframe thay đổi.
+- **Điểm khôi phục** giữ tối đa ba phiên bản gần nhất trước các thao tác ghi đè quan trọng.
+- **Đám mây Egoric** dùng D1 cho trạng thái dự án và R2 cho media; dữ liệu được tách theo email tài khoản đã xác thực.
+
+## Vận hành production
+
+- **Trung tâm API** kiểm tra khóa, đọc hạn mức, phát hiện model trực tiếp và nhập model vào danh mục.
+- **Định tuyến dự phòng** tự chuyển model khi tuyến chính lỗi mạng, hết hạn mức hoặc nhà cung cấp gián đoạn.
+- **Theo dõi sử dụng** ghi đơn vị sản xuất, thời gian xử lý, lỗi và chi phí vận hành ước tính theo tháng.
+- **Xưởng giọng Việt nâng cao** có preset cảm xúc, tốc độ, cao độ, câu nghe thử và từ điển phát âm tên riêng.
+- **Tạo lại thông minh** dùng dấu vân tay nội dung/preset để chỉ tạo lại câu thoại thực sự đã thay đổi.
+- **Chẩn đoán workflow** kiểm tra API, giọng nói, hạn mức, checkpoint, cloud và độ hoàn thiện trước khi chạy hàng loạt.
+- **Dự án demo Mưa Neon** cho phép kiểm tra luồng từ kịch bản đến xuất dựng mà không phải chuẩn bị dữ liệu ban đầu.
+- **Workspace theo tài khoản** lưu hồ sơ, hạn mức mềm/cứng, usage và nhật ký lỗi trên D1 của bản Sites.
+- **Kho khóa theo phiên** tách toàn bộ khóa BYOK khỏi localStorage, IndexedDB, project payload và cloud.
+- **Media pipeline production** upload trực tiếp vào R2, chia phần cho tệp lớn, retry, checksum chống tải trùng và dọn media mồ côi.
+- **Hàng đợi bền vững** đồng bộ trạng thái tác vụ vào D1 để lịch sử không mất khi đổi phiên hoặc thiết bị.
+- **Master thoại tự động** cắt im lặng, cân RMS, chặn peak và thêm fade ngắn cho bản thoại mới.
+- **Sổ duyệt & bàn giao** quản lý phê duyệt năm công đoạn, phản hồi theo cảnh và trạng thái đã xử lý.
+- **Quyền dữ liệu** hỗ trợ xuất JSON, xóa dữ liệu cloud, chính sách riêng tư và điều khoản sử dụng.
+- **Test tự động** bao phủ fallback, kho khóa, checksum media, mastering audio và vòng đời tác vụ.
+
+## Công nghệ
+
+- React 19, TypeScript và Vite 6
+- Tailwind CSS và Lucide icons
+- IndexedDB cho dữ liệu dự án cục bộ
+- D1 và R2 cho sao lưu cloud trên bản Sites
+- OpenRouter và Google AI Studio cho mô hình hội thoại
+- Replicate cho mô hình hình ảnh và video
+- ElevenLabs Eleven v3 cho bản nháp giọng nói; tệp âm thanh cho diễn viên thật
+- Electron cho bản máy tính
+- Docker và Nginx cho triển khai web
+
+## Chạy cục bộ
+
+Yêu cầu Node.js 20 trở lên.
 
 ```bash
 npm install
 npm run dev
 ```
 
-启动后访问终端输出的本地地址。Vite 开发环境会代理 `/api-proxy` 到 GitCC API，便于本地调试。
+Mở địa chỉ Vite hiển thị trong terminal. Để dùng các tính năng AI, mở **Cấu hình mô hình** và nhập API Key.
 
-### 构建生产版本
+### Tạo bản phát hành
 
 ```bash
 npm run build
 npm run preview
 ```
 
-### Docker 部署
-
-```bash
-docker-compose up -d --build
-docker-compose logs -f
-docker-compose down
-```
-
-默认通过 `3005` 端口访问。Compose 会生成 `ai-manga-studio:latest` 镜像、`ai-manga-studio-app` 容器和 `ai-manga-studio-network` 网络。Nginx 会托管前端静态文件，并代理 `/api-proxy` 到 GitCC API。
-
-### Docker 命令方式
-
-```bash
-docker build -t ai-manga-studio .
-docker run -d -p 3005:80 --name ai-manga-studio-app ai-manga-studio
-docker logs -f ai-manga-studio-app
-docker stop ai-manga-studio-app
-```
-
-### 桌面端
+### Bản máy tính
 
 ```bash
 npm run electron:dev
-npm run electron:build
 npm run electron:build:win
 ```
 
-- `electron:dev`：先构建前端，再启动 Electron 窗口。
-- `electron:build`：使用 electron-builder 生成桌面安装包。
-- Windows 安装包会以 `AI 漫剧工场` 为产品名输出到 `release/` 目录。
-- 桌面端内建本地 HTTP 服务，托管前端并代理 `/api-proxy` 到 GitCC API。
+Bộ cài Windows được tạo trong thư mục `release/` với tên **Egoric Film Studio**.
 
-## 快速开始
-
-1. 启动应用后，在模型配置中填写 GitCC API Key。
-2. 进入 Phase 01「剧情创作」，输入故事创意并生成剧本和分镜。
-3. 进入 Phase 02「场景角色」，生成角色定妆、服装变体和场景图。
-4. 进入 Phase 03「AI工作台」，逐个生成关键帧和视频片段。
-5. 进入 Phase 04「制片导出」，预览并下载关键帧、视频和项目资产。
-6. 如需调整提示词，进入「资产管理」统一查看和编辑。
-
-## 常用命令
+### Docker
 
 ```bash
-npm install
-npm run dev
-npm run build
-npm run preview
-npm run electron:dev
-npm run electron:build
-docker-compose up -d --build
-docker-compose down
+docker compose up -d --build
+docker compose logs -f
+docker compose down
 ```
 
-## 目录概览
+Ứng dụng mặc định chạy tại `http://localhost:3005`.
 
-```text
-.
-├── App.tsx
-├── components/
-│   ├── Dashboard.tsx
-│   ├── Sidebar.tsx
-│   ├── ModelConfig/
-│   ├── Onboarding/
-│   ├── StageScript/
-│   ├── StageAssets/
-│   ├── StageDirector/
-│   ├── StageExport/
-│   └── StagePrompts/
-├── electron/
-├── public/
-├── services/
-├── types/
-├── types.ts
-├── vite.config.ts
-├── Dockerfile
-├── docker-compose.yaml
-└── nginx.conf
-```
+## Cấu hình API
 
-## 适合场景
+Mặc định dự án hỗ trợ OpenRouter, Google AI Studio và Replicate cho hình ảnh/video; ElevenLabs cho giọng nói. Mỗi dịch vụ có khóa riêng và được chuyển tiếp qua một tuyến proxy cùng miền nằm trong danh sách cho phép. Xem [hướng dẫn cấu hình mô hình](./docs/MODEL_CONFIGURATION.vi.md), [hướng dẫn Xưởng giọng Việt](./docs/VOICE_STUDIO.vi.md) và [kiến trúc kết nối API](./docs/API_GATEWAY.vi.md).
 
-- 短剧和漫剧前期开发
-- 动态漫画和分镜预演
-- 角色与场景视觉设定
-- AI视频片段批量生成
-- 创意原型验证和资产整理
+Khóa API chỉ được giữ trong `sessionStorage` của phiên trình duyệt hiện tại. Khóa không được ghi vào dự án, localStorage, IndexedDB, D1, R2 hoặc lịch sử Git; đóng phiên sẽ yêu cầu nhập lại.
 
+## Thương hiệu và nguồn mở
 
-# MIT
+**Egoric Film Studio** là sản phẩm của **Egoric Agency**, phân phối theo giấy phép MIT. Mọi thương hiệu và dịch vụ mô hình của bên thứ ba thuộc về chủ sở hữu tương ứng.
 
-## Star History
+## Hỗ trợ
 
-<a href="https://www.star-history.com/?repos=yuanzhongqiao%2Fdeep-printfilm&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=yuanzhongqiao/deep-printfilm&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=yuanzhongqiao/deep-printfilm&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=yuanzhongqiao/deep-printfilm&type=date&legend=top-left" />
- </picture>
-</a>
+Gửi lỗi hoặc đề xuất tại [GitHub Issues](https://github.com/leozvu/liemcainhe/issues).
+
+## Giấy phép
+
+MIT

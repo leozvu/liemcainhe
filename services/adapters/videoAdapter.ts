@@ -1,8 +1,12 @@
 import { VideoModelDefinition, VideoGenerateOptions, AspectRatio, VideoDuration } from '../../types/model';
-import { getApiKeyForModel, getApiBaseUrlForModel, getActiveVideoModel } from '../modelRegistry';
+import { getApiKeyForModel, getApiBaseUrlForModel, getActiveVideoModel, getProviderById } from '../modelRegistry';
 import { ApiKeyError } from './chatAdapter';
 import { throwFromVideoHttpError, formatVideoTaskErrorForUser } from '../videoHttpErrors';
 import { resolveSoraVideoDownloadId, downloadSoraCompletedVideo, encodeVideoPathId } from '../soraVideoResolve';
+import { localizeApiErrorMessage } from '../apiErrorLocalization';
+import { callReplicateVideoApi } from './replicateAdapter';
+import { callKieVideoApi } from './kieAdapter';
+import { executeWithModelFallback } from '../modelRoutingService';
 
 const retryOperation = async <T>(
   operation: () => Promise<T>,
@@ -39,7 +43,7 @@ const resizeImageToSize = async (base64Data: string, targetWidth: number, target
       canvas.height = targetHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        reject(new Error('无法创建 canvas 上下文'));
+        reject(new Error('Không thể tạo ngữ cảnh canvas'));
         return;
       }
       const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
@@ -51,7 +55,7 @@ const resizeImageToSize = async (base64Data: string, targetWidth: number, target
       const result = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
       resolve(result);
     };
-    img.onerror = () => reject(new Error('图片加载失败'));
+    img.onerror = () => reject(new Error('Tải ảnh thất bại'));
     img.src = `data:image/png;base64,${base64Data}`;
   });
 };
@@ -144,14 +148,14 @@ const callVeoApi = async (
                     content.match(/https?:\/\/[^\s\])"]+/i);
     
     if (!urlMatch) {
-      throw new Error('视频生成失败：未能从响应中提取视频 URL');
+      throw new Error('Tạo video thất bại: không thể lấy URL video từ phản hồi');
     }
 
     const videoUrl = urlMatch[0];
 
     const videoResponse = await fetch(videoUrl);
     if (!videoResponse.ok) {
-      throw new Error(`视频下载失败: ${videoResponse.status}`);
+      throw new Error(`Tải video thất bại: ${videoResponse.status}`);
     }
 
     const videoBlob = await videoResponse.blob();
@@ -163,16 +167,16 @@ const callVeoApi = async (
         if (result && result.startsWith('data:')) {
           resolve(result);
         } else {
-          reject(new Error('视频转换失败'));
+          reject(new Error('Chuyển đổi video thất bại'));
         }
       };
-      reader.onerror = () => reject(new Error('视频读取失败'));
+      reader.onerror = () => reject(new Error('Đọc video thất bại'));
       reader.readAsDataURL(videoBlob);
     });
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      throw new Error('视频生成超时 (20分钟)');
+      throw new Error('Tạo video hết thời gian chờ (20 phút)');
     }
     throw error;
   }
@@ -227,7 +231,7 @@ const callSoraApi = async (
   const taskId = createData.id || createData.task_id;
   
   if (!taskId) {
-    throw new Error('创建视频任务失败：未返回任务 ID');
+    throw new Error('Không thể tạo tác vụ video: máy chủ không trả về mã tác vụ');
   }
 
   const maxPollingTime = 1200000;
@@ -249,7 +253,7 @@ const callSoraApi = async (
     });
 
     if (!statusResponse.ok) {
-      console.warn('查询任务状态失败，继续重试...');
+      console.warn('Không thể truy vấn trạng thái tác vụ, đang thử lại...');
       continue;
     }
 
@@ -273,7 +277,7 @@ const callSoraApi = async (
   }
 
   if (!videoId && !completedStatus) {
-    throw new Error('视频生成超时 (20分钟) 或未返回视频 ID');
+    throw new Error('Tạo video hết thời gian chờ (20 phút) hoặc không có mã video');
   }
 
   return downloadSoraCompletedVideo({
@@ -285,112 +289,28 @@ const callSoraApi = async (
   });
 };
 
-const callDoubaoSeedanceApi = async (
-  options: VideoGenerateOptions,
-  model: VideoModelDefinition,
-  apiKey: string,
-  apiBase: string
-): Promise<string> => {
-  const endpoint = model.endpoint || '/v1/chat/completions';
-  const apiModel = model.apiModel || model.id;
-
-  // Doubao Seedance 兼容接口優先接受遠端圖片 URL。
-  let messages: any[] = [];
-
-  if (options.startImage && options.startImage.startsWith('http')) {
-    messages = [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: options.prompt },
-          { type: 'image_url', image_url: { url: options.startImage } },
-        ],
-      },
-    ];
-  } else {
-    messages = [{ role: 'user', content: options.prompt }];
-  }
-
-  const requestBody: any = {
-    model: apiModel,
-    messages,
-    stream: false,
-  };
-
-  const response = await fetch(`${apiBase}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Doubao Seedance 请求失败: HTTP ${response.status}`;
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.error?.message || errorData.message || errorMessage;
-    } catch (e) {
-      const errorText = await response.text();
-      if (errorText) errorMessage = errorText;
-    }
-    throw new Error(errorMessage);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-
-  const urlMatch =
-    typeof content === 'string'
-      ? content.match(/https?:\/\/[^\s\])"]+\.mp4[^\s\])"']*/i) ||
-        content.match(/https?:\/\/[^\s\])"]+/i)
-      : JSON.stringify(content).match(/https?:\/\/[^\s"']+\.mp4[^\s"']*/i) ||
-        JSON.stringify(content).match(/https?:\/\/[^\s"']+/i);
-
-  if (!urlMatch) {
-    throw new Error('Doubao Seedance 视频生成失败：未能从响应中提取视频 URL');
-  }
-
-  const videoUrl = urlMatch[0];
-
-  const videoResponse = await fetch(videoUrl);
-  if (!videoResponse.ok) {
-    throw new Error(`Doubao Seedance 视频下载失败: HTTP ${videoResponse.status}`);
-  }
-
-  const videoBlob = await videoResponse.blob();
-
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      if (result && result.startsWith('data:')) {
-        resolve(result);
-      } else {
-        reject(new Error('Doubao Seedance 视频转换失败'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Doubao Seedance 视频读取失败'));
-    reader.readAsDataURL(videoBlob);
-  });
-};
-
-export const callVideoApi = async (
+const callVideoApiOnce = async (
   options: VideoGenerateOptions,
   model?: VideoModelDefinition
 ): Promise<string> => {
   const activeModel = model || getActiveVideoModel();
   if (!activeModel) {
-    throw new Error('没有可用的视频模型');
+    throw new Error('Không có mô hình video khả dụng');
   }
 
   const apiKey = getApiKeyForModel(activeModel.id);
   if (!apiKey) {
-    throw new ApiKeyError('API Key 缺失，请在设置中配置 API Key');
+    throw new ApiKeyError('Thiếu khóa API. Hãy cấu hình khóa API trong phần cài đặt');
   }
 
   const apiBase = getApiBaseUrlForModel(activeModel.id);
+  const provider = getProviderById(activeModel.providerId);
+  if (provider?.protocol === 'replicate') {
+    return callReplicateVideoApi(options, activeModel, apiKey, apiBase);
+  }
+  if (provider?.protocol === 'kie') {
+    return callKieVideoApi(options, activeModel, apiKey, apiBase);
+  }
   const mode = activeModel.params.mode;
 
   const apiModel = activeModel.apiModel || activeModel.id;
@@ -398,21 +318,27 @@ export const callVideoApi = async (
   const usesVideosApi =
     mode === 'async' || endpoint.includes('/v1/videos');
 
-  const isDoubaoChatApi =
-    mode === 'doubao' ||
-    endpoint.includes('/api/v3/contents/generations/tasks') ||
-    (apiModel.startsWith('doubao-seedance') &&
-      endpoint.includes('/chat/completions'));
-
-  if (isDoubaoChatApi) {
-    return callDoubaoSeedanceApi(options, activeModel, apiKey, apiBase);
-  }
-
   if (usesVideosApi) {
     return callSoraApi(options, activeModel, apiKey, apiBase);
   } else {
     return callVeoApi(options, activeModel, apiKey, apiBase);
   }
+};
+
+export const callVideoApi = async (
+  options: VideoGenerateOptions,
+  model?: VideoModelDefinition,
+): Promise<string> => {
+  const preferred = model || getActiveVideoModel();
+  if (!preferred) throw new Error('Không có mô hình video khả dụng');
+  return executeWithModelFallback({
+    type: 'video',
+    preferred,
+    inputSize: options.prompt.length,
+    durationSeconds: options.duration || preferred.params.defaultDuration,
+    resourceId: options.usageResourceId,
+    operation: (candidate) => callVideoApiOnce(options, candidate as VideoModelDefinition),
+  });
 };
 
 export const isAspectRatioSupported = (

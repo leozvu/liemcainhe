@@ -1,23 +1,23 @@
 import React from 'react';
-import { FileText, Users, Clapperboard, Film, ArrowRight } from 'lucide-react';
+import { FileText, Users, AudioLines, Clapperboard, Film, ArrowRight } from 'lucide-react';
 import { WORKFLOW_STEPS } from './constants';
 
 interface WorkflowPageProps {
   onNext: () => void;
 }
 
-const icons = [FileText, Users, Clapperboard, Film];
+const icons = [FileText, Users, AudioLines, Clapperboard, Film];
 
 const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
   return (
     <div className="flex flex-col items-center text-center">
-      {/* 标题 */}
+      {/* Tiêu đề */}
       <h2 className="text-2xl font-bold text-white mb-8">
-        四步出片，就这么简单
+        Hoàn thiện tác phẩm trong 5 giai đoạn
       </h2>
 
-      {/* 流程图示意 */}
-      <div className="w-full max-w-md mb-10">
+      {/* Sơ đồ quy trình */}
+      <div className="w-full max-w-lg mb-10">
         <div className="flex items-center justify-between mb-6">
           {WORKFLOW_STEPS.map((step, index) => {
             const Icon = icons[index];
@@ -37,7 +37,7 @@ const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
           })}
         </div>
 
-        {/* 步骤说明列表 */}
+        {/* Danh sách các bước */}
         <div className="space-y-3 text-left">
           {WORKFLOW_STEPS.map((step, index) => (
             <div 
@@ -52,12 +52,12 @@ const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNext }) => {
         </div>
       </div>
 
-      {/* 主按钮 */}
+      {/* Hành động chính */}
       <button
         onClick={onNext}
         className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-cyan-500/20"
       >
-        继续了解
+        Tiếp tục khám phá
       </button>
     </div>
   );

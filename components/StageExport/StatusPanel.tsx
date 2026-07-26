@@ -2,6 +2,7 @@ import React from 'react';
 import { Film, CheckCircle, BarChart3 } from 'lucide-react';
 import { ProjectState } from '../../types';
 import { STYLES } from './constants';
+import { getVoiceStats } from './utils';
 
 interface Props {
   project: ProjectState;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 const StatusPanel: React.FC<Props> = ({ project, progress, estimatedDuration }) => {
+  const voiceStats = getVoiceStats(project);
+
   return (
     <div className={STYLES.statusPanel.container}>
       <div className={STYLES.statusPanel.decoration.top}></div>
@@ -19,25 +22,30 @@ const StatusPanel: React.FC<Props> = ({ project, progress, estimatedDuration }) 
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h3 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-              {project.scriptData?.title || '未命名项目'}
+              {project.scriptData?.title || 'Dự án chưa đặt tên'}
             </h3>
             <span className="px-2 py-0.5 bg-cyan-300/10 border border-cyan-200/15 text-cyan-100/65 text-[10px] rounded-full uppercase font-mono tracking-wider">
-              Master Sequence
+              Trình tự chính
             </span>
           </div>
           <div className="flex items-center gap-6 mt-3">
             <div className={STYLES.statusPanel.stat}>
-              <span className={STYLES.statusPanel.statLabel}>Shots</span>
+              <span className={STYLES.statusPanel.statLabel}>Cảnh quay</span>
               <span className={STYLES.statusPanel.statValue}>{project.shots.length}</span>
             </div>
             <div className="w-px h-6 bg-white/10"></div>
             <div className={STYLES.statusPanel.stat}>
-              <span className={STYLES.statusPanel.statLabel}>Est. Duration</span>
+              <span className={STYLES.statusPanel.statLabel}>Lời thoại sẵn sàng</span>
+              <span className={STYLES.statusPanel.statValue}>{voiceStats.ready}/{voiceStats.required}</span>
+            </div>
+            <div className="hidden lg:block w-px h-6 bg-white/10"></div>
+            <div className={STYLES.statusPanel.stat}>
+              <span className={STYLES.statusPanel.statLabel}>Thời lượng dự kiến</span>
               <span className={STYLES.statusPanel.statValue}>~{estimatedDuration}s</span>
             </div>
             <div className="w-px h-6 bg-white/10"></div>
             <div className={STYLES.statusPanel.stat}>
-              <span className={STYLES.statusPanel.statLabel}>Target</span>
+              <span className={STYLES.statusPanel.statLabel}>Mục tiêu</span>
               <span className={STYLES.statusPanel.statValue}>{project.targetDuration}</span>
             </div>
           </div>
@@ -50,7 +58,7 @@ const StatusPanel: React.FC<Props> = ({ project, progress, estimatedDuration }) 
           </div>
           <div className="text-[10px] text-zinc-500 uppercase tracking-widest flex items-center justify-end gap-2">
             {progress === 100 ? <CheckCircle className="w-3 h-3 text-green-500" /> : <BarChart3 className="w-3 h-3" />}
-            Render Status
+            Trạng thái render
           </div>
         </div>
       </div>

@@ -79,7 +79,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
   const startKf = shot.keyframes?.find(k => k.type === 'start');
   const endKf = shot.keyframes?.find(k => k.type === 'end');
   
-  // shot-1 / shot-1-1 需要映射为工作台上的主镜头/子镜头编号。
+  // Chuyển mã cảnh quay thành số thứ tự cảnh chính hoặc cảnh phụ trong bàn dựng.
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {
@@ -99,7 +99,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
             {getShotDisplayNumber()}
           </span>
           <div>
-            <h3 className="text-white font-bold text-sm">镜头详情</h3>
+            <h3 className="text-white font-bold text-sm">Chi tiết cảnh quay</h3>
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
               {shot.cameraMovement}
             </p>
@@ -150,14 +150,14 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
           <div className="flex items-center gap-2 border-b border-white/10 pb-2">
             <Film className="w-4 h-4 text-zinc-500" />
             <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-              叙事动作 (Action & Dialogue)
+              Hành động & lời thoại
             </h4>
             <div className="ml-auto flex items-center gap-1">
               <button 
                 onClick={onSplitShot}
                 disabled={isSplittingShot}
                 className="p-1 text-green-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="AI拆分镜头"
+                title="AI chia cảnh quay"
               >
                 {isSplittingShot ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -169,7 +169,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
                 onClick={onGenerateAIAction}
                 disabled={isAIOptimizing}
                 className="p-1 text-cyan-300 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="AI生成动作建议"
+                title="AI gợi ý hành động"
               >
                 {isAIOptimizing ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -180,7 +180,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
               <button 
                 onClick={onEditActionSummary}
                 className="p-1 text-yellow-400 hover:text-white transition-colors"
-                title="编辑叙事动作"
+                title="Chỉnh sửa hành động kể chuyện"
               >
                 <Edit2 className="w-3 h-3" />
               </button>

@@ -1,8 +1,8 @@
-// Author: forsearch | Updated: 2026-04-30
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AlertProvider } from './components/GlobalAlert';
+import './styles.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

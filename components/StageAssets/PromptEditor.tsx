@@ -12,8 +12,8 @@ interface PromptEditorProps {
 const PromptEditor: React.FC<PromptEditorProps> = ({
   prompt,
   onSave,
-  label = '提示词',
-  placeholder = '输入视觉描述...',
+  label = 'Câu lệnh',
+  placeholder = 'Nhập mô tả hình ảnh...',
   maxHeight = 'max-h-[200px]',
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -45,7 +45,7 @@ const PromptEditor: React.FC<PromptEditorProps> = ({
           <button
             onClick={handleStartEdit}
             className="text-zinc-500 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-xl"
-            title="编辑提示词"
+            title="Chỉnh sửa câu lệnh"
           >
             <Edit3 className="w-3 h-3" />
           </button>
@@ -67,13 +67,13 @@ const PromptEditor: React.FC<PromptEditorProps> = ({
               className="flex-1 py-1.5 bg-cyan-300 hover:bg-cyan-200 text-slate-950 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
             >
               <Save className="w-3 h-3" />
-              保存
+              Lưu
             </button>
             <button
               onClick={handleCancel}
               className="flex-1 py-1.5 bg-white/10 hover:bg-white/15 text-zinc-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors"
             >
-              取消
+              Hủy
             </button>
           </div>
         </div>
@@ -87,7 +87,7 @@ const PromptEditor: React.FC<PromptEditorProps> = ({
             <div className="flex items-start gap-2 text-zinc-600">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed">
-                未设置提示词。点击编辑按钮添加视觉描述。
+                Chưa có câu lệnh. Nhấn nút chỉnh sửa để thêm mô tả hình ảnh.
               </p>
             </div>
           )}

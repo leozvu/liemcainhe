@@ -22,7 +22,7 @@ export const addRenderLog = (log: Omit<RenderLog, 'id' | 'timestamp'>): void => 
   if (logCallback) {
     logCallback(fullLog);
   } else {
-    console.warn('[RenderLog] No callback set - log not saved:', fullLog);
+    console.warn('[Nhật ký kết xuất] Chưa thiết lập hàm tiếp nhận nên nhật ký chưa được lưu:', fullLog);
   }
 };
 

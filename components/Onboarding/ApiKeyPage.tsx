@@ -1,165 +1,83 @@
-import React, { useState } from 'react';
-import { Key, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
-import { verifyApiKey } from '../../services/geminiService';
+import React from 'react';
+import { AudioLines, ExternalLink, Image, KeyRound, MessageSquareText, Video } from 'lucide-react';
 
 interface ApiKeyPageProps {
-  currentApiKey: string;
-  onSaveApiKey: (key: string) => void;
   onNext: () => void;
   onSkip: () => void;
 }
 
-const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ 
-  currentApiKey, 
-  onSaveApiKey, 
-  onNext,
-  onSkip 
-}) => {
-  const [inputKey, setInputKey] = useState(currentApiKey);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'success' | 'error'>(
-    currentApiKey ? 'success' : 'idle'
-  );
-  const [verifyMessage, setVerifyMessage] = useState(currentApiKey ? '已配置' : '');
+const providers = [
+  {
+    name: 'OpenRouter',
+    description: 'Nhiều mô hình hội thoại từ GPT, Claude, Gemini, Qwen và DeepSeek.',
+    href: 'https://openrouter.ai/settings/keys',
+    icon: MessageSquareText,
+  },
+  {
+    name: 'KIE AI',
+    description: 'Một khóa cho toàn bộ catalog ảnh, video và các mô hình cao cấp trong ứng dụng.',
+    href: 'https://kie.ai/api-key',
+    icon: Video,
+  },
+  {
+    name: 'Google AI Studio',
+    description: 'Kết nối trực tiếp Gemini khi bạn muốn dùng khóa Google riêng.',
+    href: 'https://aistudio.google.com/apikey',
+    icon: Image,
+  },
+  {
+    name: 'ElevenLabs',
+    description: 'Eleven v3 cho giọng thoại tiếng Việt biểu cảm và tự nhiên.',
+    href: 'https://elevenlabs.io/app/settings/api-keys',
+    icon: AudioLines,
+  },
+];
 
-  const handleVerifyAndContinue = async () => {
-    if (!inputKey.trim()) {
-      setVerifyStatus('error');
-      setVerifyMessage('请输入 API Key');
-      return;
-    }
-
-    setIsVerifying(true);
-    setVerifyStatus('idle');
-
-    try {
-      const result = await verifyApiKey(inputKey.trim());
-      
-      if (result.success) {
-        setVerifyStatus('success');
-        setVerifyMessage('验证成功！');
-        onSaveApiKey(inputKey.trim());
-        // 短暂延迟后进入下一步
-        setTimeout(() => {
-          onNext();
-        }, 500);
-      } else {
-        setVerifyStatus('error');
-        setVerifyMessage(result.message);
-      }
-    } catch (error: any) {
-      setVerifyStatus('error');
-      setVerifyMessage(error.message || '验证出错');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col items-center text-center">
-      {/* 图标 */}
-      <div className="relative mb-6">
-        <div className="w-16 h-16 rounded-2xl bg-cyan-300/10 border border-cyan-200/25 flex items-center justify-center">
-          <Key className="w-8 h-8 text-cyan-300" />
-        </div>
-        {verifyStatus === 'success' && (
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-            <CheckCircle className="w-4 h-4 text-white" />
-          </div>
-        )}
-      </div>
-
-      {/* 标题 */}
-      <h2 className="text-2xl font-bold text-white mb-2">
-        配置你的 API Key
-      </h2>
-
-      {/* 说明 */}
-      <p className="text-zinc-500 text-sm mb-6 max-w-xs">
-        需要 API Key 才能使用 AI 生成功能
-      </p>
-
-      {/* 输入框 */}
-      <div className="w-full max-w-sm mb-4">
-        <input
-          type="password"
-          value={inputKey}
-          onChange={(e) => {
-            setInputKey(e.target.value);
-            setVerifyStatus('idle');
-            setVerifyMessage('');
-          }}
-          placeholder="输入你的 API Key..."
-          className="w-full bg-white/[0.06] border border-white/10 text-white px-4 py-3 text-sm rounded-xl focus:border-cyan-300/40 focus:outline-none focus:ring-2 focus:ring-cyan-300/10 transition-all font-mono placeholder:text-slate-500 text-center"
-          disabled={isVerifying}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && inputKey.trim() && !isVerifying) {
-              handleVerifyAndContinue();
-            }
-          }}
-        />
-
-        {/* 状态提示 */}
-        {verifyMessage && (
-          <div className={`mt-2 flex items-center justify-center gap-2 text-xs ${
-            verifyStatus === 'success' ? 'text-green-400' : 'text-red-400'
-          }`}>
-            {verifyStatus === 'success' ? (
-              <CheckCircle className="w-3.5 h-3.5" />
-            ) : (
-              <AlertCircle className="w-3.5 h-3.5" />
-            )}
-            {verifyMessage}
-          </div>
-        )}
-      </div>
-
-      {/* 获取 Key 链接 */}
-      <div className="flex items-center gap-4 mb-8">
-        <a 
-          href="https://api.gitcc.com" 
-          target="_blank" 
-          rel="noreferrer" 
-          className="text-xs text-cyan-300 hover:underline inline-flex items-center gap-1"
-        >
-          立即购买 <ExternalLink className="w-3 h-3" />
-        </a>
-        <span className="text-zinc-700">|</span>
-        <a 
-          href="https://www.gitcc.com" 
-          target="_blank" 
-          rel="noreferrer" 
-          className="text-xs text-cyan-300 hover:underline inline-flex items-center gap-1"
-        >
-          立即咨询 <ExternalLink className="w-3 h-3" />
-        </a>
-      </div>
-
-      {/* 主按钮 */}
-      <button
-        onClick={handleVerifyAndContinue}
-        disabled={isVerifying}
-        className="px-8 py-3 bg-cyan-300 text-slate-950 font-bold text-sm rounded-xl hover:bg-cyan-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-cyan-500/20"
-      >
-        {isVerifying ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            验证中...
-          </>
-        ) : (
-          '验证并继续'
-        )}
-      </button>
-
-      {/* 跳过入口 */}
-      <button
-        onClick={onSkip}
-        className="mt-4 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-      >
-        稍后在设置中配置
-      </button>
+const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => (
+  <div className="flex flex-col items-center text-center">
+    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
+      <KeyRound className="h-8 w-8 text-cyan-300" aria-hidden="true" />
     </div>
-  );
-};
+
+    <h2 className="text-2xl font-bold text-white">Chọn dịch vụ AI của bạn</h2>
+    <p className="mb-5 mt-2 max-w-md text-sm leading-relaxed text-zinc-500">
+      Egoric Film Studio không khóa bạn vào một cổng duy nhất. Bạn có thể cấu hình một hoặc nhiều nhà cung cấp sau khi hoàn tất hướng dẫn.
+    </p>
+
+    <div className="grid w-full gap-2 text-left">
+      {providers.map(({ name, description, href, icon: Icon }) => (
+        <a
+          key={name}
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="group flex min-h-14 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3 transition-colors hover:border-cyan-300/30 hover:bg-cyan-300/[0.06] focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
+        >
+          <Icon className="h-5 w-5 shrink-0 text-cyan-300" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-bold text-white">{name}</span>
+            <span className="mt-0.5 block text-[10px] leading-relaxed text-zinc-500">{description}</span>
+          </span>
+          <ExternalLink className="h-4 w-4 shrink-0 text-zinc-600 group-hover:text-cyan-300" aria-hidden="true" />
+        </a>
+      ))}
+    </div>
+
+    <button
+      type="button"
+      onClick={onNext}
+      className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-cyan-300 px-8 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-100/50"
+    >
+      Tiếp tục
+    </button>
+    <button
+      type="button"
+      onClick={onSkip}
+      className="mt-3 min-h-11 px-4 text-xs text-zinc-600 transition-colors hover:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/20"
+    >
+      Bỏ qua và vào ứng dụng
+    </button>
+  </div>
+);
 
 export default ApiKeyPage;

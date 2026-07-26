@@ -22,50 +22,38 @@ export const STYLES = {
 };
 
 export const VISUAL_STYLE_PROMPTS: Record<string, string> = {
-  'live-action': 'photorealistic, cinematic film quality, real human actors, professional cinematography, natural lighting, 8K resolution',
-  'anime': 'Japanese anime style, cel-shaded, vibrant colors, expressive eyes, dynamic poses, Studio Ghibli/Makoto Shinkai quality',
-  '2d-animation': 'classic 2D animation, hand-drawn style, Disney/Pixar quality, smooth lines, expressive characters, painterly backgrounds',
-  '3d-animation': 'high-quality 3D CGI animation, Pixar/DreamWorks style, subsurface scattering, detailed textures, stylized characters',
-  'cyberpunk': 'cyberpunk aesthetic, neon-lit, rain-soaked streets, holographic displays, high-tech low-life, Blade Runner style',
-  'oil-painting': 'oil painting style, visible brushstrokes, rich textures, classical art composition, museum quality fine art',
+  'live-action': 'hình ảnh chân thực, chất lượng phim điện ảnh, diễn viên người thật, quay phim chuyên nghiệp, ánh sáng tự nhiên, độ phân giải 8K',
+  'anime': 'phong cách hoạt hình Nhật Bản, đổ bóng theo mảng, màu sắc rực rỡ, đôi mắt biểu cảm, tư thế năng động, chất lượng điện ảnh',
+  '2d-animation': 'hoạt hình 2D cổ điển, nét vẽ tay, đường nét mượt mà, nhân vật giàu biểu cảm, phông nền như tranh vẽ',
+  '3d-animation': 'hoạt hình 3D CGI chất lượng cao, tán xạ dưới bề mặt, chất liệu chi tiết, nhân vật cách điệu',
+  'cyberpunk': 'thẩm mỹ tương lai công nghệ cao, ánh sáng neon, đường phố mưa ướt, màn hình ba chiều, tương phản mạnh',
+  'oil-painting': 'phong cách tranh sơn dầu, nét cọ rõ, chất liệu phong phú, bố cục mỹ thuật cổ điển, chất lượng trưng bày',
 };
 
 export const VIDEO_PROMPT_TEMPLATES = {
   sora2: {
-    chinese: `从第一张图片（起始帧）到第二张图片（结束帧）生成平滑过渡的视频。
+    standard: `Tạo video chuyển động mượt mà từ hình ảnh đầu tiên (khung hình bắt đầu) đến hình ảnh thứ hai (khung hình kết thúc).
 
-动作描述：{actionSummary}
+Mô tả hành động: {actionSummary}
 
-技术要求：
-- 关键：视频必须从第一张图片的精确构图开始，逐渐过渡到第二张图片的精确构图结束
-- 镜头运动：{cameraMovement}
-- 过渡：确保起始帧和结束帧之间自然流畅的运动，避免跳跃或不连续
-- 视觉风格：电影质感，全程保持一致的光照和色调
-- 细节：保持两帧之间角色和场景的连续性和一致性
-- 语言：配音和字幕使用中文`,
-    
-    english: `Generate a smooth transition video from the first image (start frame) to the second image (end frame).
-
-Action Description: {actionSummary}
-
-Technical Requirements:
-- CRITICAL: The video MUST begin with the exact composition of the first image and gradually transition to end with the exact composition of the second image
-- Camera Movement: {cameraMovement}
-- Transition: Ensure natural and fluid motion between start and end frames, avoid jumps or discontinuities
-- Visual Style: Cinematic quality with consistent lighting and color tone throughout
-- Details: Maintain character and scene continuity and consistency between both frames
-- Language: Use {language} for voiceover and subtitles`
+Yêu cầu kỹ thuật:
+- QUAN TRỌNG: Video phải bắt đầu chính xác theo bố cục của hình ảnh đầu và chuyển dần đến bố cục chính xác của hình ảnh cuối
+- Chuyển động máy quay: {cameraMovement}
+- Chuyển tiếp: Bảo đảm chuyển động tự nhiên, liền mạch, không nhảy cóc hoặc đứt quãng
+- Phong cách hình ảnh: Chất lượng điện ảnh, ánh sáng và tông màu nhất quán
+- Chi tiết: Giữ nhân vật và bối cảnh liên tục, nhất quán giữa hai khung hình
+- Ngôn ngữ: Dùng {language} cho lời thoại và phụ đề`
   },
   
   veo: {
     simple: `{actionSummary}
 
-镜头运动：{cameraMovement}
-配音语言：使用{language}配音`
+Chuyển động máy quay: {cameraMovement}
+Ngôn ngữ lời thoại: {language}`
   }
 };
 
 export const DEFAULTS = {
-  videoModel: 'doubao-seedance-2-0-fast' as const,
+  videoModel: 'replicate-seedance-1-pro' as const,
   batchGenerateDelay: 3000,
 };

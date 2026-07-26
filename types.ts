@@ -1,3 +1,8 @@
+// types/content.ts không import ngược lại file này nên không tạo vòng phụ thuộc.
+import type { ContentStudioState } from './types/content';
+
+export type { ContentStudioState };
+
 export interface CharacterVariation {
   id: string;
   name: string;
@@ -5,6 +10,41 @@ export interface CharacterVariation {
   negativePrompt?: string;
   referenceImage?: string;
   status?: 'pending' | 'generating' | 'completed' | 'failed';
+}
+
+/** Góc chụp của một ảnh tham chiếu, để chọn ảnh hợp với từng cỡ cảnh. */
+export type ReferenceAngle = 'front' | 'three-quarter' | 'profile' | 'back' | 'unknown';
+
+/**
+ * Một ảnh trong bộ tham chiếu của nhân vật.
+ *
+ * Trước đây mỗi nhân vật chỉ có đúng một `referenceImage`. Một ảnh chính diện
+ * không đủ để model giữ được nhận diện ở cảnh nghiêng hay cảnh lưng, và đó là
+ * nguyên nhân hàng đầu phải sinh lại.
+ */
+export interface CharacterReference {
+  id: string;
+  imageUrl: string;
+  angle: ReferenceAngle;
+  /** Ảnh đã đi qua một shot được duyệt, nên đáng tin hơn ảnh mới sinh. */
+  approved: boolean;
+  /** Sinh ra từ shot nào, để truy vết khi cần. */
+  sourceShotId?: string;
+  addedAt: number;
+}
+
+/**
+ * Tham số của một lần sinh đã được duyệt.
+ *
+ * Khoá lại để shot sau dùng đúng model và seed cũ. Đổi model giữa chừng là
+ * cách chắc chắn làm nhân vật lệch nhận diện, kể cả khi prompt giữ nguyên.
+ */
+export interface GenerationLock {
+  modelId: string;
+  seed?: number;
+  aspectRatio?: AspectRatio;
+  lockedAt: number;
+  sourceShotId?: string;
 }
 
 export interface Character {
@@ -19,6 +59,10 @@ export interface Character {
   referenceImage?: string;
   variations: CharacterVariation[];
   status?: 'pending' | 'generating' | 'completed' | 'failed';
+  /** Bộ ảnh tham chiếu nhiều góc. Bổ sung cho `referenceImage`, không thay thế. */
+  referencePack?: CharacterReference[];
+  /** Tham số sinh đã khoá, lấy từ lần sinh được duyệt. */
+  lock?: GenerationLock;
 }
 
 export interface Scene {
@@ -59,7 +103,7 @@ export interface VideoInterval {
   motionStrength: number;
   videoUrl?: string;
   videoPrompt?: string;
-  /** 纯文生视频：不传首帧/尾帧参考图，用于规避上传图真人审核 */
+  /** Tạo video thuần văn bản, không gửi ảnh khung đầu hoặc khung cuối. */
   textToVideoOnly?: boolean;
   status: 'pending' | 'generating' | 'completed' | 'failed';
 }
@@ -76,6 +120,78 @@ export interface Shot {
   keyframes: Keyframe[];
   interval?: VideoInterval;
   videoModel?: 'veo' | 'sora-2' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait';
+  workflow?: ShotWorkflowState;
+  factory?: ShotFactoryContext;
+}
+
+export interface ShotWorkflowState {
+  keyframesStale?: boolean;
+  voiceStale?: boolean;
+  videoStale?: boolean;
+  approved?: boolean;
+  locked?: boolean;
+  updatedAt?: number;
+}
+
+export type VoiceProviderId = 'fpt' | 'viettel' | 'elevenlabs' | 'vbee' | 'human';
+export type VoiceRegion = 'north' | 'central' | 'south' | 'international';
+export type VoiceTakeStatus = 'draft' | 'generating' | 'processing' | 'ready' | 'error';
+export type VoiceEmotion = 'neutral' | 'warm' | 'confident' | 'dramatic' | 'energetic' | 'intimate';
+
+export interface PronunciationEntry {
+  id: string;
+  source: string;
+  replacement: string;
+  note?: string;
+}
+
+export interface VoiceProfile {
+  id: string;
+  characterId: string;
+  providerId: VoiceProviderId;
+  voiceId: string;
+  voiceName: string;
+  region: VoiceRegion;
+  speed: number;
+  pitch: number;
+  emotion: VoiceEmotion;
+  style?: string;
+}
+
+export interface VoiceTake {
+  id: string;
+  shotId: string;
+  characterId?: string;
+  text: string;
+  source: 'synthetic' | 'human';
+  providerId: VoiceProviderId;
+  voiceId?: string;
+  voiceName?: string;
+  status: VoiceTakeStatus;
+  audioUrl?: string;
+  duration?: number;
+  fileName?: string;
+  notes?: string;
+  error?: string;
+  sourceHash?: string;
+  emotion?: VoiceEmotion;
+  pitch?: number;
+  mastered?: boolean;
+  masteringGainDb?: number;
+  trimmedSeconds?: number;
+  masteringSkippedReason?: string;
+  createdAt: number;
+}
+
+export interface VoiceStudioState {
+  defaultProviderId: VoiceProviderId;
+  profiles: VoiceProfile[];
+  takes: VoiceTake[];
+  selectedTakeByShot: Record<string, string>;
+  outputFormat: 'mp3' | 'wav';
+  normalizeLoudness: boolean;
+  pronunciationDictionary: PronunciationEntry[];
+  previewText: string;
 }
 
 export interface ScriptData {
@@ -94,7 +210,7 @@ export interface ScriptData {
 export interface RenderLog {
   id: string;
   timestamp: number;
-  type: 'character' | 'character-variation' | 'scene' | 'keyframe' | 'video' | 'script-parsing';
+  type: 'character' | 'character-variation' | 'scene' | 'keyframe' | 'video' | 'voice' | 'script-parsing';
   resourceId: string;
   resourceName: string;
   status: 'success' | 'failed';
@@ -107,12 +223,669 @@ export interface RenderLog {
   duration?: number;
 }
 
+export type ProjectStage = 'content' | 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
+export type CoreStage = 'script' | 'assets' | 'voice' | 'director' | 'export';
+export type ProductionJobKind = 'script-analysis' | 'creative-director' | 'video-factory' | 'ai-supervisor' | 'auto-editor' | 'agency-review' | 'asset-image' | 'keyframe-image' | 'video' | 'voice' | 'cloud-sync' | 'export';
+export type ProductionJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
+
+export interface ProductionJob {
+  id: string;
+  kind: ProductionJobKind;
+  stage: CoreStage;
+  label: string;
+  status: ProductionJobStatus;
+  progress: number;
+  completedUnits?: number;
+  totalUnits?: number;
+  resourceId?: string;
+  detail?: string;
+  error?: string;
+  attempts: number;
+  createdAt: number;
+  updatedAt: number;
+  /**
+   * Vân tay của công việc này.
+   *
+   * Cùng loại, cùng tài nguyên, cùng đầu vào thì cùng khoá. Dùng để không gửi
+   * lại một tác vụ đã tồn tại, tránh bị trừ tiền hai lần cho cùng một thứ.
+   */
+  idempotencyKey?: string;
+  /**
+   * Mã tác vụ bên nhà cung cấp.
+   *
+   * Có mã này thì phiên sau đối chiếu được kết quả thay vì chạy lại. Không có
+   * thì một job bị ngắt giữa chừng là mất dấu hoàn toàn.
+   */
+  providerTaskId?: string;
+}
+
+export interface ProjectSnapshot {
+  title: string;
+  stage: ProjectStage;
+  rawScript: string;
+  targetDuration: string;
+  language: string;
+  visualStyle: string;
+  shotGenerationModel: string;
+  scriptData: ScriptData | null;
+  shots: Shot[];
+  voiceStudio?: VoiceStudioState;
+  videoFactory?: VideoFactoryState;
+  aiSupervisor?: AISupervisorState;
+  autoEditor?: AutoEditorState;
+  agencyReview?: AgencyReviewState;
+  contentStudio?: ContentStudioState;
+}
+
+export interface ProjectCheckpoint {
+  id: string;
+  label: string;
+  createdAt: number;
+  stage: ProjectStage;
+  snapshot: ProjectSnapshot;
+}
+
+export type ProductionTaskStatus = 'todo' | 'in-progress' | 'review' | 'done' | 'blocked';
+export type ProductionTaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type ProductionTaskSource = 'template' | 'director' | 'manual';
+
+export interface ProductionTask {
+  id: string;
+  title: string;
+  detail?: string;
+  stage: CoreStage;
+  status: ProductionTaskStatus;
+  priority: ProductionTaskPriority;
+  source: ProductionTaskSource;
+  assignee: string;
+  dueAt?: number;
+  requiresApproval: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ProductionApprovalStatus = 'pending' | 'approved' | 'changes-requested';
+
+export interface ProductionApprovalGate {
+  stage: CoreStage;
+  status: ProductionApprovalStatus;
+  reviewer?: string;
+  note?: string;
+  updatedAt: number;
+}
+
+export interface ProjectWorkflowState {
+  jobs: ProductionJob[];
+  checkpoints: ProjectCheckpoint[];
+  productionTasks?: ProductionTask[];
+  approvalGates?: ProductionApprovalGate[];
+  lastCloudSyncAt?: number;
+  cloudSyncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
+  cloudSyncError?: string;
+}
+
+export type ClientReviewPortalStatus = 'active' | 'closed';
+export type ClientReviewDecisionStatus = 'pending' | 'changes-requested' | 'approved';
+export type ClientReviewCommentStatus = 'open' | 'resolved';
+
+export interface ClientReviewClip {
+  id: string;
+  shotId: string;
+  title: string;
+  actionSummary: string;
+  duration: number;
+  videoUrl: string;
+  posterUrl?: string;
+}
+
+export interface ClientReviewVersion {
+  id: string;
+  number: number;
+  label: string;
+  note?: string;
+  duration: number;
+  clips: ClientReviewClip[];
+  internalRoundId?: string;
+  createdAt: number;
+}
+
+export interface ClientReviewComment {
+  id: string;
+  versionId: string;
+  clipId: string;
+  authorName: string;
+  authorEmail?: string;
+  body: string;
+  timecodeSeconds: number;
+  status: ClientReviewCommentStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ClientReviewPortal {
+  id: string;
+  projectId: string;
+  title: string;
+  clientName: string;
+  campaignName?: string;
+  deliverableTitle?: string;
+  status: ClientReviewPortalStatus;
+  decision: ClientReviewDecisionStatus;
+  decisionVersionId?: string;
+  decisionNote?: string;
+  reviewerName?: string;
+  reviewerEmail?: string;
+  decidedAt?: number;
+  expiresAt?: number;
+  versions: ClientReviewVersion[];
+  comments: ClientReviewComment[];
+  shareUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type CreativeDirectorMode = 'advisory' | 'copilot' | 'autopilot';
+export type CreativeDirectorRunStatus = 'thinking' | 'awaiting-approval' | 'completed' | 'failed';
+export type CreativeDirectorProposalKind = 'script' | 'storyboard' | 'moodboard' | 'production-plan' | 'timeline';
+export type CreativeDirectorProposalStatus = 'pending' | 'applied' | 'rejected';
+
+export interface CreativeDirectorMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+  proposalId?: string;
+}
+
+export interface CreativeDirectorPlanStep {
+  id: string;
+  title: string;
+  detail: string;
+  stage: CoreStage;
+  status: 'suggested' | 'ready' | 'blocked';
+}
+
+export interface MoodboardSpec {
+  title: string;
+  creativeDirection: string;
+  palette: Array<{ name: string; hex: string; usage: string }>;
+  lighting: string[];
+  camera: string[];
+  textures: string[];
+  wardrobe: string[];
+  typography: string[];
+  references: string[];
+  avoid: string[];
+}
+
+export interface CreativeDirectorShotDraft {
+  id?: string;
+  sceneId: string;
+  actionSummary: string;
+  dialogue?: string;
+  cameraMovement: string;
+  shotSize?: string;
+  characters: string[];
+  duration?: number;
+  startFramePrompt?: string;
+  endFramePrompt?: string;
+}
+
+export interface CreativeDirectorTimelineItem {
+  shotId: string;
+  duration: number;
+  transition: 'cut' | 'crossfade' | 'fade-black';
+  transitionDuration?: number;
+  audioNote?: string;
+  editNote?: string;
+}
+
+export interface CreativeDirectorProposalChanges {
+  rawScript?: string;
+  targetDuration?: string;
+  visualStyle?: string;
+  shots?: CreativeDirectorShotDraft[];
+  moodboard?: MoodboardSpec;
+  productionPlan?: string[];
+  timeline?: CreativeDirectorTimelineItem[];
+}
+
+export interface CreativeDirectorProposal {
+  id: string;
+  kind: CreativeDirectorProposalKind;
+  title: string;
+  summary: string;
+  rationale: string[];
+  affectedShotIds: string[];
+  estimatedCostUsd: number;
+  requiresApproval: boolean;
+  status: CreativeDirectorProposalStatus;
+  changes: CreativeDirectorProposalChanges;
+  createdAt: number;
+  appliedAt?: number;
+}
+
+export interface CreativeDirectorRun {
+  id: string;
+  query: string;
+  status: CreativeDirectorRunStatus;
+  startedAt: number;
+  completedAt?: number;
+  proposalId?: string;
+  jobId?: string;
+  error?: string;
+}
+
+export type CreativeDirectorToolName =
+  | 'generate-character-image'
+  | 'generate-scene-image'
+  | 'generate-start-keyframe'
+  | 'generate-end-keyframe'
+  | 'generate-video'
+  | 'generate-voice';
+
+export type CreativeDirectorActionStatus = 'pending' | 'blocked' | 'running' | 'completed' | 'failed' | 'skipped';
+export type CreativeDirectorMissionStatus = 'draft' | 'awaiting-approval' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+
+export interface CreativeDirectorMissionAction {
+  id: string;
+  tool: CreativeDirectorToolName;
+  label: string;
+  stage: CoreStage;
+  status: CreativeDirectorActionStatus;
+  dependsOn: string[];
+  resourceId: string;
+  estimatedCostUsd: number;
+  attempts: number;
+  maxAttempts: number;
+  requiresApproval: boolean;
+  idempotencyKey: string;
+  blockedReason?: string;
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
+  input?: {
+    shotId?: string;
+    frameType?: 'start' | 'end';
+    duration?: number;
+    textToVideoOnly?: boolean;
+    previousOutput?: string;
+  };
+}
+
+export interface CreativeDirectorMission {
+  id: string;
+  goal: string;
+  status: CreativeDirectorMissionStatus;
+  actions: CreativeDirectorMissionAction[];
+  estimatedCostUsd: number;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  jobId?: string;
+  error?: string;
+}
+
+export interface CreativeDirectorState {
+  mode: CreativeDirectorMode;
+  /** Trần cho **một** nhiệm vụ. Không cộng dồn qua nhiều lần chạy. */
+  budgetLimitUsd: number;
+  /**
+   * Trần cộng dồn cho cả dự án.
+   *
+   * `budgetLimitUsd` chỉ chặn từng nhiệm vụ, nên chạy nhiều nhiệm vụ nhỏ vẫn
+   * đốt sạch ngân sách mà không có gì cản. Trần này đối chiếu với tiền đã tiêu
+   * thật trong nhật ký usage.
+   */
+  projectBudgetUsd?: number;
+  messages: CreativeDirectorMessage[];
+  proposals: CreativeDirectorProposal[];
+  runs: CreativeDirectorRun[];
+  missions: CreativeDirectorMission[];
+  plan: CreativeDirectorPlanStep[];
+  memory: string[];
+  moodboard?: MoodboardSpec;
+  productionPlan?: string[];
+  timeline?: CreativeDirectorTimelineItem[];
+}
+
+export type CampaignStatus = 'brief' | 'planning' | 'production' | 'review' | 'delivered' | 'paused';
+export type CampaignPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type CampaignObjective = 'awareness' | 'engagement' | 'leads' | 'conversion' | 'retention' | 'launch';
+export type CampaignPlatform = 'tiktok' | 'facebook' | 'instagram' | 'youtube' | 'website' | 'other';
+export type DeliverableStatus = 'planned' | 'in-progress' | 'review' | 'approved' | 'delivered';
+
+export type BrandAssetType = 'logo' | 'product' | 'character' | 'reference';
+
+export interface BrandColor {
+  id: string;
+  name: string;
+  hex: string;
+  usage?: string;
+}
+
+export interface BrandAsset {
+  id: string;
+  type: BrandAssetType;
+  name: string;
+  url: string;
+  notes?: string;
+}
+
+export interface BrandVoiceProfile {
+  name: string;
+  providerId?: string;
+  voiceId?: string;
+  description?: string;
+  language?: string;
+}
+
+export interface BrandPlatformRule {
+  platform: CampaignPlatform;
+  safeZone?: string;
+  captionStyle?: string;
+  guidelines?: string;
+}
+
+export interface BrandKit {
+  colors: BrandColor[];
+  fonts: string[];
+  assets: BrandAsset[];
+  voiceProfile?: BrandVoiceProfile;
+  toneOfVoice: string;
+  mandatoryTerms: string[];
+  forbiddenTerms: string[];
+  ctas: string[];
+  approvedExamples: string[];
+  platformRules: BrandPlatformRule[];
+  updatedAt: number;
+}
+
+export type VideoFactoryVoiceMode = 'with-voice' | 'no-voice';
+export type VideoFactoryTier = 'draft' | 'final';
+export type VideoFactoryVariantStatus = 'planned' | 'materialized' | 'approved' | 'ready' | 'failed';
+
+export interface VideoFactoryVariant {
+  id: string;
+  name: string;
+  hook: string;
+  cta: string;
+  aspectRatio: AspectRatio;
+  duration: number;
+  voiceMode: VideoFactoryVoiceMode;
+  audience: string;
+  tier: VideoFactoryTier;
+  status: VideoFactoryVariantStatus;
+  estimatedCostUsd: number;
+  shotIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface VideoFactoryPolicy {
+  draftImageModelId?: string;
+  draftVideoModelId?: string;
+  finalImageModelId?: string;
+  finalVideoModelId?: string;
+  maxVariants: number;
+  budgetLimitUsd: number;
+  reuseAssets: boolean;
+}
+
+export interface VideoFactoryState {
+  hooks: string[];
+  ctas: string[];
+  aspectRatios: AspectRatio[];
+  durations: number[];
+  voiceModes: VideoFactoryVoiceMode[];
+  audiences: string[];
+  variants: VideoFactoryVariant[];
+  policy: VideoFactoryPolicy;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ShotFactoryContext {
+  variantId: string;
+  sourceShotId: string;
+  aspectRatio: AspectRatio;
+  targetDuration: number;
+  voiceMode: VideoFactoryVoiceMode;
+  audience: string;
+  tier: VideoFactoryTier;
+}
+
+export type AISupervisorIssueKind =
+  | 'missing-media'
+  | 'stale-media'
+  | 'face'
+  | 'hands'
+  | 'logo'
+  | 'product'
+  | 'continuity'
+  | 'dialogue-overrun'
+  | 'safe-zone'
+  | 'brand'
+  | 'cta';
+
+export type AISupervisorIssueSeverity = 'info' | 'warning' | 'critical';
+export type AISupervisorIssueStatus = 'open' | 'queued' | 'resolved' | 'ignored';
+export type AISupervisorIssueSource = 'local' | 'ai-vision';
+export type AISupervisorRepairTarget = 'none' | 'script' | 'voice' | 'keyframes' | 'video';
+
+export interface AISupervisorIssue {
+  id: string;
+  kind: AISupervisorIssueKind;
+  severity: AISupervisorIssueSeverity;
+  status: AISupervisorIssueStatus;
+  source: AISupervisorIssueSource;
+  title: string;
+  detail: string;
+  repairTarget: AISupervisorRepairTarget;
+  confidence?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AISupervisorShotReport {
+  shotId: string;
+  score: number;
+  status: 'pass' | 'warning' | 'fail';
+  visionStatus: 'not-run' | 'complete' | 'unavailable';
+  issues: AISupervisorIssue[];
+  mediaSignature: string;
+  analyzedAt: number;
+  visionAnalyzedAt?: number;
+  repairEstimatedCostUsd?: number;
+}
+
+export interface AISupervisorPolicy {
+  repairBudgetUsd: number;
+  visionBudgetUsd: number;
+  maxVisionShotsPerRun: number;
+  requireHumanApproval: boolean;
+}
+
+export interface AISupervisorState {
+  reports: AISupervisorShotReport[];
+  policy: AISupervisorPolicy;
+  repairCommittedCostUsd: number;
+  visionSpentUsd: number;
+  lastLocalAuditAt?: number;
+  lastVisionAuditAt?: number;
+  updatedAt: number;
+}
+
+export type AutoEditorTransition = 'cut' | 'crossfade';
+export type AutoEditorCaptionStyle = 'clean' | 'bold' | 'boxed';
+export type AutoEditorLogoPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type AutoEditorColorPreset = 'natural' | 'cinematic' | 'warm' | 'cool' | 'contrast';
+export type AutoEditorOutputStatus = 'planned' | 'rendering' | 'ready' | 'failed';
+
+export interface AutoEditorTimelineClip {
+  id: string;
+  shotId: string;
+  order: number;
+  offset: number;
+  duration: number;
+  videoUrl?: string;
+  voiceTakeId?: string;
+  dialogue?: string;
+  transition: AutoEditorTransition;
+}
+
+export interface AutoEditorCaptionCue {
+  id: string;
+  shotId: string;
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface AutoEditorSettings {
+  sourceId: 'master' | string;
+  aspectRatios: AspectRatio[];
+  includeVoice: boolean;
+  captionsEnabled: boolean;
+  captionStyle: AutoEditorCaptionStyle;
+  transition: AutoEditorTransition;
+  colorPreset: AutoEditorColorPreset;
+  logoEnabled: boolean;
+  logoAssetId?: string;
+  logoPosition: AutoEditorLogoPosition;
+  logoSizePercent: number;
+  musicEnabled: boolean;
+  musicUrl?: string;
+  musicName?: string;
+  musicVolume: number;
+  duckingDb: number;
+  /** Nhịp nhạc nền, để cắt theo phách. Bỏ trống thì không cắt theo nhạc. */
+  musicBpm?: number;
+  fps: 25 | 30;
+}
+
+export interface AutoEditorPacingOverride {
+  shotId: string;
+  duration: number;
+  transition: AutoEditorTransition;
+}
+
+export interface AutoEditorOutput {
+  id: string;
+  name: string;
+  aspectRatio: AspectRatio;
+  status: AutoEditorOutputStatus;
+  fileName: string;
+  estimatedRenderMinutes: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AutoEditorState {
+  settings: AutoEditorSettings;
+  timeline: AutoEditorTimelineClip[];
+  captions: AutoEditorCaptionCue[];
+  outputs: AutoEditorOutput[];
+  /**
+   * Nhịp dựng đã áp cho từng shot. Lưu ở đây chứ không sửa thẳng timeline, vì
+   * timeline được dựng lại mỗi lần lập kế hoạch — sửa thẳng thì lần lập sau sẽ
+   * xoá mất.
+   */
+  pacing?: AutoEditorPacingOverride[];
+  planSignature?: string;
+  lastPlannedAt?: number;
+  lastRenderedAt?: number;
+  updatedAt: number;
+}
+
+export type AgencyReviewRole = 'director' | 'editor' | 'account';
+export type AgencyReviewGateStatus = 'pending' | 'approved' | 'changes-requested';
+export type AgencyReviewRoundStatus = 'internal-review' | 'ready-client' | 'client-review' | 'changes-requested' | 'approved';
+
+export interface AgencyReviewGate {
+  role: AgencyReviewRole;
+  status: AgencyReviewGateStatus;
+  reviewer?: string;
+  note?: string;
+  updatedAt: number;
+}
+
+export interface AgencyReviewRound {
+  id: string;
+  label: string;
+  note?: string;
+  status: AgencyReviewRoundStatus;
+  sourceSignature: string;
+  shotIds: string[];
+  gates: AgencyReviewGate[];
+  portalId?: string;
+  versionId?: string;
+  clientDecisionAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AgencyReviewState {
+  rounds: AgencyReviewRound[];
+  activeRoundId?: string;
+  updatedAt: number;
+}
+
+export interface AgencyClient {
+  id: string;
+  name: string;
+  brandName: string;
+  industry: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  website?: string;
+  notes?: string;
+  brandKit: BrandKit;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CampaignDeliverable {
+  id: string;
+  title: string;
+  platform: CampaignPlatform;
+  aspectRatio: AspectRatio;
+  duration: number;
+  quantity: number;
+  status: DeliverableStatus;
+  projectId?: string;
+}
+
+export interface AgencyCampaign {
+  id: string;
+  clientId: string;
+  name: string;
+  objective: CampaignObjective;
+  brief: string;
+  product?: string;
+  targetAudience: string;
+  offer?: string;
+  contentPillars: string[];
+  owner: string;
+  budget: number;
+  currency: 'VND' | 'USD';
+  deadline?: number;
+  status: CampaignStatus;
+  priority: CampaignPriority;
+  deliverables: CampaignDeliverable[];
+  projectIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ProjectState {
   id: string;
   title: string;
   createdAt: number;
   lastModified: number;
-  stage: 'script' | 'assets' | 'director' | 'export' | 'prompts';
+  stage: ProjectStage;
   
   rawScript: string;
   targetDuration: string;
@@ -124,6 +897,18 @@ export interface ProjectState {
   shots: Shot[];
   isParsingScript: boolean;
   renderLogs: RenderLog[];
+  voiceStudio?: VoiceStudioState;
+  workflow?: ProjectWorkflowState;
+  creativeDirector?: CreativeDirectorState;
+  campaignId?: string;
+  clientId?: string;
+  deliverableId?: string;
+  brandKitSnapshot?: BrandKit;
+  videoFactory?: VideoFactoryState;
+  aiSupervisor?: AISupervisorState;
+  autoEditor?: AutoEditorState;
+  agencyReview?: AgencyReviewState;
+  contentStudio?: ContentStudioState;
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';

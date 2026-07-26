@@ -1,4 +1,3 @@
-// Author: forsearch | Updated: 2026-04-30
 import React, { useState } from 'react';
 import { Search, Film } from 'lucide-react';
 import { ProjectState } from '../../types';
@@ -83,8 +82,8 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-white mb-1">资产管理</h1>
-              <p className="text-sm text-slate-400">查看和编辑所有生成任务的提示词和变量</p>
+              <h1 className="text-2xl font-bold text-white mb-1">Quản lý tài nguyên</h1>
+              <p className="text-sm text-slate-400">Xem và chỉnh sửa câu lệnh, biến số của mọi tác vụ tạo nội dung</p>
             </div>
           </div>
 
@@ -95,7 +94,7 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索提示词、角色、场景..."
+                placeholder="Tìm câu lệnh, nhân vật, bối cảnh..."
                 className="w-full bg-white/[0.06] border border-white/10 text-white pl-10 pr-4 py-2 rounded-xl text-sm focus:border-cyan-300/40 focus:outline-none placeholder:text-slate-500"
               />
             </div>
@@ -104,10 +103,10 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
               onChange={(e) => setCategory(e.target.value as PromptCategory)}
               className="bg-white/[0.06] border border-white/10 text-white px-4 py-2 rounded-xl text-sm focus:border-cyan-300/40 focus:outline-none"
             >
-              <option value="all">全部</option>
-              <option value="characters">角色</option>
-              <option value="scenes">场景</option>
-              <option value="keyframes">关键帧</option>
+              <option value="all">Tất cả</option>
+              <option value="characters">Nhân vật</option>
+              <option value="scenes">Bối cảnh</option>
+              <option value="keyframes">Khung hình chính</option>
             </select>
           </div>
         </div>
@@ -159,8 +158,8 @@ const StagePrompts: React.FC<Props> = ({ project, updateProject }) => {
             <div className="text-center py-16">
               <div className="text-zinc-600 mb-4">
                 <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">暂无提示词数据</p>
-                <p className="text-sm mt-2">请先在剧情创作阶段生成角色和场景，或在 AI工作台 生成分镜</p>
+                <p className="text-lg">Chưa có dữ liệu câu lệnh</p>
+                <p className="text-sm mt-2">Hãy tạo nhân vật và bối cảnh ở Giai đoạn 02, hoặc tạo bảng phân cảnh trong Xưởng dựng.</p>
               </div>
             </div>
           )}
