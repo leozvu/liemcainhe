@@ -7,7 +7,7 @@ import { normalizeAgencyClient } from './brandKitService';
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
 const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
 const CLIENT_STORE_NAME = 'agencyClients';
@@ -15,6 +15,7 @@ const CAMPAIGN_STORE_NAME = 'agencyCampaigns';
 const PUBLISH_LEDGER_STORE_NAME = 'publishLedger';
 const ARTICLE_LIBRARY_STORE_NAME = 'articleLibrary';
 const MANAGED_ACCOUNT_STORE_NAME = 'managedAccounts';
+const CAMPAIGN_ZERO_STORE_NAME = 'campaignZeroRuns';
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -22,7 +23,12 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(dbName, DB_VERSION);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onblocked = () => reject(new Error('Không thể nâng cấp kho dữ liệu vì Egoric đang mở ở tab khác. Hãy đóng các tab Egoric cũ rồi tải lại trang.'));
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -58,6 +64,11 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
         const store = db.createObjectStore(ARTICLE_LIBRARY_STORE_NAME, { keyPath: 'id' });
         store.createIndex('updatedAt', 'updatedAt', { unique: false });
         store.createIndex('projectId', 'projectId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(CAMPAIGN_ZERO_STORE_NAME)) {
+        const store = db.createObjectStore(CAMPAIGN_ZERO_STORE_NAME, { keyPath: 'campaignId' });
+        store.createIndex('updatedAt', 'updatedAt', { unique: false });
+        store.createIndex('status', 'status', { unique: false });
       }
     };
   });

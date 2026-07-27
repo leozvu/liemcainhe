@@ -91,3 +91,10 @@ export const clientReviewCommentsSchema = {
   primaryKey: ['id'],
   indexes: [['portal_id', 'updated_at']],
 } as const;
+
+export const workspaceItemsSchema = {
+  table: 'egoric_workspace_items',
+  primaryKey: ['owner_email', 'collection', 'item_id'],
+  indexes: [['owner_email', 'collection', 'updated_at']],
+  columns: ['owner_email', 'collection', 'item_id', 'payload_json', 'updated_at', 'deleted_at'],
+} as const;

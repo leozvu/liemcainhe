@@ -104,14 +104,14 @@ bàn giao tốt nhất hiện có và phải được chạy khô trước khi t
 
 | Trường | Bằng chứng |
 |---|---|
-| Entry point | **Không có** |
+| Entry point | Campaign 0 tự đồng bộ khi mở/lưu và có nút **Đồng bộ ngay**; các kho workspace còn lại chưa có caller ở runtime |
 | Existing code | `workspaceSyncService.ts`, IndexedDB adapters, cloud transport, `/api/cloud/workspace` |
-| Integration | `syncAllCollections` chỉ được gọi trong test |
+| Integration | `campaignZeroRuns` gọi trực tiếp `syncCollection`; `syncAllCollections` vẫn chỉ được gọi trong test |
 | Persistence | D1 migration và worker route đã có |
 | Real test | Chưa |
-| Measurement | `SyncOutcome` có số pulled/pushed/deleted nhưng không màn nào dùng |
-| Blocking gap | Client, campaign, article, publish ledger và managed account không tự sync |
-| Decision | Nối vào app trước Campaign 0 hoặc chấp nhận Campaign 0 chỉ chạy trên một máy có cảnh báo rõ |
+| Measurement | Panel Campaign 0 hiển thị đang tải/đồng bộ/đã đồng bộ/local-only/lỗi; số pulled/pushed vẫn chưa đưa lên dashboard |
+| Blocking gap | Client, campaign, article, publish ledger và managed account chưa tự sync |
+| Decision | Campaign 0 đã có local-first, full pull và recovery thủ công; nối năm kho còn lại sau khi Golden Run xác nhận contract cloud ổn định |
 
 Đây là ví dụ hệ thống tương ứng với Consistency Engine: code, adapter, endpoint
 và test đều có, nhưng không có caller nên người dùng nhận được **0 giá trị**.

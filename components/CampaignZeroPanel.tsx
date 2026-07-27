@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Circle,
   CircleDollarSign,
   CloudCog,
+  CloudOff,
   FlaskConical,
   Gauge,
   Loader2,
   Play,
+  RefreshCw,
   ShieldCheck,
   Square,
   TimerReset,
@@ -30,6 +33,8 @@ import {
   setCampaignZeroProviderBalances,
   startCampaignZeroWorkSession,
   stopCampaignZeroWorkSession,
+  syncCampaignZeroRuns,
+  CampaignZeroCloudPhase,
 } from '../services/campaignZeroService';
 import { getUsageRecords, runUsageTelemetryDryRun } from '../services/usageService';
 
@@ -70,15 +75,40 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
   const [usageRevision, setUsageRevision] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
   const [error, setError] = useState('');
+  const [cloudPhase, setCloudPhase] = useState<CampaignZeroCloudPhase | 'loading' | 'syncing'>('loading');
 
   useEffect(() => {
-    const stored = loadCampaignZeroRun(campaign.id);
-    setRun(stored);
-    setExpanded(Boolean(stored));
-    setProxyName(stored?.clientProxyName || '');
-    setBalanceBefore(stored?.providerBalanceBeforeUsd?.toString() || '');
-    setBalanceAfter(stored?.providerBalanceAfterUsd?.toString() || '');
-    setError('');
+    let active = true;
+    const loadAndSync = async () => {
+      setCloudPhase('loading');
+      setError('');
+      try {
+        const local = await loadCampaignZeroRun(campaign.id);
+        if (!active) return;
+        setRun(local);
+        setExpanded(Boolean(local));
+        setProxyName(local?.clientProxyName || '');
+        setBalanceBefore(local?.providerBalanceBeforeUsd?.toString() || '');
+        setBalanceAfter(local?.providerBalanceAfterUsd?.toString() || '');
+        setCloudPhase('syncing');
+        const report = await syncCampaignZeroRuns({ full: true });
+        const merged = await loadCampaignZeroRun(campaign.id);
+        if (!active) return;
+        setRun(merged);
+        setExpanded(Boolean(merged));
+        setProxyName(merged?.clientProxyName || '');
+        setBalanceBefore(merged?.providerBalanceBeforeUsd?.toString() || '');
+        setBalanceAfter(merged?.providerBalanceAfterUsd?.toString() || '');
+        setCloudPhase(report.phase);
+        if (report.error) setError(`Không đồng bộ được Campaign 0: ${report.error} Dữ liệu vẫn an toàn trên máy này.`);
+      } catch (nextError) {
+        if (!active) return;
+        setCloudPhase('error');
+        setError(nextError instanceof Error ? nextError.message : 'Không thể tải Campaign 0. Hãy thử đồng bộ lại.');
+      }
+    };
+    void loadAndSync();
+    return () => { active = false; };
   }, [campaign.id]);
 
   useEffect(() => {
@@ -104,27 +134,53 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     now: clock,
   }), [campaign, client, clock, projects, run, usageRecords]);
 
-  const persist = (next: CampaignZeroRun) => {
-    const saved = saveCampaignZeroRun(next);
-    setRun(saved);
+  const persist = async (next: CampaignZeroRun) => {
+    setCloudPhase('syncing');
     setError('');
+    const saved = await saveCampaignZeroRun(next);
+    setRun(saved);
+    const report = await syncCampaignZeroRuns();
+    const merged = await loadCampaignZeroRun(campaign.id);
+    setRun(merged || saved);
+    setCloudPhase(report.phase);
+    if (report.error) setError(`Không đồng bộ được Campaign 0: ${report.error} Dữ liệu vẫn an toàn trên máy này.`);
   };
 
-  const mutate = (operation: (current: CampaignZeroRun) => CampaignZeroRun) => {
+  const mutate = async (operation: (current: CampaignZeroRun) => CampaignZeroRun) => {
     if (!run) return;
     try {
-      persist(operation(run));
+      await persist(operation(run));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Không thể cập nhật Campaign 0.');
+      setCloudPhase('error');
     }
   };
 
-  const startRun = () => {
+  const startRun = async () => {
     try {
-      persist(createCampaignZeroRun(campaign.id));
+      await persist(createCampaignZeroRun(campaign.id));
       setExpanded(true);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Không thể bắt đầu Campaign 0.');
+      setCloudPhase('error');
+    }
+  };
+
+  const syncNow = async () => {
+    setCloudPhase('syncing');
+    setError('');
+    try {
+      const report = await syncCampaignZeroRuns({ full: true });
+      const merged = await loadCampaignZeroRun(campaign.id);
+      setRun(merged);
+      setProxyName(merged?.clientProxyName || '');
+      setBalanceBefore(merged?.providerBalanceBeforeUsd?.toString() || '');
+      setBalanceAfter(merged?.providerBalanceAfterUsd?.toString() || '');
+      setCloudPhase(report.phase);
+      if (report.error) setError(`Không đồng bộ được Campaign 0: ${report.error} Dữ liệu vẫn an toàn trên máy này.`);
+    } catch (nextError) {
+      setCloudPhase('error');
+      setError(nextError instanceof Error ? nextError.message : 'Không thể đồng bộ Campaign 0. Hãy thử lại.');
     }
   };
 
@@ -134,7 +190,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     setError('');
     try {
       const report = await runUsageTelemetryDryRun({ projectId: campaign.id });
-      persist(attachCampaignZeroTelemetry(run, report));
+      await persist(attachCampaignZeroTelemetry(run, report));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Telemetry chạy khô thất bại. Hãy thử lại trên bản production.');
     } finally {
@@ -146,6 +202,15 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     ? 'text-emerald-200'
     : snapshot.progress >= 50 ? 'text-cyan-100' : 'text-amber-200';
   const completed = run?.status === 'completed';
+  const syncBusy = cloudPhase === 'loading' || cloudPhase === 'syncing';
+  const syncMeta = cloudPhase === 'synced'
+    ? { label: 'Đã đồng bộ workspace', tone: 'text-emerald-200 border-emerald-200/20 bg-emerald-200/[.06]', icon: CheckCircle2 }
+    : cloudPhase === 'local-only'
+      ? { label: 'Chỉ lưu trên máy', tone: 'text-amber-200 border-amber-200/20 bg-amber-200/[.06]', icon: CloudOff }
+      : cloudPhase === 'error'
+        ? { label: 'Đồng bộ đang lỗi', tone: 'text-rose-200 border-rose-200/20 bg-rose-200/[.06]', icon: AlertTriangle }
+        : { label: cloudPhase === 'loading' ? 'Đang tải runbook' : 'Đang đồng bộ', tone: 'text-cyan-100 border-cyan-200/20 bg-cyan-200/[.06]', icon: Loader2 };
+  const SyncIcon = syncMeta.icon;
 
   return (
     <section className="mt-5 overflow-hidden rounded-2xl border border-white/[.09] bg-[linear-gradient(130deg,rgba(19,27,37,.92),rgba(8,12,17,.96))]">
@@ -156,28 +221,42 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
               <FlaskConical className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <div className="eg-kicker">Golden workflow · không tự tiêu tiền</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="eg-kicker">Golden workflow · không tự tiêu tiền</div>
+                <span className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-semibold uppercase tracking-wider ${syncMeta.tone}`}>
+                  <SyncIcon className={`h-3 w-3 ${syncBusy ? 'animate-spin' : ''}`} /> {syncMeta.label}
+                </span>
+              </div>
               <h3 className="mt-1 text-base font-semibold text-white">Campaign 0 — ca vận hành chuẩn đầu tiên</h3>
               <p className="mt-2 max-w-3xl text-xs leading-5 text-zinc-500">
-                Gom brief, telemetry, thời gian team, duyệt và đối soát provider vào một đường chạy có bằng chứng. Dữ liệu hiện khóa trên thiết bị này để tránh ghi đè khi team chưa có sync cho runbook.
+                Gom brief, telemetry, thời gian team, duyệt và đối soát provider vào một đường chạy có bằng chứng. Bản mới nhất được hợp nhất lên workspace cloud; khi mất mạng app vẫn giữ bản local và cho phép thử lại.
               </p>
             </div>
           </div>
-          {!run ? (
-            <button type="button" onClick={startRun} className="eg-button-primary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-bold">
-              <Play className="h-4 w-4" /> Bắt đầu Campaign 0
+          {cloudPhase === 'loading' ? (
+            <button type="button" disabled className="eg-button-secondary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-semibold opacity-50">
+              <Loader2 className="h-4 w-4 animate-spin" /> Đang tải runbook
+            </button>
+          ) : !run ? (
+            <button type="button" onClick={() => void startRun()} disabled={syncBusy} className="eg-button-primary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-bold disabled:opacity-50">
+              {syncBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Bắt đầu Campaign 0
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="eg-button-secondary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-semibold"
-              aria-expanded={expanded}
-              aria-controls={`campaign-zero-${campaign.id}`}
-            >
-              <Gauge className="h-4 w-4" /> {snapshot.completedGates}/{snapshot.totalGates} cổng
-              <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => void syncNow()} disabled={syncBusy} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${syncBusy ? 'animate-spin' : ''}`} /> Đồng bộ ngay
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="eg-button-secondary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-semibold"
+                aria-expanded={expanded}
+                aria-controls={`campaign-zero-${campaign.id}`}
+              >
+                <Gauge className="h-4 w-4" /> {snapshot.completedGates}/{snapshot.totalGates} cổng
+                <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           )}
         </div>
 
@@ -235,7 +314,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
               <section className="eg-card p-5">
                 <div className="flex items-center gap-2"><CloudCog className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Kiểm tra trước khi tốn credit</h4></div>
                 <p className="mt-2 text-xs leading-5 text-zinc-600">Ghi một event giả, đọc lại local và đợi cloud trả 2xx. Không gọi model hoặc provider media.</p>
-                <button type="button" onClick={() => void runDryTelemetry()} disabled={isDryRunning || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">
+                <button type="button" onClick={() => void runDryTelemetry()} disabled={isDryRunning || syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">
                   {isDryRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudCog className="h-4 w-4" />} {isDryRunning ? 'Đang kiểm tra…' : 'Chạy dry-run 0đ'}
                 </button>
               </section>
@@ -243,19 +322,19 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
               <section className="eg-card p-5">
                 <div className="flex items-center gap-2"><UserCheck className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Người đóng vai khách hàng</h4></div>
                 <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Họ tên
-                  <input value={proxyName} onChange={(event) => setProxyName(event.target.value)} disabled={completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" placeholder="Người không tham gia sinh nội dung" />
+                  <input value={proxyName} onChange={(event) => setProxyName(event.target.value)} disabled={syncBusy || completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" placeholder="Người không tham gia sinh nội dung" />
                 </label>
-                <button type="button" onClick={() => mutate((current) => setCampaignZeroClientProxy(current, proxyName))} disabled={completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><UserCheck className="h-4 w-4" /> Lưu người duyệt proxy</button>
+                <button type="button" onClick={() => void mutate((current) => setCampaignZeroClientProxy(current, proxyName))} disabled={syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><UserCheck className="h-4 w-4" /> Lưu người duyệt proxy</button>
               </section>
 
               <section className="eg-card p-5">
                 <div className="flex items-center gap-2"><TimerReset className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Đồng hồ nhân sự</h4></div>
                 <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Công đoạn
-                  <select value={stage} onChange={(event) => setStage(event.target.value as CampaignZeroStage)} disabled={Boolean(snapshot.activeSession) || completed} className="eg-input mt-2 px-3 text-xs normal-case tracking-normal disabled:opacity-50">
+                  <select value={stage} onChange={(event) => setStage(event.target.value as CampaignZeroStage)} disabled={Boolean(snapshot.activeSession) || syncBusy || completed} className="eg-input mt-2 px-3 text-xs normal-case tracking-normal disabled:opacity-50">
                     {(Object.keys(STAGE_LABELS) as CampaignZeroStage[]).map((value) => <option key={value} value={value}>{STAGE_LABELS[value]}</option>)}
                   </select>
                 </label>
-                <button type="button" onClick={() => snapshot.activeSession ? mutate((current) => stopCampaignZeroWorkSession(current)) : mutate((current) => startCampaignZeroWorkSession(current, stage))} disabled={completed} className={`mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200/60 disabled:opacity-50 ${snapshot.activeSession ? 'border-rose-200/20 text-rose-100 hover:bg-rose-200/[.06]' : 'border-white/[.1] text-zinc-200 hover:bg-white/[.05]'}`}>
+                <button type="button" onClick={() => void (snapshot.activeSession ? mutate((current) => stopCampaignZeroWorkSession(current)) : mutate((current) => startCampaignZeroWorkSession(current, stage)))} disabled={syncBusy || completed} className={`mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200/60 disabled:opacity-50 ${snapshot.activeSession ? 'border-rose-200/20 text-rose-100 hover:bg-rose-200/[.06]' : 'border-white/[.1] text-zinc-200 hover:bg-white/[.05]'}`}>
                   {snapshot.activeSession ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />} {snapshot.activeSession ? `Kết thúc · ${STAGE_LABELS[snapshot.activeSession.stage]}` : 'Bắt đầu tính giờ'}
                 </button>
               </section>
@@ -263,16 +342,16 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
               <section className="eg-card p-5">
                 <div className="flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Đối soát provider</h4></div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Trước (USD)<input type="number" min="0" step="0.0001" value={balanceBefore} onChange={(event) => setBalanceBefore(event.target.value)} disabled={completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Sau (USD)<input type="number" min="0" step="0.0001" value={balanceAfter} onChange={(event) => setBalanceAfter(event.target.value)} disabled={completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Trước (USD)<input type="number" min="0" step="0.0001" value={balanceBefore} onChange={(event) => setBalanceBefore(event.target.value)} disabled={syncBusy || completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Sau (USD)<input type="number" min="0" step="0.0001" value={balanceAfter} onChange={(event) => setBalanceAfter(event.target.value)} disabled={syncBusy || completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
                 </div>
-                <button type="button" onClick={() => mutate((current) => setCampaignZeroProviderBalances(current, balanceBefore.trim() ? Number(balanceBefore) : Number.NaN, balanceAfter.trim() ? Number(balanceAfter) : Number.NaN))} disabled={completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><CircleDollarSign className="h-4 w-4" /> Lưu đối soát</button>
+                <button type="button" onClick={() => void mutate((current) => setCampaignZeroProviderBalances(current, balanceBefore.trim() ? Number(balanceBefore) : Number.NaN, balanceAfter.trim() ? Number(balanceAfter) : Number.NaN))} disabled={syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><CircleDollarSign className="h-4 w-4" /> Lưu đối soát</button>
               </section>
 
               <button
                 type="button"
-                onClick={() => mutate((current) => completeCampaignZeroRun(current, snapshot))}
-                disabled={snapshot.completedGates !== snapshot.totalGates || Boolean(snapshot.activeSession)}
+                onClick={() => void mutate((current) => completeCampaignZeroRun(current, snapshot))}
+                disabled={syncBusy || snapshot.completedGates !== snapshot.totalGates || Boolean(snapshot.activeSession)}
                 className="eg-button-primary inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <CheckCircle2 className="h-4 w-4" /> {run.status === 'completed' ? 'Campaign 0 đã hoàn tất' : 'Đóng Campaign 0'}

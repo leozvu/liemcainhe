@@ -9,10 +9,12 @@ import {
   setCampaignZeroProviderBalances,
   startCampaignZeroWorkSession,
   stopCampaignZeroWorkSession,
+  syncCampaignZeroRuns,
 } from '../services/campaignZeroService';
 import { createAgencyCampaign, createAgencyClient, createCampaignDeliverable } from '../services/campaignService';
 import { createNewProjectState } from '../services/storageService';
 import { TelemetryDryRunReport, UsageRecord } from '../services/usageService';
+import { LocalStore, SyncTransport } from '../services/workspaceSyncService';
 
 const createReadyClient = (): AgencyClient => {
   const client = createAgencyClient({ name: 'Egoric Agency', brandName: 'Egoric', industry: 'Creative Agency' });
@@ -187,5 +189,46 @@ describe('Campaign 0 Golden Run', () => {
       workMinutes: 10,
     }, 500);
     expect(completed).toMatchObject({ status: 'completed', completedAt: 500, updatedAt: 500 });
+  });
+
+  it('không gọi cloud khi app đang chạy local', async () => {
+    let called = false;
+    const transport: SyncTransport = {
+      pull: async () => { called = true; return []; },
+      push: async () => { called = true; },
+    };
+    const report = await syncCampaignZeroRuns({ hosted: false, transport });
+    expect(report.phase).toBe('local-only');
+    expect(called).toBe(false);
+  });
+
+  it('trả trạng thái lỗi nhưng không ném khi cloud tạm mất kết nối', async () => {
+    const store: LocalStore = {
+      readAll: async () => [],
+      write: async () => undefined,
+      remove: async () => undefined,
+    };
+    const transport: SyncTransport = {
+      pull: async () => { throw new Error('mất kết nối'); },
+      push: async () => undefined,
+    };
+    const report = await syncCampaignZeroRuns({ hosted: true, store, transport });
+    expect(report).toMatchObject({ phase: 'error', error: 'mất kết nối' });
+  });
+
+  it('kéo toàn bộ lịch sử khi người dùng yêu cầu đồng bộ lại', async () => {
+    let pulledSince = -1;
+    const store: LocalStore = {
+      readAll: async () => [],
+      write: async () => undefined,
+      remove: async () => undefined,
+    };
+    const transport: SyncTransport = {
+      pull: async (_collection, since) => { pulledSince = since; return []; },
+      push: async () => undefined,
+    };
+    const report = await syncCampaignZeroRuns({ hosted: true, full: true, store, transport });
+    expect(report.phase).toBe('synced');
+    expect(pulledSince).toBe(0);
   });
 });
