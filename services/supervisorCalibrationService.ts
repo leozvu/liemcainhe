@@ -22,6 +22,17 @@ export type CalibrationOutcome = 'accepted' | 'overridden';
 
 export interface CalibrationRecord {
   id: string;
+  /**
+   * Khoá ổn định của cảnh báo sinh ra mẫu này.
+   *
+   * Bản trước không có trường này nên mỗi lần đổi trạng thái lại thêm một bản
+   * ghi mới: bật rồi tắt rồi bật lại một cảnh báo thành **ba mẫu**, và chuyển
+   * `queued → resolved` của cùng một cảnh báo thành **hai** phiếu `accepted`.
+   * Một cảnh báo phải góp đúng một mẫu, tính theo quyết định cuối cùng.
+   *
+   * Bản ghi cũ chưa có `issueId` vẫn đọc được; chúng không tham gia dedupe.
+   */
+  issueId?: string;
   kind: AISupervisorIssueKind;
   source: AISupervisorIssueSource;
   /** Mức nghiêm trọng lúc cảnh báo được đưa ra, trước khi hiệu chỉnh. */
@@ -42,8 +53,37 @@ const STORAGE_KEY = 'egoric_supervisor_calibration_v1';
  */
 const MAX_RECORDS = 1000;
 
-/** Số mẫu tối thiểu mới đủ căn cứ kết luận về một loại cảnh báo. */
-export const MIN_CALIBRATION_SAMPLE = 5;
+/**
+ * Ba tầng tin cậy theo số mẫu.
+ *
+ * Bản đầu để một ngưỡng duy nhất là 5, và **5 mẫu đã đủ để tự hạ độ nặng cảnh
+ * báo**. Con số đó tôi chọn không dựa trên gì cả. Với dữ liệu ít và lệch, nó
+ * tạo đúng vòng lặp tự củng cố: vài lần bỏ qua ngẫu nhiên làm cảnh báo bị hạ
+ * cấp, hạ cấp khiến người duyệt bỏ qua nhiều hơn, và cảnh báo tắt hẳn.
+ *
+ * Nay tách làm ba tầng — dưới 10 chỉ hiện số, 10–29 khuyến nghị nhưng không tự
+ * áp, từ 30 mới cho điều chỉnh.
+ */
+export const SAMPLE_DISPLAY_ONLY = 10;
+export const SAMPLE_RECOMMEND = 10;
+export const SAMPLE_AUTO_ADJUST = 30;
+
+/** Còn giữ tên cũ cho chỗ hiển thị tiến độ; nay trỏ vào tầng thấp nhất. */
+export const MIN_CALIBRATION_SAMPLE = SAMPLE_DISPLAY_ONLY;
+
+export type CalibrationTier = 'insufficient' | 'advisory' | 'actionable';
+
+/**
+ * Với ngần này mẫu thì được phép làm gì.
+ *
+ * `actionable` là tầng **duy nhất** cho phép đổi hành vi thật. Hai tầng dưới
+ * chỉ để người dùng nhìn.
+ */
+export const calibrationTier = (sampleCount: number): CalibrationTier => {
+  if (sampleCount >= SAMPLE_AUTO_ADJUST) return 'actionable';
+  if (sampleCount >= SAMPLE_RECOMMEND) return 'advisory';
+  return 'insufficient';
+};
 
 /** Tỷ lệ bị bỏ qua từ mức này trở lên thì coi là hay báo sai. */
 export const NOISY_OVERRIDE_RATE = 0.4;
@@ -92,9 +132,15 @@ export interface RecordDecisionOptions {
   write?: (records: CalibrationRecord[]) => void;
 }
 
-/** Ghi lại quyết định của người duyệt với một cảnh báo. */
+/**
+ * Ghi lại quyết định của người duyệt với một cảnh báo.
+ *
+ * **Một cảnh báo góp đúng một mẫu.** Đổi ý thì bản ghi cũ bị thay chứ không
+ * cộng thêm — nếu không, người duyệt lưỡng lự vài lần trên cùng một cảnh báo
+ * sẽ tự tay bơm mẫu, và loại cảnh báo đó đạt ngưỡng 30 bằng nhiễu.
+ */
 export const recordSupervisorDecision = (
-  issue: Pick<AISupervisorIssue, 'kind' | 'source' | 'severity' | 'confidence'>,
+  issue: Pick<AISupervisorIssue, 'id' | 'kind' | 'source' | 'severity' | 'confidence'>,
   status: AISupervisorIssueStatus,
   options: RecordDecisionOptions = {},
 ): CalibrationRecord | null => {
@@ -104,6 +150,7 @@ export const recordSupervisorDecision = (
   const now = (options.now ?? Date.now)();
   const record: CalibrationRecord = {
     id: `cal_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    issueId: issue.id,
     kind: issue.kind,
     source: issue.source,
     severity: issue.severity,
@@ -115,7 +162,34 @@ export const recordSupervisorDecision = (
 
   const read = options.read ?? readCalibrationRecords;
   const write = options.write ?? writeCalibrationRecords;
-  write([...read(), record]);
+
+  /**
+   * Thay tại chỗ nếu cảnh báo này đã có mẫu.
+   *
+   * Khoá là **`projectId` + `issueId`**, không phải mình `issueId`. Kho hiệu
+   * chỉnh nằm trong `localStorage` dùng chung cho cả workspace, còn id cảnh báo
+   * dựng từ shot và loại lỗi — nên hai dự án khác nhau hoàn toàn có thể sinh ra
+   * cùng một `issueId`. Khoá bằng mình `issueId` thì dự án sau ghi đè mẫu của
+   * dự án trước, và cả hai cùng mất dữ liệu mà không ai biết.
+   *
+   * Giữ nguyên vị trí cũ để thứ tự theo thời gian không nhảy khi người duyệt
+   * đổi ý.
+   */
+  const existing = read();
+  const index = record.issueId
+    ? existing.findIndex(
+        (row) => row.issueId === record.issueId && row.projectId === record.projectId,
+      )
+    : -1;
+
+  if (index >= 0) {
+    const next = [...existing];
+    next[index] = record;
+    write(next);
+  } else {
+    write([...existing, record]);
+  }
+
   return record;
 };
 
@@ -129,6 +203,8 @@ export interface KindCalibration {
   /** Tỷ lệ bị bỏ qua, 0 đến 1. `null` khi chưa đủ mẫu. */
   overrideRate: number | null;
   trust: CalibrationTrust;
+  /** Với ngần này mẫu thì được phép làm gì: chỉ xem, khuyến nghị, hay điều chỉnh. */
+  tier: CalibrationTier;
   /**
    * Mức nghiêm trọng nên dùng thay cho mức gốc.
    *
@@ -169,10 +245,18 @@ export const computeCalibration = (records: CalibrationRecord[]): KindCalibratio
       total: list.length,
       accepted: list.length - overridden,
       overridden,
-      overrideRate: list.length >= MIN_CALIBRATION_SAMPLE ? Math.round(rate * 100) / 100 : null,
+      overrideRate: list.length >= SAMPLE_DISPLAY_ONLY ? Math.round(rate * 100) / 100 : null,
       trust,
-      // Chỉ hạ mức khi đã đủ mẫu và loại này thật sự hay báo sai.
-      suggestedSeverity: trust === 'noisy' ? 'info' : undefined,
+      tier: calibrationTier(list.length),
+      /**
+       * Chỉ đề xuất hạ mức khi đã đủ **30** mẫu.
+       *
+       * Dưới ngưỡng đó, `trust` vẫn được tính và hiện ra cho người dùng đọc,
+       * nhưng không có đề xuất nào — nghĩa là `calibrateIssues` không đổi gì.
+       * Đây là chỗ ranh giới "hiển thị" và "điều khiển" được vạch.
+       */
+      suggestedSeverity:
+        trust === 'noisy' && list.length >= SAMPLE_AUTO_ADJUST ? 'info' : undefined,
     });
   }
 
@@ -234,6 +318,18 @@ export const describeCalibration = (item: KindCalibration): string => {
 
   const percent = Math.round((item.overrideRate ?? 0) * 100);
   if (item.trust === 'noisy') {
+    /**
+     * Chỉ nói "đã hạ" khi thật sự đã hạ.
+     *
+     * Ở tầng advisory (10–29 mẫu) hệ thống nhận ra loại này hay báo sai nhưng
+     * `suggestedSeverity` chưa được áp. Câu cũ nói "Đã hạ xuống mức nhắc" ở cả
+     * hai tầng — người duyệt đọc xong tưởng cảnh báo đã nhẹ đi, trong khi nó
+     * vẫn đang chặn như cũ.
+     */
+    if (!item.suggestedSeverity) {
+      const remaining = SAMPLE_AUTO_ADJUST - item.total;
+      return `${percent}% bị bỏ qua trên ${item.total} lượt. Chưa hạ mức — cần thêm ${remaining} lượt nữa.`;
+    }
     return `${percent}% bị bỏ qua trên ${item.total} lượt. Đã hạ xuống mức nhắc.`;
   }
   if (item.trust === 'trusted') {
