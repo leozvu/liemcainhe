@@ -150,15 +150,15 @@ export interface VideoGenerateOptions {
 export interface MediaExecutionContext {
   projectId: string;
   jobs: ProductionJob[];
-  kind: Extract<ProductionJobKind, 'asset-image' | 'keyframe-image' | 'video'>;
+  kind: Extract<ProductionJobKind, 'asset-image' | 'keyframe-image' | 'video' | 'voice'>;
   stage: CoreStage;
   label: string;
   resourceId: string;
   /** Kết quả cũ tạo thành version key mới khi người dùng chủ động regenerate. */
   previousOutput?: string;
   onJobChange?: (job: ProductionJob) => void;
-  /** Ghi output vào project/IndexedDB state trước khi job được phép completed. */
-  commitResult?: (result: string) => void | Promise<void>;
+  /** Ghi output nghiệp vụ bền vững trước khi job được phép completed. */
+  commitResult?: (result: unknown) => void | Promise<void>;
 }
 
 export const DEFAULT_CHAT_PARAMS: ChatModelParams = {

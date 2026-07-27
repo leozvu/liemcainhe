@@ -32,6 +32,13 @@ describe('ElevenLabs voice integration', () => {
     project.voiceStudio = {
       ...project.voiceStudio!,
       defaultProviderId: 'fpt',
+      previewTake: {
+        audioUrl: 'data:audio/mp3;base64,preview',
+        fileName: 'preview.mp3',
+        duration: 2,
+        sourceHash: 'preview_hash',
+        createdAt: 10,
+      },
       profiles: [{
         id: 'voice_profile_actor',
         characterId: 'actor',
@@ -51,5 +58,6 @@ describe('ElevenLabs voice integration', () => {
       voiceId: '',
       voiceName: 'Chọn giọng ElevenLabs',
     });
+    expect(normalized.voiceStudio?.previewTake).toMatchObject({ fileName: 'preview.mp3', sourceHash: 'preview_hash' });
   });
 });

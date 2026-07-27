@@ -1,7 +1,16 @@
 import { PronunciationEntry, VoiceEmotion, VoiceProviderId } from '../types';
+import { MediaExecutionContext } from '../types/model';
 import { getVoiceCredentials, getVoiceProvider } from './voiceRegistry';
 import { assertUsageAllowed, recordUsage } from './usageService';
 import { AudioMasteringReport, masterAudioBlob } from './audioMasteringService';
+import {
+  BillableOperationHooks,
+  buildMediaInputSignature,
+  createBillableHttpError,
+  createConfirmedBillableFailure,
+  executeBillableMedia,
+  submitPaidTaskSafely,
+} from './mediaExecutionService';
 
 export interface GenerateVoiceInput {
   providerId: VoiceProviderId;
@@ -14,6 +23,7 @@ export interface GenerateVoiceInput {
   outputFormat: 'mp3' | 'wav';
   masterAudio?: boolean;
   usageResourceId?: string;
+  execution?: MediaExecutionContext;
 }
 
 export interface GenerateVoiceResult {
@@ -161,25 +171,34 @@ export const getAudioDuration = (audioUrl: string): Promise<number | undefined> 
     audio.src = audioUrl;
   });
 
-const generateWithFpt = async (input: GenerateVoiceInput, apiKey: string): Promise<GenerateVoiceResult> => {
+const generateWithFpt = async (
+  input: GenerateVoiceInput,
+  apiKey: string,
+  hooks: BillableOperationHooks,
+): Promise<GenerateVoiceResult> => {
   const speed = Math.max(-3, Math.min(3, Math.round((input.speed - 1) * 5)));
-  const response = await fetch('/api-proxy/fpt/hmi/tts/v5', {
-    method: 'POST',
-    headers: {
-      api_key: apiKey,
-      voice: input.voiceId || 'banmai',
-      speed: String(speed),
-      format: input.outputFormat,
-      'Content-Type': 'text/plain; charset=utf-8',
-    },
-    body: input.text,
+  const response = await submitPaidTaskSafely(async () => {
+    const next = await fetch('/api-proxy/fpt/hmi/tts/v5', {
+      method: 'POST',
+      headers: {
+        api_key: apiKey,
+        voice: input.voiceId || 'banmai',
+        speed: String(speed),
+        format: input.outputFormat,
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+      body: input.text,
+    });
+    if (!next.ok) throw createBillableHttpError(await parseErrorMessage(next), next.status);
+    return next;
   });
 
-  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  await hooks.onProviderAccepted();
   const payload = await response.json();
   if (payload.error !== 0 || !payload.async) {
-    throw new Error(payload.message || 'FPT.AI không trả về đường dẫn âm thanh');
+    throw createConfirmedBillableFailure(payload.message || 'FPT.AI không trả về đường dẫn âm thanh');
   }
+  if (payload.request_id) await hooks.onProviderTaskId(String(payload.request_id));
 
   return {
     audioUrl: payload.async,
@@ -188,25 +207,33 @@ const generateWithFpt = async (input: GenerateVoiceInput, apiKey: string): Promi
   };
 };
 
-const generateWithViettel = async (input: GenerateVoiceInput, token: string): Promise<GenerateVoiceResult> => {
-  const response = await fetch('/api-proxy/viettel/tts/speech_synthesis', {
-    method: 'POST',
-    headers: { Accept: '*/*', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: input.text,
-      voice: input.voiceId || 'hn-thanhphuong',
-      speed: Math.max(0.8, Math.min(1.2, input.speed)),
-      tts_return_option: input.outputFormat === 'wav' ? 2 : 3,
-      token,
-      without_filter: false,
-    }),
+const generateWithViettel = async (
+  input: GenerateVoiceInput,
+  token: string,
+  hooks: BillableOperationHooks,
+): Promise<GenerateVoiceResult> => {
+  const response = await submitPaidTaskSafely(async () => {
+    const next = await fetch('/api-proxy/viettel/tts/speech_synthesis', {
+      method: 'POST',
+      headers: { Accept: '*/*', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: input.text,
+        voice: input.voiceId || 'hn-thanhphuong',
+        speed: Math.max(0.8, Math.min(1.2, input.speed)),
+        tts_return_option: input.outputFormat === 'wav' ? 2 : 3,
+        token,
+        without_filter: false,
+      }),
+    });
+    if (!next.ok) throw createBillableHttpError(await parseErrorMessage(next), next.status);
+    return next;
   });
 
-  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  await hooks.onProviderAccepted();
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     const payload = await response.json();
-    throw new Error(payload.message || payload.error || 'Viettel AI không trả về âm thanh');
+    throw createConfirmedBillableFailure(payload.message || payload.error || 'Viettel AI không trả về âm thanh');
   }
   const audioUrl = await blobToDataUrl(await response.blob());
   return {
@@ -227,28 +254,34 @@ export const buildElevenLabsRequestBody = (input: Pick<GenerateVoiceInput, 'text
   },
 });
 
-const generateWithElevenLabs = async (input: GenerateVoiceInput, apiKey: string): Promise<GenerateVoiceResult> => {
+const generateWithElevenLabs = async (
+  input: GenerateVoiceInput,
+  apiKey: string,
+  hooks: BillableOperationHooks,
+): Promise<GenerateVoiceResult> => {
   if (!input.voiceId.trim()) {
     throw new Error('Hãy nhập Voice ID của ElevenLabs trong hồ sơ nhân vật');
   }
   // PCM from ElevenLabs is headerless raw audio, so keep the browser workflow on
   // a universally playable MP3 even when the project requests WAV elsewhere.
   const outputFormat = 'mp3_44100_128';
-  const response = await fetch(
-    `/api-proxy/elevenlabs/v1/text-to-speech/${encodeURIComponent(input.voiceId)}?output_format=${outputFormat}`,
-    {
-      method: 'POST',
-      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildElevenLabsRequestBody(input)),
-    },
-  );
-  if (!response.ok) {
-    const detail = await parseErrorMessage(response);
-    if (response.status === 401) throw new Error('Khóa ElevenLabs không hợp lệ hoặc đã hết hiệu lực.');
-    if (response.status === 403) throw new Error('Khóa ElevenLabs không có quyền Text to Speech hoặc đang bị giới hạn IP.');
-    if (response.status === 422) throw new Error(`ElevenLabs từ chối cấu hình giọng hoặc Voice ID: ${detail}`);
-    throw new Error(`ElevenLabs không thể tạo giọng: ${detail}`);
-  }
+  const response = await submitPaidTaskSafely(async () => {
+    const next = await fetch(
+      `/api-proxy/elevenlabs/v1/text-to-speech/${encodeURIComponent(input.voiceId)}?output_format=${outputFormat}`,
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildElevenLabsRequestBody(input)),
+      },
+    );
+    if (next.ok) return next;
+    const detail = await parseErrorMessage(next);
+    if (next.status === 401) throw createBillableHttpError('Khóa ElevenLabs không hợp lệ hoặc đã hết hiệu lực.', next.status);
+    if (next.status === 403) throw createBillableHttpError('Khóa ElevenLabs không có quyền Text to Speech hoặc đang bị giới hạn IP.', next.status);
+    if (next.status === 422) throw createBillableHttpError(`ElevenLabs từ chối cấu hình giọng hoặc Voice ID: ${detail}`, next.status);
+    throw createBillableHttpError(`ElevenLabs không thể tạo giọng: ${detail}`, next.status);
+  });
+  await hooks.onProviderAccepted();
   const audioUrl = await blobToDataUrl(await response.blob());
   return {
     audioUrl,
@@ -274,21 +307,38 @@ export const generateVoice = async (input: GenerateVoiceInput): Promise<Generate
   const preparedInput = { ...input, text };
   const startedAt = Date.now();
   const provider = getVoiceProvider(input.providerId);
-  try {
-    let result: GenerateVoiceResult;
-    if (input.providerId === 'fpt') result = await generateWithFpt(preparedInput, credentials.apiKey);
-    else if (input.providerId === 'viettel') result = await generateWithViettel(preparedInput, credentials.apiKey);
-    else if (input.providerId === 'elevenlabs') result = await generateWithElevenLabs(preparedInput, credentials.apiKey);
-    else if (input.providerId === 'vbee') {
-      throw new Error('Vbee yêu cầu máy chủ callback công khai. Hãy dùng FPT.AI/Viettel AI trong bản web hoặc nhập bản thu đã tạo từ Vbee.');
-    } else throw new Error('Giọng người thật cần được tải lên từ tệp âm thanh');
-    const finalResult = input.masterAudio ? await masterGeneratedAudio(result) : result;
-    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, resourceId: input.usageResourceId, inputSize: text.length, durationMs: Date.now() - startedAt, status: 'success' });
-    return finalResult;
-  } catch (error) {
-    recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, resourceId: input.usageResourceId, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
-    throw error;
-  }
+  return executeBillableMedia({
+    context: input.execution,
+    mediaType: 'voice',
+    resourceId: input.usageResourceId,
+    inputSignature: buildMediaInputSignature({
+      providerId: input.providerId,
+      text,
+      voiceId: input.voiceId,
+      speed: input.speed,
+      pitch: input.pitch,
+      emotion: input.emotion,
+      outputFormat: input.outputFormat,
+      masterAudio: input.masterAudio,
+    }),
+    operation: async (hooks) => {
+      try {
+        let result: GenerateVoiceResult;
+        if (input.providerId === 'fpt') result = await generateWithFpt(preparedInput, credentials.apiKey, hooks);
+        else if (input.providerId === 'viettel') result = await generateWithViettel(preparedInput, credentials.apiKey, hooks);
+        else if (input.providerId === 'elevenlabs') result = await generateWithElevenLabs(preparedInput, credentials.apiKey, hooks);
+        else if (input.providerId === 'vbee') {
+          throw new Error('Vbee yêu cầu máy chủ callback công khai. Hãy dùng FPT.AI/Viettel AI trong bản web hoặc nhập bản thu đã tạo từ Vbee.');
+        } else throw new Error('Giọng người thật cần được tải lên từ tệp âm thanh');
+        const finalResult = input.masterAudio ? await masterGeneratedAudio(result) : result;
+        recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, resourceId: input.usageResourceId, inputSize: text.length, durationMs: Date.now() - startedAt, status: 'success' });
+        return finalResult;
+      } catch (error) {
+        recordUsage({ kind: 'voice', providerId: input.providerId, modelId: provider.shortName, resourceId: input.usageResourceId, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+    },
+  });
 };
 
 export const audioFileToDataUrl = async (file: File, masterAudio = false): Promise<{ audioUrl: string; duration?: number; fileName?: string; mastering?: AudioMasteringReport }> => {

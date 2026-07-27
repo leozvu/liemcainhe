@@ -192,6 +192,13 @@ export interface VoiceStudioState {
   normalizeLoudness: boolean;
   pronunciationDictionary: PronunciationEntry[];
   previewText: string;
+  previewTake?: {
+    audioUrl: string;
+    fileName: string;
+    duration?: number;
+    sourceHash: string;
+    createdAt: number;
+  };
 }
 
 export interface ScriptData {

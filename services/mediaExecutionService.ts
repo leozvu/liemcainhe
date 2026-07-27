@@ -114,14 +114,15 @@ export interface BillableOperationHooks {
 
 export interface ExecuteBillableMediaInput<T> {
   context?: MediaExecutionContext;
-  mediaType: 'image' | 'video';
+  mediaType: 'image' | 'video' | 'voice';
   inputSignature: string;
   resourceId?: string;
   operation: (hooks: BillableOperationHooks) => Promise<T>;
 }
 
 export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T>): Promise<T> => {
-  const kind = input.context?.kind || (input.mediaType === 'video' ? 'video' : 'asset-image');
+  const kind = input.context?.kind
+    || (input.mediaType === 'video' ? 'video' : input.mediaType === 'voice' ? 'voice' : 'asset-image');
   const resourceId = input.context?.resourceId || input.resourceId || 'unscoped';
   const versionSignature = buildMediaInputSignature({
     input: input.inputSignature,
@@ -219,7 +220,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       // Operation đã trả output thì provider chắc chắn đã nhận. Gọi hook ở
       // đây là hàng rào cuối nếu một adapter đồng bộ quên phát tín hiệu 2xx.
       await onProviderAccepted();
-      if (context.commitResult && typeof result === 'string') {
+      if (context.commitResult) {
         await context.commitResult(result);
       }
       current = applyTransition(current, 'completed', {
@@ -256,7 +257,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
   }
 };
 
-export interface ProjectMediaExecutionInput {
+export interface ProjectMediaExecutionInput<TResult = string> {
   project: ProjectState;
   updateProject: (updates: Partial<ProjectState> | ((previous: ProjectState) => ProjectState)) => void;
   kind: MediaExecutionContext['kind'];
@@ -264,14 +265,14 @@ export interface ProjectMediaExecutionInput {
   label: string;
   resourceId: string;
   previousOutput?: string;
-  commitResult?: (project: ProjectState, result: string) => ProjectState;
+  commitResult?: (project: ProjectState, result: TResult) => ProjectState;
   /** Test seam; production mặc định ghi IndexedDB bằng saveProjectToDB. */
   persistProject?: (project: ProjectState) => Promise<void>;
 }
 
 /** Adapter mỏng để component React ghi snapshot envelope vào project. */
-export const createProjectMediaExecutionContext = (
-  input: ProjectMediaExecutionInput,
+export const createProjectMediaExecutionContext = <TResult = string>(
+  input: ProjectMediaExecutionInput<TResult>,
 ): MediaExecutionContext => {
   const originProjectId = input.project.id;
   let originProject = input.project;
@@ -286,17 +287,18 @@ export const createProjectMediaExecutionContext = (
     label: input.label,
     resourceId: input.resourceId,
     previousOutput: input.previousOutput,
-    commitResult: input.commitResult ? async (result) => {
+    commitResult: input.commitResult ? async (result: unknown) => {
+      const typedResult = result as TResult;
       const stored = await loadProjectFromDB(originProjectId).catch(() => null);
       let base = stored?.id === originProjectId ? stored : originProject;
       for (const job of originProject.workflow?.jobs || []) {
         const savedJob = base.workflow?.jobs.find((item) => item.id === job.id);
         if (!savedJob || job.updatedAt >= savedJob.updatedAt) base = upsertProductionJob(base, job);
       }
-      originProject = input.commitResult!(base, result);
+      originProject = input.commitResult!(base, typedResult);
       await (input.persistProject || saveProjectToDB)(originProject);
       input.updateProject((previous) => previous.id === originProjectId
-        ? input.commitResult!(previous, result)
+        ? input.commitResult!(previous, typedResult)
         : previous);
     } : undefined,
     onJobChange: (job) => {

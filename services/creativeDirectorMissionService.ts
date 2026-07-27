@@ -12,9 +12,9 @@ import {
 } from '../types';
 import { generateImage, generateImageWithModel, generateVideoWithModel } from './modelService';
 import { getActiveImageModel, getDefaultAspectRatio, getDefaultVideoDuration } from './modelRegistry';
-import { DEFAULT_IMAGE_MODEL_ID } from '../types/model';
+import { DEFAULT_IMAGE_MODEL_ID, MediaExecutionContext } from '../types/model';
 import { getUsagePolicy } from './usageService';
-import { createVoiceSourceHash, generateVoice } from './voiceService';
+import { createVoiceSourceHash, generateVoice, GenerateVoiceResult } from './voiceService';
 import { getVoiceProvider, isVoiceProviderConfigured } from './voiceRegistry';
 import { normalizeCreativeDirectorState } from './creativeDirectorState';
 import { buildBrandVisualGuardrails } from './brandKitService';
@@ -583,13 +583,13 @@ export const executeCreativeDirectorAction = async (
 ): Promise<ProjectState> => {
   if (isActionAlreadyComplete(project, action)) return project;
   const aspectRatio = getDefaultAspectRatio();
-  const execution = (
-    kind: 'asset-image' | 'keyframe-image' | 'video',
-    stage: 'assets' | 'director',
+  const execution = <TResult = string>(
+    kind: 'asset-image' | 'keyframe-image' | 'video' | 'voice',
+    stage: 'assets' | 'voice' | 'director',
     resourceId: string,
     previousOutput?: string,
-    commitResult?: (result: string) => ProjectState,
-  ) => ({
+    commitResult?: (result: TResult) => ProjectState,
+  ): MediaExecutionContext => ({
     projectId: project.id,
     jobs: project.workflow?.jobs || [],
     kind,
@@ -597,8 +597,8 @@ export const executeCreativeDirectorAction = async (
     label: action.label,
     resourceId,
     previousOutput,
-    commitResult: commitResult ? async (result: string) => {
-      project = commitResult(result);
+    commitResult: commitResult ? async (result: unknown) => {
+      project = commitResult(result as TResult);
       options.onProjectUpdate?.(project);
       await saveProjectToDB(project);
     } : undefined,
@@ -769,7 +769,7 @@ export const executeCreativeDirectorAction = async (
     if (!isVoiceProviderConfigured(profile.providerId)) throw new Error(`Chưa cấu hình khóa ${provider.name}.`);
     const text = shot.dialogue?.trim();
     if (!text) throw new Error('Cảnh không có câu thoại để tạo.');
-    const result = await generateVoice({
+    await generateVoice({
       providerId: profile.providerId,
       text,
       voiceId: profile.voiceId,
@@ -779,38 +779,49 @@ export const executeCreativeDirectorAction = async (
       pronunciationDictionary: studio.pronunciationDictionary,
       outputFormat: studio.outputFormat,
       masterAudio: studio.normalizeLoudness,
+      usageResourceId: `${shot.id}:voice`,
+      execution: execution<GenerateVoiceResult>(
+        'voice',
+        'voice',
+        `${shot.id}:voice`,
+        getSelectedCurrentVoiceTake(project, shot)?.audioUrl,
+        (result) => {
+          const currentStudio = project.voiceStudio || studio;
+          const take: VoiceTake = {
+            id: createId('voice_take'),
+            shotId: shot.id,
+            characterId: getSpeakerId(project, shot),
+            text,
+            source: 'synthetic',
+            providerId: profile.providerId,
+            voiceId: profile.voiceId,
+            voiceName: profile.voiceName,
+            status: 'ready',
+            audioUrl: result.audioUrl,
+            duration: result.duration,
+            fileName: result.fileName,
+            sourceHash: createVoiceSourceHash(text, profile.voiceId, profile.speed, profile.emotion || 'neutral', profile.pitch ?? 0),
+            emotion: profile.emotion,
+            pitch: profile.pitch,
+            mastered: Boolean(result.mastering),
+            masteringGainDb: result.mastering?.gainDb,
+            trimmedSeconds: result.mastering?.trimmedSeconds,
+            masteringSkippedReason: result.masteringSkippedReason,
+            createdAt: Date.now(),
+          };
+          return {
+            ...project,
+            voiceStudio: {
+              ...currentStudio,
+              takes: [take, ...currentStudio.takes],
+              selectedTakeByShot: { ...currentStudio.selectedTakeByShot, [shot.id]: take.id },
+            },
+            shots: project.shots.map((item) => sameId(item.id, shot.id) ? clearShotStaleFlag(item, 'voice') : item),
+          };
+        },
+      ),
     });
-    const take: VoiceTake = {
-      id: createId('voice_take'),
-      shotId: shot.id,
-      characterId: getSpeakerId(project, shot),
-      text,
-      source: 'synthetic',
-      providerId: profile.providerId,
-      voiceId: profile.voiceId,
-      voiceName: profile.voiceName,
-      status: 'ready',
-      audioUrl: result.audioUrl,
-      duration: result.duration,
-      fileName: result.fileName,
-      sourceHash: createVoiceSourceHash(text, profile.voiceId, profile.speed, profile.emotion || 'neutral', profile.pitch ?? 0),
-      emotion: profile.emotion,
-      pitch: profile.pitch,
-      mastered: Boolean(result.mastering),
-      masteringGainDb: result.mastering?.gainDb,
-      trimmedSeconds: result.mastering?.trimmedSeconds,
-      masteringSkippedReason: result.masteringSkippedReason,
-      createdAt: Date.now(),
-    };
-    return {
-      ...project,
-      voiceStudio: {
-        ...studio,
-        takes: [take, ...studio.takes],
-        selectedTakeByShot: { ...studio.selectedTakeByShot, [shot.id]: take.id },
-      },
-      shots: project.shots.map((item) => sameId(item.id, shot.id) ? clearShotStaleFlag(item, 'voice') : item),
-    };
+    return project;
   }
 
   throw new Error('Công cụ agent chưa được hỗ trợ.');

@@ -113,6 +113,7 @@ export const normalizeWorkflowState = (project: ProjectState): ProjectState => {
       normalizeLoudness: project.voiceStudio.normalizeLoudness ?? true,
       pronunciationDictionary: project.voiceStudio.pronunciationDictionary || [],
       previewText: project.voiceStudio.previewText || 'Xin chào, đây là bản thử giọng của Egoric Film Studio.',
+      previewTake: project.voiceStudio.previewTake,
     } : project.voiceStudio,
     workflow: {
       ...createDefaultWorkflowState(),
