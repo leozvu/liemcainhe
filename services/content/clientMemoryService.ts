@@ -1,4 +1,10 @@
-import { ContentApproach, ContentVoice, SavedArticle } from '../../types/content';
+import {
+  ContentApproach,
+  ContentVoice,
+  ReviewRecord,
+  SavedArticle,
+  isQualityReviewRecord,
+} from '../../types/content';
 import { PublishLedgerEntry, fingerprintPost } from './publishLedgerService';
 import { CHANNEL_LIMITS, toPostText } from './publishService';
 import { engagementRate } from './insightsService';
@@ -45,6 +51,10 @@ export interface ClientMemory {
   /** Tổng số bài đã duyệt, kể cả những bài không lọt vào danh sách mẫu. */
   approvedCount: number;
   rejectedCount: number;
+  /** Tổng quyết định approved/changes-requested đã ghi nhận trong phạm vi khách. */
+  recordedDecisionCount: number;
+  /** Quyết định vẫn được lưu vận hành nhưng không đủ tín hiệu để đưa vào prompt. */
+  excludedDecisionCount: number;
 }
 
 /**
@@ -55,6 +65,23 @@ export interface ClientMemory {
  */
 export const MAX_EXAMPLES = 3;
 export const MAX_REJECTIONS = 4;
+
+/**
+ * Một quyết định chỉ trở thành mẫu học khi có nguồn gốc V2 và người duyệt đã
+ * kiểm riêng nội dung. Duyệt hàng loạt vẫn có giá trị vận hành nhưng không
+ * được phép bơm số mẫu học. Dữ liệu legacy cũng không được suy đoán metadata.
+ */
+export const isLearningEligibleReview = (review?: ReviewRecord): boolean => {
+  if (!isQualityReviewRecord(review)) return false;
+  if (review.decision !== 'approved' && review.decision !== 'changes-requested') return false;
+  if (review.mode !== 'individual' && review.mode !== 'client-portal') return false;
+  if (review.opened !== true) return false;
+  if (!['director', 'editor', 'account', 'client', 'client-proxy'].includes(review.role)) return false;
+  if (typeof review.artifactVersion !== 'string' || !review.artifactVersion.trim()) return false;
+  if (typeof review.gate !== 'string' || !review.gate.trim()) return false;
+  if (review.decision === 'changes-requested' && !review.note?.trim()) return false;
+  return true;
+};
 
 /** Cắt một đoạn tiêu biểu, ưu tiên mục đầu vì đó thường là chỗ định giọng. */
 const excerptOf = (article: SavedArticle, limit = 320): string => {
@@ -111,8 +138,14 @@ export const buildClientMemory = (
     ? articles.filter((article) => article.clientId === options.clientId)
     : articles;
 
-  const approvedArticles = scope.filter((article) => article.review?.decision === 'approved');
-  const rejectedArticles = scope.filter((article) => article.review?.decision === 'changes-requested');
+  const decidedArticles = scope.filter((article) =>
+    article.review?.decision === 'approved' || article.review?.decision === 'changes-requested',
+  );
+  const eligibleArticles = decidedArticles.filter((article) =>
+    isLearningEligibleReview(article.review),
+  );
+  const approvedArticles = eligibleArticles.filter((article) => article.review?.decision === 'approved');
+  const rejectedArticles = eligibleArticles.filter((article) => article.review?.decision === 'changes-requested');
 
   const approved: MemoryExample[] = approvedArticles
     .map((article) => ({
@@ -149,6 +182,8 @@ export const buildClientMemory = (
     rejected,
     approvedCount: approvedArticles.length,
     rejectedCount: rejectedArticles.length,
+    recordedDecisionCount: decidedArticles.length,
+    excludedDecisionCount: decidedArticles.length - eligibleArticles.length,
   };
 };
 
@@ -196,10 +231,19 @@ export const buildMemoryPromptContext = (memory: ClientMemory): string => {
 
 /** Một dòng tóm tắt để hiện trong giao diện. */
 export const describeMemory = (memory: ClientMemory): string => {
-  if (!hasMemory(memory)) return 'Chưa có bài nào được duyệt để học.';
+  if (!hasMemory(memory)) {
+    if (memory.recordedDecisionCount) {
+      return `Đã ghi nhận ${memory.recordedDecisionCount} quyết định nhưng chưa có mẫu đủ chất lượng để học.`;
+    }
+    return 'Chưa có bài nào được duyệt để học.';
+  }
 
-  const parts = [`học từ ${memory.approvedCount} bài đã duyệt`];
+  const parts: string[] = [];
+  if (memory.approvedCount) parts.push(`học từ ${memory.approvedCount} bài đã duyệt`);
   if (memory.rejectedCount) parts.push(`${memory.rejectedCount} lần bị yêu cầu sửa`);
+  if (memory.excludedDecisionCount) {
+    parts.push(`${memory.excludedDecisionCount} quyết định không đủ tín hiệu đã được loại`);
+  }
 
   const measured = memory.approved.filter((item) => item.engagementRate !== undefined).length;
   if (measured) parts.push(`${measured} bài có số liệu hiệu quả`);

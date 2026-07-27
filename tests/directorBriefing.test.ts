@@ -97,7 +97,15 @@ describe('bản giao ban gộp kết quả của bốn epic trước', () => {
     id: 'a1', title: 'Bài đã duyệt', createdAt: 1, updatedAt: 1, clientId: 'c1',
     brief: createDefaultBrief('Chủ đề'),
     draft: { title: 'Bài đã duyệt', sapo: 'Mở bài.', sections: [{ heading: 'A', body: 'Nội dung.' }], hashtags: [], seoTitle: 'x', metaDescription: 'y', readingMinutes: 1 },
-    review: { decision: 'approved' },
+    review: {
+      schemaVersion: 2,
+      decision: 'approved',
+      mode: 'individual',
+      role: 'account',
+      opened: true,
+      artifactVersion: 'article-a1-v1',
+      gate: 'content-internal',
+    },
     ...over,
   });
 

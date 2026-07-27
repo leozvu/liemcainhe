@@ -7,12 +7,13 @@ import {
   describeMemory,
   findEngagementRate,
   hasMemory,
+  isLearningEligibleReview,
 } from '../services/content/clientMemoryService';
 import { PublishLedgerEntry, fingerprintPost } from '../services/content/publishLedgerService';
 import { CHANNEL_LIMITS, toPostText } from '../services/content/publishService';
 import { generateArticle } from '../services/content/articleService';
 import { createDefaultBrief } from '../services/content/contentAxes';
-import { ArticleDraft, SavedArticle } from '../types/content';
+import { ArticleDraft, QualityReviewRecord, ReviewDecision, SavedArticle } from '../types/content';
 
 const draft = (over: Partial<ArticleDraft> = {}): ArticleDraft => ({
   title: 'Giá vàng lập đỉnh',
@@ -36,8 +37,68 @@ const article = (over: Partial<SavedArticle> = {}): SavedArticle => ({
   ...over,
 });
 
+const qualityReview = (
+  decision: ReviewDecision,
+  over: Partial<QualityReviewRecord> = {},
+): QualityReviewRecord => ({
+  schemaVersion: 2,
+  decision,
+  mode: 'individual',
+  role: 'account',
+  opened: true,
+  artifactVersion: `artifact-${decision}`,
+  gate: 'content-internal',
+  decidedAt: 1,
+  ...over,
+});
+
 const approved = (id: string, over: Partial<SavedArticle> = {}) =>
-  article({ id, title: `Bài ${id}`, review: { decision: 'approved' }, ...over });
+  article({ id, title: `Bài ${id}`, review: qualityReview('approved', { artifactVersion: id }), ...over });
+
+describe('luật chọn mẫu học', () => {
+  it('chỉ nhận quyết định V2 đã được kiểm riêng', () => {
+    expect(isLearningEligibleReview(qualityReview('approved'))).toBe(true);
+    expect(isLearningEligibleReview({ decision: 'approved' })).toBe(false);
+  });
+
+  it('duyệt hàng loạt vẫn được ghi nhận nhưng không trở thành mẫu học', () => {
+    const memory = buildClientMemory([
+      article({ review: qualityReview('approved', { mode: 'batch', opened: false }) }),
+    ]);
+    expect(memory.recordedDecisionCount).toBe(1);
+    expect(memory.excludedDecisionCount).toBe(1);
+    expect(memory.approvedCount).toBe(0);
+    expect(memory.approved).toEqual([]);
+  });
+
+  it('quyết định chưa mở nội dung không được dùng để học', () => {
+    expect(isLearningEligibleReview(qualityReview('approved', { opened: false }))).toBe(false);
+  });
+
+  it('yêu cầu sửa chỉ trở thành tín hiệu học khi có lý do', () => {
+    expect(isLearningEligibleReview(qualityReview('changes-requested'))).toBe(false);
+    expect(isLearningEligibleReview(qualityReview('changes-requested', { note: 'Sửa câu mở.' }))).toBe(true);
+  });
+
+  it('client portal đã mở nội dung là mẫu hợp lệ', () => {
+    expect(isLearningEligibleReview(qualityReview('approved', {
+      mode: 'client-portal',
+      role: 'client',
+      gate: 'content-client',
+    }))).toBe(true);
+  });
+
+  it('không học từ bản ghi V2 thiếu vân tay hoặc cổng duyệt', () => {
+    expect(isLearningEligibleReview(qualityReview('approved', { artifactVersion: ' ' }))).toBe(false);
+    expect(isLearningEligibleReview(qualityReview('approved', { gate: '' }))).toBe(false);
+  });
+
+  it('dữ liệu V2 hỏng trong kho cũ bị loại an toàn thay vì làm vỡ Client Memory', () => {
+    const broken = { schemaVersion: 2, decision: 'approved', opened: true } as QualityReviewRecord;
+    expect(() => isLearningEligibleReview(broken)).not.toThrow();
+    expect(isLearningEligibleReview(broken)).toBe(false);
+  });
+});
 
 describe('gom trí nhớ theo khách', () => {
   it('chỉ lấy bài của đúng khách', () => {
@@ -58,7 +119,7 @@ describe('gom trí nhớ theo khách', () => {
     const memory = buildClientMemory([
       approved('a'),
       article({ id: 'b' }),
-      article({ id: 'c', review: { decision: 'pending' } }),
+      article({ id: 'c', review: qualityReview('pending') }),
     ]);
     expect(memory.approvedCount).toBe(1);
   });
@@ -72,17 +133,22 @@ describe('gom trí nhớ theo khách', () => {
 
   it('bài bị yêu cầu sửa chỉ tính khi có ghi lý do', () => {
     const memory = buildClientMemory([
-      article({ id: 'a', review: { decision: 'changes-requested', note: 'Sapo quá dài' } }),
-      article({ id: 'b', review: { decision: 'changes-requested' } }),
+      article({ id: 'a', review: qualityReview('changes-requested', { note: 'Sapo quá dài' }) }),
+      article({ id: 'b', review: qualityReview('changes-requested') }),
     ]);
-    expect(memory.rejectedCount).toBe(2);
+    expect(memory.rejectedCount).toBe(1);
     expect(memory.rejected).toHaveLength(1);
     expect(memory.rejected[0].reason).toBe('Sapo quá dài');
+    expect(memory.recordedDecisionCount).toBe(2);
+    expect(memory.excludedDecisionCount).toBe(1);
   });
 
   it('giới hạn số lý do đưa vào prompt', () => {
     const many = Array.from({ length: 10 }, (_, i) =>
-      article({ id: `r${i}`, review: { decision: 'changes-requested', note: `Lý do ${i}` } }),
+      article({ id: `r${i}`, review: qualityReview('changes-requested', {
+        artifactVersion: `r${i}`,
+        note: `Lý do ${i}`,
+      }) }),
     );
     expect(buildClientMemory(many).rejected).toHaveLength(MAX_REJECTIONS);
   });
@@ -162,7 +228,10 @@ describe('khối ngữ cảnh đưa vào prompt', () => {
 
   it('nêu lý do từng bị yêu cầu sửa như điều cấm', () => {
     const memory = buildClientMemory([
-      article({ id: 'r', review: { decision: 'changes-requested', note: 'Đừng dùng từ bùng nổ' } }),
+      article({
+        id: 'r',
+        review: qualityReview('changes-requested', { note: 'Đừng dùng từ bùng nổ' }),
+      }),
     ]);
     const text = buildMemoryPromptContext(memory);
     expect(text).toContain('tuyệt đối tránh lặp lại');
@@ -172,7 +241,7 @@ describe('khối ngữ cảnh đưa vào prompt', () => {
   it('phần đã duyệt đứng trước phần bị từ chối', () => {
     const memory = buildClientMemory([
       approved('a'),
-      article({ id: 'r', review: { decision: 'changes-requested', note: 'Lý do X' } }),
+      article({ id: 'r', review: qualityReview('changes-requested', { note: 'Lý do X' }) }),
     ]);
     const text = buildMemoryPromptContext(memory);
     expect(text.indexOf('Đã duyệt')).toBeLessThan(text.indexOf('tuyệt đối tránh'));
@@ -219,10 +288,29 @@ describe('mô tả một dòng', () => {
   it('nêu số bài đã học và số lần bị yêu cầu sửa', () => {
     const memory = buildClientMemory([
       approved('a'),
-      article({ id: 'r', review: { decision: 'changes-requested', note: 'x' } }),
+      article({ id: 'r', review: qualityReview('changes-requested', { note: 'x' }) }),
     ]);
     const text = describeMemory(memory);
     expect(text).toContain('1 bài đã duyệt');
     expect(text).toContain('1 lần bị yêu cầu sửa');
+  });
+
+  it('chỉ có lý do sửa thì không bịa rằng đã học từ 0 bài duyệt', () => {
+    const memory = buildClientMemory([
+      article({ review: qualityReview('changes-requested', { note: 'Rút ngắn sapo.' }) }),
+    ]);
+    const text = describeMemory(memory);
+    expect(text).toContain('1 lần bị yêu cầu sửa');
+    expect(text).not.toContain('0 bài');
+  });
+
+  it('không nói đang học khi chỉ có quyết định bị loại', () => {
+    const memory = buildClientMemory([
+      article({ review: qualityReview('approved', { mode: 'batch', opened: false }) }),
+    ]);
+    const text = describeMemory(memory);
+    expect(text).toContain('Đã ghi nhận 1 quyết định');
+    expect(text).toContain('chưa có mẫu đủ chất lượng');
+    expect(text).not.toContain('Đang học');
   });
 });

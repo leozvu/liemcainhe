@@ -20,6 +20,24 @@ Dữ liệu đã tự sinh ra rồi:
 
 Việc ở đây chỉ là đọc chúng và biến thành ngữ cảnh cho prompt.
 
+## Chỉ học từ quyết định đủ chất lượng
+
+Một quyết định vận hành không mặc nhiên là một mẫu học. Trí nhớ chỉ nhận bản
+ghi duyệt V2 có vân tay nội dung, cổng duyệt và bằng chứng người duyệt đã mở
+riêng mục đó.
+
+| Quyết định | Có học không |
+|---|---|
+| Duyệt từng mục sau khi mở nội dung | Có |
+| Khách duyệt qua client portal sau khi mở nội dung | Có |
+| Yêu cầu sửa có ghi lý do | Có |
+| Duyệt hàng loạt | Không — chỉ ghi nhận vận hành |
+| Yêu cầu sửa nhưng không ghi lý do | Không |
+| Bản ghi legacy thiếu nguồn gốc | Không |
+
+Giao diện phân biệt số quyết định đã ghi nhận với số mẫu đủ chất lượng, nên một
+cú duyệt hàng loạt không còn làm app nói sai rằng nó đã học được hàng chục mẫu.
+
 ## Gom theo khách, không theo dự án
 
 Một khách chạy nhiều chiến dịch, và bài học từ chiến dịch trước phải dùng được cho chiến dịch sau. `SavedArticle` nay mang `clientId`.
