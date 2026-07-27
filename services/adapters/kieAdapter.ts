@@ -7,6 +7,7 @@ import type {
   VideoModelDefinition,
 } from '../../types/model';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
+import { createConfirmedBillableFailure } from '../mediaExecutionService';
 
 const KIE_FILE_PROXY = '/api-proxy/kie-files';
 const MARKET_CREATE_ENDPOINT = '/api/v1/jobs/createTask';
@@ -244,7 +245,7 @@ const pollMarketTask = async (apiBase: string, apiKey: string, taskId: string): 
     }
     if (state === 'fail' || state === 'failed' || state === 'error') {
       const rawError = data.failMsg || data.errorMessage || data.error || 'Tác vụ KIE thất bại';
-      throw new Error(localizeApiErrorMessage(rawError));
+      throw createConfirmedBillableFailure(localizeApiErrorMessage(rawError));
     }
   }
   throw new Error('Tác vụ KIE hết thời gian chờ sau 20 phút');
@@ -255,6 +256,8 @@ const createMarketTask = async (
   apiKey: string,
   model: string,
   input: Record<string, unknown>,
+  onProviderAccepted?: () => void | Promise<void>,
+  onProviderTaskId?: (taskId: string) => void | Promise<void>,
 ): Promise<string> => {
   // Chỉ thử lại khi KIE xác nhận HTTP 429 (yêu cầu đã bị từ chối, chưa tạo tác vụ).
   // Không thử lại lỗi mạng/5xx vì yêu cầu trước có thể đã được nhận và tính phí.
@@ -262,8 +265,10 @@ const createMarketTask = async (
       method: 'POST',
       body: JSON.stringify({ model, input }),
     }));
+  await onProviderAccepted?.();
   const taskId = payload?.data?.taskId || payload?.data?.task_id || payload?.taskId;
   if (!taskId) throw new Error('KIE không trả về mã tác vụ');
+  await onProviderTaskId?.(String(taskId));
   return pollMarketTask(apiBase, apiKey, taskId);
 };
 
@@ -290,8 +295,10 @@ const callKieVeo = async (
         generationType,
       }),
     }));
+  await options.onProviderAccepted?.();
   const taskId = payload?.data?.taskId || payload?.data?.task_id || payload?.taskId;
   if (!taskId) throw new Error('KIE Veo không trả về mã tác vụ');
+  await options.onProviderTaskId?.(String(taskId));
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < 20 * 60 * 1000) {
@@ -311,7 +318,9 @@ const callKieVeo = async (
       if (urls[0]) return urls[0];
     }
     if (successFlag === 2 || successFlag === 3 || data.errorCode || data.errorMessage) {
-      throw new Error(localizeApiErrorMessage(data.errorMessage || data.error || 'Tác vụ KIE Veo thất bại'));
+      throw createConfirmedBillableFailure(
+        localizeApiErrorMessage(data.errorMessage || data.error || 'Tác vụ KIE Veo thất bại'),
+      );
     }
   }
   throw new Error('Tác vụ KIE Veo hết thời gian chờ sau 20 phút');
@@ -327,6 +336,8 @@ export const callKieImageApi = async (
   apiKey,
   model.apiModel || model.id,
   await buildKieImageInput(options, model, apiKey),
+  options.onProviderAccepted,
+  options.onProviderTaskId,
 );
 
 export const callKieVideoApi = async (
@@ -341,6 +352,8 @@ export const callKieVideoApi = async (
     apiKey,
     model.apiModel || model.id,
     await buildKieVideoInput(options, model, apiKey),
+    options.onProviderAccepted,
+    options.onProviderTaskId,
   );
 };
 

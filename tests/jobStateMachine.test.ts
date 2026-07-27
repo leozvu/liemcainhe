@@ -113,6 +113,13 @@ describe('quyết định gửi tác vụ', () => {
     expect(decision.reason).toContain('đã chạy xong');
   });
 
+  it('bị gián đoạn thì bắt buộc đối chiếu, không được tự chạy lại', () => {
+    const decision = decideSubmit([job({ idempotencyKey: key, status: 'interrupted' })], key);
+    expect(decision.proceed).toBe(false);
+    expect(decision.reason).toContain('đối chiếu');
+    expect(decision.reason).toContain('tính tiền');
+  });
+
   it('thất bại hoặc bị huỷ thì cho làm lại', () => {
     expect(decideSubmit([job({ idempotencyKey: key, status: 'failed' })], key).proceed).toBe(true);
     expect(decideSubmit([job({ idempotencyKey: key, status: 'cancelled' })], key).proceed).toBe(true);

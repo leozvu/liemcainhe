@@ -5,6 +5,11 @@ import {
   VideoModelDefinition,
 } from '../../types/model';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
+import {
+  createBillableHttpError,
+  createConfirmedBillableFailure,
+  submitPaidTaskSafely,
+} from '../mediaExecutionService';
 
 interface ReplicatePrediction {
   id: string;
@@ -70,7 +75,7 @@ const prepareInputFile = async (
     body: form,
   });
   if (!response.ok) {
-    throw new Error(localizeApiErrorMessage(await readApiError(response), response.status));
+    throw createBillableHttpError(localizeApiErrorMessage(await readApiError(response), response.status), response.status);
   }
   const file = await response.json();
   if (!file?.urls?.get) throw new Error('Replicate không trả về địa chỉ tệp đã tải lên');
@@ -82,7 +87,8 @@ const createPrediction = async (
   input: Record<string, unknown>,
   apiKey: string,
   apiBase: string,
-  customEndpoint?: string
+  customEndpoint?: string,
+  onProviderAccepted?: () => void | Promise<void>,
 ): Promise<ReplicatePrediction> => {
   const isVersioned = apiModel.includes(':');
   const endpoint = customEndpoint
@@ -91,20 +97,23 @@ const createPrediction = async (
       ? '/v1/predictions'
       : `/v1/models/${apiModel}/predictions`;
   const body = isVersioned && !customEndpoint ? { version: apiModel, input } : { input };
-  const response = await fetch(`${apiBase}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'wait=60',
-      'Cancel-After': '20m',
-    },
-    body: JSON.stringify(body),
+  return submitPaidTaskSafely(async () => {
+    const response = await fetch(`${apiBase}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'wait=60',
+        'Cancel-After': '20m',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw createBillableHttpError(localizeApiErrorMessage(await readApiError(response), response.status), response.status);
+    }
+    await onProviderAccepted?.();
+    return response.json();
   });
-  if (!response.ok) {
-    throw new Error(localizeApiErrorMessage(await readApiError(response), response.status));
-  }
-  return response.json();
 };
 
 const waitForPrediction = async (
@@ -129,7 +138,9 @@ const waitForPrediction = async (
   }
 
   if (prediction.status !== 'succeeded') {
-    throw new Error(prediction.error || `Tác vụ Replicate kết thúc với trạng thái ${prediction.status}`);
+    throw createConfirmedBillableFailure(
+      prediction.error || `Tác vụ Replicate kết thúc với trạng thái ${prediction.status}`,
+    );
   }
   return prediction;
 };
@@ -152,9 +163,13 @@ const runPrediction = async (
   input: Record<string, unknown>,
   apiKey: string,
   apiBase: string,
-  customEndpoint?: string
+  customEndpoint?: string,
+  onProviderAccepted?: () => void | Promise<void>,
+  onProviderTaskId?: (taskId: string) => void | Promise<void>,
 ): Promise<string> => {
-  const prediction = await createPrediction(apiModel, input, apiKey, apiBase, customEndpoint);
+  const prediction = await createPrediction(apiModel, input, apiKey, apiBase, customEndpoint, onProviderAccepted);
+  if (!prediction?.id) throw new Error('Replicate đã nhận yêu cầu nhưng không trả về mã tác vụ');
+  await onProviderTaskId?.(prediction.id);
   const completed = await waitForPrediction(prediction, apiKey, apiBase);
   return extractOutputUrl(completed.output);
 };
@@ -187,7 +202,7 @@ export const callReplicateImageApi = async (
     input.image_input = imageInputs;
   }
 
-  return runPrediction(apiModel, input, apiKey, apiBase, model.endpoint);
+  return runPrediction(apiModel, input, apiKey, apiBase, model.endpoint, options.onProviderAccepted, options.onProviderTaskId);
 };
 
 export const callReplicateVideoApi = async (
@@ -224,5 +239,5 @@ export const callReplicateVideoApi = async (
     if (endImage) input.last_frame_image = endImage;
   }
 
-  return runPrediction(apiModel, input, apiKey, apiBase, model.endpoint);
+  return runPrediction(apiModel, input, apiKey, apiBase, model.endpoint, options.onProviderAccepted, options.onProviderTaskId);
 };

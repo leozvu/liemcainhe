@@ -60,8 +60,8 @@ export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition
   const policy = getModelRoutingPolicy();
   const models = getModels(type).filter((model) => model.isEnabled);
   // Một lần tạo media có thể bị tính phí ngay cả khi kết quả không dùng được.
-  // Với KIE, tuyệt đối không tự gọi model thứ hai nếu người dùng chưa chủ động chọn.
-  const allowFallback = preferred.providerId !== 'kie-ai';
+  // Ảnh/video tuyệt đối không tự gọi model thứ hai nếu người dùng chưa chủ động chọn.
+  const allowFallback = type === 'chat' && preferred.providerId !== 'kie-ai';
   const orderedIds = [preferred.id, ...(policy.enabled && allowFallback ? policy.fallbackModelIds[type] : [])];
   const seen = new Set<string>();
   const ordered = orderedIds

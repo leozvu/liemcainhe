@@ -1,3 +1,5 @@
+import type { CoreStage, ProductionJob, ProductionJobKind } from '../types';
+
 export type ModelType = 'chat' | 'image' | 'video';
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';
@@ -123,6 +125,11 @@ export interface ImageGenerateOptions {
   referenceImages?: string[];
   aspectRatio?: AspectRatio;
   usageResourceId?: string;
+  execution?: MediaExecutionContext;
+  /** Hook nội bộ: HTTP 2xx nghĩa là provider có thể đã tính phí dù body lỗi. */
+  onProviderAccepted?: () => void | Promise<void>;
+  /** Hook nội bộ: gọi ngay khi provider xác nhận đã tạo tác vụ trả phí. */
+  onProviderTaskId?: (taskId: string) => void | Promise<void>;
 }
 
 export interface VideoGenerateOptions {
@@ -132,6 +139,26 @@ export interface VideoGenerateOptions {
   aspectRatio?: AspectRatio;
   duration?: VideoDuration;
   usageResourceId?: string;
+  execution?: MediaExecutionContext;
+  /** Hook nội bộ: HTTP 2xx nghĩa là provider có thể đã tính phí dù body lỗi. */
+  onProviderAccepted?: () => void | Promise<void>;
+  /** Hook nội bộ: gọi ngay khi provider xác nhận đã tạo tác vụ trả phí. */
+  onProviderTaskId?: (taskId: string) => void | Promise<void>;
+}
+
+/** Metadata nối một lần sinh media với hàng đợi bền vững của project. */
+export interface MediaExecutionContext {
+  projectId: string;
+  jobs: ProductionJob[];
+  kind: Extract<ProductionJobKind, 'asset-image' | 'keyframe-image' | 'video'>;
+  stage: CoreStage;
+  label: string;
+  resourceId: string;
+  /** Kết quả cũ tạo thành version key mới khi người dùng chủ động regenerate. */
+  previousOutput?: string;
+  onJobChange?: (job: ProductionJob) => void;
+  /** Ghi output vào project/IndexedDB state trước khi job được phép completed. */
+  commitResult?: (result: string) => void | Promise<void>;
 }
 
 export const DEFAULT_CHAT_PARAMS: ChatModelParams = {

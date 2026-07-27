@@ -36,11 +36,12 @@ import {
   getPreflightItems,
   getWorkflowReadiness,
   patchProductionJob,
+  resolveInterruptedProductionJob,
   restoreProjectCheckpoint,
   setProductionJobStatus,
 } from '../services/workflowService';
 import { syncProjectToCloud } from '../services/cloudSyncService';
-import { clearFinishedDurableJobs } from '../services/durableJobService';
+import { clearFinishedDurableJobs, syncDurableJobs } from '../services/durableJobService';
 import { useAlert } from './GlobalAlert';
 import ProductionControlBoard from './ProductionControlBoard';
 import ClientReviewManager from './ClientReviewManager';
@@ -206,6 +207,27 @@ const ProductionCenter: React.FC<Props> = ({
   const clearFinished = () => {
     updateProject(clearFinishedJobs);
     void clearFinishedDurableJobs(project.id);
+  };
+
+  const reconcileInterrupted = (jobId: string, stage: CoreStage) => {
+    showAlert('Chỉ mở khóa sau khi bạn đã kiểm tra dashboard của provider và xác nhận tác vụ cũ không còn kết quả cần thu hồi. Chạy lại có thể tốn thêm credit. Tiếp tục?', {
+      type: 'warning',
+      showCancel: true,
+      onConfirm: async () => {
+        const resolved = resolveInterruptedProductionJob(project, jobId);
+        const resolvedJob = resolved.workflow?.jobs.find((job) => job.id === jobId);
+        if (resolvedJob) {
+          try {
+            await syncDurableJobs(project.id, [resolvedJob]);
+          } catch (error) {
+            showAlert(error instanceof Error ? error.message : 'Không thể mở khóa job trên cloud.', { type: 'error' });
+            return;
+          }
+        }
+        updateProject(resolved);
+        goToStage(stage);
+      },
+    });
   };
 
   return (
@@ -388,7 +410,8 @@ const ProductionCenter: React.FC<Props> = ({
                           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${meta.className}`}><Icon className={`h-4 w-4 ${job.status === 'running' ? 'animate-spin' : ''}`} /></div>
                           <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-semibold text-white">{job.label}</h3><span className={`eg-chip ${meta.className}`}>{meta.label}</span></div><p className="mt-1 text-[10px] leading-4 text-zinc-600">{job.error || job.detail || `${job.stage} · ${formatTime(job.updatedAt)}`}</p></div>
                           <div className="w-full md:w-56"><div className="flex justify-between font-mono text-[9px] uppercase tracking-wider text-zinc-600"><span>{job.completedUnits || 0}/{job.totalUnits || 100}</span><span>{job.progress}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[.06]"><div className={`h-full rounded-full ${job.status === 'failed' ? 'bg-rose-300' : job.status === 'interrupted' ? 'bg-amber-300' : 'bg-[var(--eg-accent)]'}`} style={{ width: `${job.progress}%` }} /></div></div>
-                          {['failed', 'interrupted'].includes(job.status) && <button type="button" onClick={() => goToStage(job.stage)} className="eg-button-secondary inline-flex shrink-0 items-center justify-center gap-2 px-4 text-xs font-semibold"><RotateCcw className="h-4 w-4" /> Mở để chạy lại</button>}
+                          {job.status === 'failed' && <button type="button" onClick={() => goToStage(job.stage)} className="eg-button-secondary inline-flex shrink-0 items-center justify-center gap-2 px-4 text-xs font-semibold"><RotateCcw className="h-4 w-4" /> Mở để chạy lại</button>}
+                          {job.status === 'interrupted' && <button type="button" onClick={() => reconcileInterrupted(job.id, job.stage)} className="eg-button-secondary inline-flex shrink-0 items-center justify-center gap-2 px-4 text-xs font-semibold"><ShieldCheck className="h-4 w-4" /> Đã đối chiếu, mở khóa</button>}
                         </div>
                       </div>
                     );

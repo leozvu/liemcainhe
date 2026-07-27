@@ -11,32 +11,7 @@ import {
 import { callReplicateImageApi } from './replicateAdapter';
 import { callKieImageApi } from './kieAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
-
-const retryOperation = async <T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 2000
-): Promise<T> => {
-  let lastError: Error | null = null;
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-      if (error.message?.includes('400') || 
-          error.message?.includes('401') || 
-          error.message?.includes('403')) {
-        throw error;
-      }
-      if (i < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
-      }
-    }
-  }
-  
-  throw lastError;
-};
+import { createBillableHttpError, submitPaidTaskSafely } from '../mediaExecutionService';
 
 const callImageApiOnce = async (
   options: ImageGenerateOptions,
@@ -71,6 +46,7 @@ const callImageApiOnce = async (
       model: apiModel,
       prompt: options.prompt,
       aspectRatio,
+      onProviderAccepted: options.onProviderAccepted,
     });
   }
 
@@ -123,7 +99,7 @@ const callImageApiOnce = async (
     max_tokens: 2048,
   };
 
-  const response = await retryOperation(async () => {
+  const response = await submitPaidTaskSafely(async () => {
     const res = await fetch(`${apiBase}${endpoint}`, {
       method: 'POST',
       headers: {
@@ -136,10 +112,10 @@ const callImageApiOnce = async (
 
     if (!res.ok) {
       if (res.status === 400) {
-        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh câu lệnh khung hình hoặc ảnh, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
+        throw createBillableHttpError('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh câu lệnh khung hình hoặc ảnh, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.', res.status);
       }
       if (res.status === 500) {
-        throw new Error('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.');
+        throw createBillableHttpError('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.', res.status);
       }
       
       let errorMessage = `Lỗi HTTP: ${res.status}`;
@@ -152,9 +128,10 @@ const callImageApiOnce = async (
           if (errorText) errorMessage = errorText;
         }
       } catch (_) {}
-      throw new Error(localizeApiErrorMessage(errorMessage, res.status));
+      throw createBillableHttpError(localizeApiErrorMessage(errorMessage, res.status), res.status);
     }
 
+    await options.onProviderAccepted?.();
     return await res.json();
   });
 

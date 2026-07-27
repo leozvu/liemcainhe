@@ -13,11 +13,13 @@ import { callImageApi } from './adapters/imageAdapter';
 import { callVideoApi } from './adapters/videoAdapter';
 import {
   getGlobalApiKey,
+  getActiveImageModel,
   getActiveVideoModel,
   getModels,
 } from './modelRegistry';
 import { setGlobalApiKey as setGeminiApiKey } from './geminiService';
 import { parseModelJson } from './jsonResponse';
+import { buildMediaInputSignature, executeBillableMedia } from './mediaExecutionService';
 
 export { ApiKeyError };
 
@@ -29,26 +31,96 @@ export const chatJson = async (options: Omit<ChatOptions, 'responseFormat'>): Pr
   return callChatApi({ ...options, responseFormat: 'json' });
 };
 
-export const generateImage = async (options: ImageGenerateOptions): Promise<string> => {
-  return callImageApi(options);
+const executeImageGeneration = async (
+  options: ImageGenerateOptions,
+  model?: ImageModelDefinition,
+): Promise<string> => {
+  const {
+    execution,
+    onProviderAccepted: callerAcceptedHook,
+    onProviderTaskId: callerTaskHook,
+    ...requestOptions
+  } = options;
+  const selectedModel = model || getActiveImageModel();
+  return executeBillableMedia({
+    context: execution,
+    mediaType: 'image',
+    resourceId: options.usageResourceId,
+    inputSignature: buildMediaInputSignature({
+      modelId: selectedModel?.id,
+      prompt: options.prompt,
+      referenceImages: options.referenceImages || [],
+      aspectRatio: options.aspectRatio,
+    }),
+    operation: ({ onProviderAccepted, onProviderTaskId }) => callImageApi({
+      ...requestOptions,
+      onProviderAccepted: async () => {
+        await onProviderAccepted();
+        await callerAcceptedHook?.();
+      },
+      onProviderTaskId: async (taskId) => {
+        await onProviderTaskId(taskId);
+        await callerTaskHook?.(taskId);
+      },
+    }, model),
+  });
 };
 
-export const generateVideo = async (options: VideoGenerateOptions): Promise<string> => {
-  return callVideoApi(options);
+const executeVideoGeneration = async (
+  options: VideoGenerateOptions,
+  model?: VideoModelDefinition,
+): Promise<string> => {
+  const {
+    execution,
+    onProviderAccepted: callerAcceptedHook,
+    onProviderTaskId: callerTaskHook,
+    ...requestOptions
+  } = options;
+  const selectedModel = model || getActiveVideoModel();
+  return executeBillableMedia({
+    context: execution,
+    mediaType: 'video',
+    resourceId: options.usageResourceId,
+    inputSignature: buildMediaInputSignature({
+      modelId: selectedModel?.id,
+      prompt: options.prompt,
+      startImage: options.startImage,
+      endImage: options.endImage,
+      aspectRatio: options.aspectRatio,
+      duration: options.duration,
+    }),
+    operation: ({ onProviderAccepted, onProviderTaskId }) => callVideoApi({
+      ...requestOptions,
+      onProviderAccepted: async () => {
+        await onProviderAccepted();
+        await callerAcceptedHook?.();
+      },
+      onProviderTaskId: async (taskId) => {
+        await onProviderTaskId(taskId);
+        await callerTaskHook?.(taskId);
+      },
+    }, model),
+  });
 };
+
+export const generateImage = async (options: ImageGenerateOptions): Promise<string> =>
+  executeImageGeneration(options);
+
+export const generateVideo = async (options: VideoGenerateOptions): Promise<string> =>
+  executeVideoGeneration(options);
 
 export const generateImageWithModel = async (options: ImageGenerateOptions, modelId?: string): Promise<string> => {
-  if (!modelId) return callImageApi(options);
+  if (!modelId) return executeImageGeneration(options);
   const model = getModels('image').find((item): item is ImageModelDefinition => item.type === 'image' && item.id === modelId);
   if (!model) throw new Error(`Không tìm thấy mô hình ảnh “${modelId}” trong Video Factory.`);
-  return callImageApi(options, model);
+  return executeImageGeneration(options, model);
 };
 
 export const generateVideoWithModel = async (options: VideoGenerateOptions, modelId?: string): Promise<string> => {
-  if (!modelId) return callVideoApi(options);
+  if (!modelId) return executeVideoGeneration(options);
   const model = getModels('video').find((item): item is VideoModelDefinition => item.type === 'video' && item.id === modelId);
   if (!model) throw new Error(`Không tìm thấy mô hình video “${modelId}” trong Video Factory.`);
-  return callVideoApi(options, model);
+  return executeVideoGeneration(options, model);
 };
 
 export const parseScript = async (options: {

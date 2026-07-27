@@ -46,8 +46,11 @@ export const productionJobsSchema = {
   primaryKey: ['id'],
   indexes: [
     ['owner_email', 'project_id', 'updated_at'],
-    ['owner_email', 'project_id', 'idempotency_key'],
   ],
+  uniqueIndexes: [{
+    columns: ['owner_email', 'project_id', 'idempotency_key'],
+    where: "idempotency_key IS NOT NULL AND status IN ('queued', 'running', 'completed', 'interrupted')",
+  }],
   columns: [
     'id', 'owner_email', 'project_id', 'kind', 'stage', 'label', 'status',
     'progress', 'completed_units', 'total_units', 'resource_id',
