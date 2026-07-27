@@ -8,6 +8,29 @@ Thiếu nó thì dựng orchestrator chỉ là chuyển lỗi lên máy chủ: v
 
 Ba mục trong roadmap được lớp này giải quyết: **khoá chống trùng**, **mã tác vụ nhà cung cấp**, và **trạng thái sau khi tab chết**.
 
+## Execution authority đã đi vào workflow
+
+`executeBillableMedia` không còn là service đứng riêng. Nó đang bao quanh các
+đường tạo ảnh, keyframe, video và voice trả phí từ Stage Assets, Stage Director,
+Content Illustration, Stage Voice và Director Agent.
+
+Trước khi gọi provider, client tạo idempotency key và giành claim duy nhất trên
+D1. Sau khi provider trả 2xx, adapter lập tức ghi trạng thái accepted; provider
+có task ID thì ghi ID trước khi polling. Output phải được commit vào project và
+IndexedDB trước khi job chuyển sang `completed`.
+
+Với voice:
+
+- FPT lưu `request_id` làm provider task ID;
+- ElevenLabs và Viettel ghi accepted ngay sau HTTP 2xx;
+- 5xx, mất mạng hoặc 2xx nhưng body hỏng trở thành `interrupted`;
+- lỗi nghiệp vụ được provider xác nhận mới trở thành `failed` để cho phép sửa
+  rồi chạy lại;
+- batch thoại vẫn chạy từng câu, nên mỗi câu có claim riêng và không làm mất
+  toàn bộ dấu vết khi một câu lỗi.
+- bản nghe thử cũng có claim và được cache trong project theo câu/preset/định
+  dạng; bấm lại cùng cấu hình phát bản đã có thay vì trừ thêm credit.
+
 ## Máy trạng thái
 
 ```
@@ -69,7 +92,9 @@ Những thứ đó cần deploy và chạy thật mới kiểm chứng được,
 ## Kiểm chứng
 
 ```bash
-npx vitest run tests/jobStateMachine.test.ts
+npx vitest run tests/jobStateMachine.test.ts tests/mediaExecution.test.ts tests/voiceExecution.test.ts
 ```
 
-23 test, trong đó có test khẳng định job bị ngắt **không** bị ghi thành thất bại, và test cho từng nhánh của `decideSubmit`.
+Suite khẳng định job bị ngắt **không** bị ghi thành thất bại, hai click đồng thời
+chỉ gọi provider một lần, voice ghi task ID và output được commit trước khi job
+được đánh hoàn tất.

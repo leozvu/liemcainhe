@@ -1,11 +1,11 @@
-# Sprint 0A — Evidence Audit: nền tảng hệ thống
+# Evidence Audit: nền tảng hệ thống
 
 Phạm vi Codex theo plan vòng 2: luồng dữ liệu, độ bền job, provider/chi phí,
 persistence, khả năng tìm thấy tính năng, xuất bản, review và release. Tài liệu
 này **không coi số dòng code là bằng chứng sản phẩm đã hoạt động**.
 
-Nhánh: `codex/sprint-0a-system`, xuất phát từ `main` tại `18fe390`.
-Sprint này chỉ audit; không thay đổi runtime hoặc UI.
+Tài liệu được khởi tạo ở Sprint 0A và cập nhật sau mỗi sprint hệ thống. Một cấp
+chỉ được nâng khi runtime, entry point và bằng chứng test tương ứng đã có.
 
 ## Thang bằng chứng
 
@@ -28,15 +28,15 @@ App có nhiều khung hệ thống đúng hướng, nhưng phần **bảo vệ t
 | Lưu project cục bộ | 4 | Giữ |
 | Sao lưu project + media lên D1/R2 | 4 | Giữ, vẫn là thao tác tay |
 | Đồng bộ dữ liệu workspace | **4** | Đã nối autosync + recovery; cần test thực địa hai thiết bị để lên cấp 5 |
-| Job history và trạng thái gián đoạn | 3 | Sửa contract client/worker |
-| Chống gửi trùng job billable | **2** | **Nối vào mọi lời gọi media — gấp** |
+| Job history và trạng thái gián đoạn | **4** | Contract đã đồng nhất; cần test đóng tab với provider thật để lên cấp 5 |
+| Chống gửi trùng job billable | **4** | Ảnh, video và voice đã có execution authority; còn đo dedupe thực tế |
 | Model routing và circuit breaker | 3 | Phủ hết đường gọi trực tiếp |
 | Usage/cost telemetry | 3 | Phủ hết billable path, đo chi phí thật |
 | Review nội bộ + link khách hàng | 4 | Chạy khô rồi chạy thật |
 | Render/export master | 4 | Giữ local fallback, thêm bàn giao cloud |
 | Đăng video lên nền tảng | 1 | Track riêng, phụ thuộc OAuth/review |
 | Release Sites | 4 | Giữ một release owner |
-| CI | **0** | Thêm trước khi hai agent merge thường xuyên |
+| CI | **4** | GitHub Actions chặn PR/main khi whitespace, typecheck, test hoặc build hỏng |
 
 Không năng lực nào đạt cấp 5. Các endpoint cloud đã được deploy, nhưng chưa có
 bằng chứng một campaign thật chạy xuyên suốt và đối chiếu được số tiền thực.
@@ -121,45 +121,42 @@ tạo/sửa/xóa trên hai thiết bị vật lý.
 
 ---
 
-## 5. Job history và hàng đợi bền — cấp 3
+## 5. Job history và hàng đợi bền — cấp 4
 
 | Trường | Bằng chứng |
 |---|---|
 | Entry point | Trung tâm sản xuất → tab Tác vụ; tự hydrate khi mở project |
-| Existing code | `workflowService.ts`, `durableJobService.ts`, `jobStateMachine.ts`, `/api/jobs` |
-| Integration | App debounce đẩy `workflow.jobs` và tải lại khi mở project |
-| Persistence | Project local + bảng `egoric_jobs` trên D1 |
+| Existing code | `workflowService.ts`, `durableJobService.ts`, `jobStateMachine.ts`, `mediaExecutionService.ts`, `/api/jobs` |
+| Integration | App hydrate khi mở project; ảnh/video/voice claim D1 trước provider và cập nhật job theo lifecycle |
+| Persistence | Project local + `egoric_jobs` trên D1, gồm `idempotencyKey` và `providerTaskId` |
 | Real test | Chưa chạy job provider thật qua lần đóng tab |
 | Measurement | Trạng thái/progress/error/attempts có sẵn |
-| Blocking gap | Worker không nhận bốn kind mới; không lưu idempotency key và provider task ID |
-| Decision | Sửa contract trước khi gọi nó là durable queue |
+| Blocking gap | Chưa có server runtime/webhook để tiếp tục polling khi đóng tab; chưa chạy provider thật qua lần đóng/mở tab |
+| Decision | Contract đã đóng; giữ cấp 4 cho tới field test provider thật |
 
-Hai lỗi contract cụ thể:
+Hai lỗi contract từ audit ban đầu đã được đóng:
 
-1. Client cho phép `video-factory`, `ai-supervisor`, `auto-editor`,
-   `agency-review`; worker chỉ cho tám kind cũ. Khi project có kind mới, toàn bộ
-   PUT `/api/jobs` bị 400.
-2. `ProductionJob` có `idempotencyKey` và `providerTaskId`, nhưng migration,
-   SELECT và UPSERT D1 không có hai cột đó. Sau reload, đúng hai dữ kiện cần để
-   chống trừ tiền hai lần bị mất.
+1. Worker và client dùng cùng danh sách kind, có contract test chống lệch.
+2. Migration, SELECT, UPSERT và unique claim D1 đều giữ idempotency key/task ID.
 
 ---
 
-## 6. Chống gửi trùng job billable — cấp 2, blocker tiền
+## 6. Chống gửi trùng job billable — cấp 4, đã có entry point
 
 | Trường | Bằng chứng |
 |---|---|
-| Entry point | **Không có trên đường gọi media** |
-| Existing code | `deriveIdempotencyKey`, `findDuplicateJob`, `decideSubmit` |
-| Integration | Chỉ test gọi các hàm này; `createProductionJob` không tạo key |
-| Persistence | Không lưu key/task ID lên D1 |
+| Entry point | Trung tâm sản xuất → Tác vụ; các nút tạo ảnh/video/voice và Director Agent dùng chung envelope |
+| Existing code | `mediaExecutionService.ts`, `deriveIdempotencyKey`, `claimDurableJob`, provider hooks trong image/video/voice adapter |
+| Integration | Claim trước provider; double-click dùng chung Promise; output commit trước completed; voice batch claim từng câu |
+| Persistence | Project/IndexedDB + D1 unique claim, idempotency key và provider task ID |
 | Real test | Chưa |
-| Measurement | Không có số request bị dedupe |
-| Blocking gap | Double-click, retry hoặc reload có thể gửi lại tác vụ billable |
-| Decision | P0 trước khi chạy video thật số lượng lớn |
+| Measurement | Tab Tác vụ hiện trạng thái, task ID, lỗi và job interrupted; chưa tổng hợp số lượt dedupe |
+| Blocking gap | Chưa đối chiếu một interrupted job bằng dashboard provider thật; chưa có counter dedupe theo campaign |
+| Decision | Giữ cấp 4; Campaign 0 chạy một lỗi mô phỏng và một provider task thật trước khi nâng cấp 5 |
 
-Job UI hiện chủ yếu là **nhật ký tiến độ**, chưa phải execution authority. Chặn
-trùng phải xảy ra trước lời gọi provider, không phải sau khi UI đã tạo job.
+Job UI vẫn là nơi quan sát, nhưng execution authority nay nằm đúng trước lời gọi
+provider. Ảnh, video và voice đều không được gửi nếu claim D1 bị trùng. Voice là
+đường cuối cùng được nối trong Sprint 0I.
 
 ---
 
@@ -284,10 +281,9 @@ làm tay và ghi thời gian để tạo baseline.
 Deploy không còn là blocker như tài liệu cũ: Codex đã phát hành liên tiếp các
 version gần đây. Quy tắc mới là deploy theo milestone, không theo từng commit.
 
-### CI — cấp 0
+### CI — cấp 4
 
-Repo không có `.github/workflows`. Khi Claude và Codex cùng mở PR, việc này
-không còn là nợ “làm lúc rảnh”. Trước khi merge thường xuyên cần tối thiểu:
+`.github/workflows/ci.yml` chạy trên mọi PR vào `main` và mọi push lên `main`:
 
 1. `npx tsc --noEmit`
 2. `npm run test:run`
@@ -301,18 +297,19 @@ không còn là nợ “làm lúc rảnh”. Trước khi merge thường xuyên
 Không xây epic mới. Chỉ đóng các lỗ khiến lần chạy thật mất dữ liệu, đo sai hoặc
 trả tiền hai lần.
 
-1. **Contract job:** worker nhận đủ kind, lưu `idempotencyKey` và
-   `providerTaskId`.
-2. **Execution envelope:** mọi lời gọi billable có idempotency, provider task,
-   usage event và trạng thái `unknown` khi mất kết nối.
+1. ~~**Contract job:**~~ worker nhận đủ kind, lưu `idempotencyKey` và
+   `providerTaskId`, có unique claim trên D1.
+2. ~~**Execution envelope ảnh/video/voice:**~~ mọi đường sản xuất media chính có
+   idempotency, provider task/accepted và trạng thái `interrupted` khi kết quả
+   không rõ. Còn bổ sung event lifecycle riêng cho cost telemetry.
 3. ~~**Workspace sync entry point, chẩn đoán và proof gate:**~~ đã có local-first
    autosync, full recovery, bia mộ local, health endpoint, protocol A/B và cổng
    Campaign 0; còn bước team chạy thực địa trên hai thiết bị vật lý.
 4. **Telemetry dry-run:** provider giả, zero-credit asset, review link và export;
    xác nhận mọi event trước một lời gọi thật.
-5. **CI:** chặn merge khi typecheck/test/build hỏng.
-6. **Review metadata:** phân biệt individual/batch/client-portal trước khi mở
-   quyền học tự động.
+5. ~~**CI:**~~ chặn merge khi whitespace/typecheck/test/build hỏng.
+6. ~~**Review metadata:**~~ phân biệt individual/batch/client-portal và vai trò
+   reviewer trước khi mở quyền học tự động.
 
 ## Thứ tự Sprint 0B đề xuất
 

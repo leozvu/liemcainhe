@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookOpenText,
@@ -41,11 +41,13 @@ import {
 } from '../../services/voiceRegistry';
 import {
   ElevenLabsVoice,
+  GenerateVoiceResult,
   audioFileToDataUrl,
   createVoiceSourceHash,
   fetchElevenLabsVoices,
   generateVoice,
 } from '../../services/voiceService';
+import { createProjectMediaExecutionContext } from '../../services/mediaExecutionService';
 import { useAlert } from '../GlobalAlert';
 import VoicePlayer from './VoicePlayer';
 import VoiceSettingsModal from './VoiceSettingsModal';
@@ -133,11 +135,12 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [batchRendering, setBatchRendering] = useState(false);
   const [previewing, setPreviewing] = useState(false);
-  const [previewAudio, setPreviewAudio] = useState<{ audioUrl: string; fileName: string; duration?: number } | null>(null);
+  const [previewAudio, setPreviewAudio] = useState<{ audioUrl: string; fileName: string; duration?: number; sourceHash: string } | null>(null);
   const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
   const [voiceCatalogLoading, setVoiceCatalogLoading] = useState(false);
   const [voiceCatalogError, setVoiceCatalogError] = useState('');
   const [voiceConnectionRevision, setVoiceConnectionRevision] = useState(0);
+  const generatingShotIdsRef = useRef(new Set<string>());
 
   const updateStudio = (mutator: (current: VoiceStudioState) => VoiceStudioState) => {
     updateProject((previous) => ({
@@ -225,12 +228,24 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       showAlert('Hãy chọn giọng hoặc nhập Voice ID trước khi nghe thử.', { type: 'warning' });
       return;
     }
+    const previewText = studio.previewText || 'Xin chào, đây là bản thử giọng của Egoric Film Studio.';
+    const previewSourceHash = `${createVoiceSourceHash(
+      previewText,
+      selectedProfile.voiceId,
+      selectedProfile.speed,
+      selectedProfile.emotion || 'neutral',
+      selectedProfile.pitch ?? 0,
+    )}:${studio.outputFormat}:${studio.normalizeLoudness ? 'mastered' : 'raw'}`;
+    if (studio.previewTake?.sourceHash === previewSourceHash) {
+      setPreviewAudio(studio.previewTake);
+      return;
+    }
     setPreviewing(true);
     setPreviewAudio(null);
     try {
       const result = await generateVoice({
         providerId: selectedProfile.providerId,
-        text: studio.previewText || 'Xin chào, đây là bản thử giọng của Egoric Film Studio.',
+        text: previewText,
         voiceId: selectedProfile.voiceId,
         speed: selectedProfile.speed,
         pitch: selectedProfile.pitch,
@@ -238,8 +253,31 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         pronunciationDictionary: studio.pronunciationDictionary,
         outputFormat: studio.outputFormat,
         masterAudio: studio.normalizeLoudness,
+        usageResourceId: `voice-preview:${selectedProfile.characterId}`,
+        execution: createProjectMediaExecutionContext<GenerateVoiceResult>({
+          project,
+          updateProject,
+          kind: 'voice',
+          stage: 'voice',
+          label: `Nghe thử giọng · ${selectedProfile.voiceName}`,
+          resourceId: `voice-preview:${selectedProfile.characterId}`,
+          previousOutput: studio.previewTake?.audioUrl,
+          commitResult: (current, output) => ({
+            ...current,
+            voiceStudio: {
+              ...(current.voiceStudio || createDefaultVoiceStudioState()),
+              previewTake: {
+                audioUrl: output.audioUrl,
+                fileName: output.fileName,
+                duration: output.duration,
+                sourceHash: previewSourceHash,
+                createdAt: Date.now(),
+              },
+            },
+          }),
+        }),
       });
-      setPreviewAudio(result);
+      setPreviewAudio({ ...result, sourceHash: previewSourceHash });
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể tạo bản nghe thử', { type: 'error' });
     } finally {
@@ -248,6 +286,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   };
 
   const handleGenerate = async (shot: Shot): Promise<boolean> => {
+    if (generatingShotIdsRef.current.has(shot.id)) return false;
     const characterId = getSpeakerId(shot);
     const profile = getProfile(characterId);
     const provider = getVoiceProvider(profile.providerId);
@@ -286,10 +325,12 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
       pitch: profile.pitch ?? 0,
       createdAt: Date.now(),
     };
+    const previousTake = getSelectedTake(shot.id);
     updateStudio((current) => ({ ...current, takes: [take, ...current.takes] }));
+    generatingShotIdsRef.current.add(shot.id);
 
     try {
-      const result = await generateVoice({
+      await generateVoice({
         providerId: profile.providerId,
         text: take.text,
         voiceId: profile.voiceId,
@@ -300,22 +341,49 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
         outputFormat: studio.outputFormat,
         masterAudio: studio.normalizeLoudness,
         usageResourceId: `${shot.id}:voice`,
-      });
-      patchTake(takeId, {
-        status: 'ready',
-        audioUrl: result.audioUrl,
-        duration: result.duration,
-        fileName: result.fileName,
-        mastered: Boolean(result.mastering),
-        masteringGainDb: result.mastering?.gainDb,
-        trimmedSeconds: result.mastering?.trimmedSeconds,
-        masteringSkippedReason: result.masteringSkippedReason,
-        error: undefined,
+        execution: createProjectMediaExecutionContext<GenerateVoiceResult>({
+          project,
+          updateProject,
+          kind: 'voice',
+          stage: 'voice',
+          label: `Tạo thoại · ${getCharacter(characterId)?.name || 'Nhân vật'}`,
+          resourceId: `${shot.id}:voice`,
+          previousOutput: previousTake?.audioUrl,
+          commitResult: (current, output) => {
+            const currentStudio = current.voiceStudio || createDefaultVoiceStudioState();
+            const readyTake: VoiceTake = {
+              ...take,
+              status: 'ready',
+              audioUrl: output.audioUrl,
+              duration: output.duration,
+              fileName: output.fileName,
+              mastered: Boolean(output.mastering),
+              masteringGainDb: output.mastering?.gainDb,
+              trimmedSeconds: output.mastering?.trimmedSeconds,
+              masteringSkippedReason: output.masteringSkippedReason,
+              error: undefined,
+            };
+            const takes = currentStudio.takes.some((item) => item.id === take.id)
+              ? currentStudio.takes.map((item) => item.id === take.id ? readyTake : item)
+              : [readyTake, ...currentStudio.takes];
+            return {
+              ...current,
+              voiceStudio: {
+                ...currentStudio,
+                takes,
+                selectedTakeByShot: { ...currentStudio.selectedTakeByShot, [shot.id]: take.id },
+              },
+              shots: current.shots.map((item) => item.id === shot.id ? clearShotStaleFlag(item, 'voice') : item),
+            };
+          },
+        }),
       });
       return true;
     } catch (error) {
       patchTake(takeId, { status: 'error', error: error instanceof Error ? error.message : 'Không thể tạo bản thoại' });
       return false;
+    } finally {
+      generatingShotIdsRef.current.delete(shot.id);
     }
   };
 
@@ -433,6 +501,16 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
   const selectedCharacter = getCharacter(selectedCharacterId) || characters[0];
   const selectedProfile = getProfile(selectedCharacter?.id || 'narrator');
   const selectedProvider = getVoiceProvider(selectedProfile.providerId);
+  const activePreviewSourceHash = `${createVoiceSourceHash(
+    studio.previewText || 'Xin chào, đây là bản thử giọng của Egoric Film Studio.',
+    selectedProfile.voiceId,
+    selectedProfile.speed,
+    selectedProfile.emotion || 'neutral',
+    selectedProfile.pitch ?? 0,
+  )}:${studio.outputFormat}:${studio.normalizeLoudness ? 'mastered' : 'raw'}`;
+  const activePreviewAudio = previewAudio?.sourceHash === activePreviewSourceHash
+    ? previewAudio
+    : studio.previewTake?.sourceHash === activePreviewSourceHash ? studio.previewTake : undefined;
   const totalReady = dialogueShots.filter(isVoiceCurrent).length;
   const humanReady = dialogueShots.filter((shot) => getSelectedTake(shot.id)?.source === 'human').length;
   const totalDuration = dialogueShots.reduce((sum, shot) => sum + (getSelectedTake(shot.id)?.duration || 0), 0);
@@ -694,7 +772,7 @@ const StageVoice: React.FC<Props> = ({ project, updateProject }) => {
                         <button type="button" onClick={() => void previewSelectedVoice()} disabled={previewing || !studio.previewText.trim()} className="eg-button-secondary mt-3 inline-flex w-full items-center justify-center gap-2 px-3 text-xs font-semibold">
                           {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{previewing ? 'Đang tạo bản thử…' : 'Nghe thử preset này'}
                         </button>
-                        {previewAudio && <div className="mt-3"><VoicePlayer src={previewAudio.audioUrl} fileName={previewAudio.fileName} duration={previewAudio.duration} compact /></div>}
+                        {activePreviewAudio && <div className="mt-3"><VoicePlayer src={activePreviewAudio.audioUrl} fileName={activePreviewAudio.fileName} duration={activePreviewAudio.duration} compact /></div>}
                       </div>
                     )}
 
