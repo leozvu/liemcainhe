@@ -225,7 +225,21 @@ export interface RenderLog {
 
 export type ProjectStage = 'content' | 'script' | 'assets' | 'voice' | 'director' | 'export' | 'prompts';
 export type CoreStage = 'script' | 'assets' | 'voice' | 'director' | 'export';
-export type ProductionJobKind = 'script-analysis' | 'creative-director' | 'video-factory' | 'ai-supervisor' | 'auto-editor' | 'agency-review' | 'asset-image' | 'keyframe-image' | 'video' | 'voice' | 'cloud-sync' | 'export';
+export const PRODUCTION_JOB_KINDS = [
+  'script-analysis',
+  'creative-director',
+  'video-factory',
+  'ai-supervisor',
+  'auto-editor',
+  'agency-review',
+  'asset-image',
+  'keyframe-image',
+  'video',
+  'voice',
+  'cloud-sync',
+  'export',
+] as const;
+export type ProductionJobKind = typeof PRODUCTION_JOB_KINDS[number];
 export type ProductionJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
 
 export interface ProductionJob {

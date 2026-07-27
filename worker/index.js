@@ -12,6 +12,25 @@ const API_TARGETS = {
   '/api-proxy/zalo': 'https://openapi.zalo.me',
 };
 
+// Bản sao runtime của PRODUCTION_JOB_KINDS trong types.ts. Worker được đóng
+// gói độc lập nên test contract bắt buộc hai danh sách luôn giống nhau.
+const PRODUCTION_JOB_KINDS = [
+  'script-analysis',
+  'creative-director',
+  'video-factory',
+  'ai-supervisor',
+  'auto-editor',
+  'agency-review',
+  'asset-image',
+  'keyframe-image',
+  'video',
+  'voice',
+  'cloud-sync',
+  'export',
+];
+const PRODUCTION_JOB_STAGES = ['script', 'assets', 'voice', 'director', 'export'];
+const PRODUCTION_JOB_STATUSES = ['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled'];
+
 /**
  * Feed xu hướng Việt Nam cho Xưởng Nội dung.
  *
@@ -745,7 +764,9 @@ async function handleJobsApi(request, env, url) {
   if (request.method === 'GET') {
     const result = await env.DB.prepare(
       `SELECT id, kind, stage, label, status, progress, completed_units AS completedUnits,
-              total_units AS totalUnits, resource_id AS resourceId, detail, error, attempts,
+              total_units AS totalUnits, resource_id AS resourceId,
+              idempotency_key AS idempotencyKey, provider_task_id AS providerTaskId,
+              detail, error, attempts,
               created_at AS createdAt, updated_at AS updatedAt
        FROM egoric_jobs WHERE owner_email = ? AND project_id = ?
        ORDER BY updated_at DESC LIMIT 100`
@@ -757,9 +778,9 @@ async function handleJobsApi(request, env, url) {
     const payload = await request.json();
     const jobs = Array.isArray(payload?.jobs) ? payload.jobs.slice(0, 100) : [];
     if (!jobs.length) return json({ saved: 0 });
-    const kinds = new Set(['script-analysis', 'creative-director', 'asset-image', 'keyframe-image', 'video', 'voice', 'cloud-sync', 'export']);
-    const stages = new Set(['script', 'assets', 'voice', 'director', 'export']);
-    const statuses = new Set(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']);
+    const kinds = new Set(PRODUCTION_JOB_KINDS);
+    const stages = new Set(PRODUCTION_JOB_STAGES);
+    const statuses = new Set(PRODUCTION_JOB_STATUSES);
     const statements = [];
     for (const job of jobs) {
       if (!/^[a-zA-Z0-9_-]{6,160}$/.test(job?.id || '') || !kinds.has(job?.kind) || !stages.has(job?.stage) || !statuses.has(job?.status)) {
@@ -767,12 +788,16 @@ async function handleJobsApi(request, env, url) {
       }
       statements.push(env.DB.prepare(
         `INSERT INTO egoric_jobs
-         (id, owner_email, project_id, kind, stage, label, status, progress, completed_units, total_units, resource_id, detail, error, attempts, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, owner_email, project_id, kind, stage, label, status, progress, completed_units, total_units,
+          resource_id, idempotency_key, provider_task_id, detail, error, attempts, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            label = excluded.label, status = excluded.status, progress = excluded.progress,
            completed_units = excluded.completed_units, total_units = excluded.total_units,
-           resource_id = excluded.resource_id, detail = excluded.detail, error = excluded.error,
+           resource_id = excluded.resource_id,
+           idempotency_key = COALESCE(excluded.idempotency_key, egoric_jobs.idempotency_key),
+           provider_task_id = COALESCE(excluded.provider_task_id, egoric_jobs.provider_task_id),
+           detail = excluded.detail, error = excluded.error,
            attempts = excluded.attempts, updated_at = excluded.updated_at
          WHERE egoric_jobs.owner_email = excluded.owner_email AND egoric_jobs.project_id = excluded.project_id`
       ).bind(
@@ -781,6 +806,8 @@ async function handleJobsApi(request, env, url) {
         Number.isFinite(Number(job.completedUnits)) ? Math.max(0, Number(job.completedUnits)) : null,
         Number.isFinite(Number(job.totalUnits)) ? Math.max(0, Number(job.totalUnits)) : null,
         String(job.resourceId || '').slice(0, 180) || null,
+        cleanText(job.idempotencyKey, 240) || null,
+        cleanText(job.providerTaskId, 240) || null,
         String(job.detail || '').slice(0, 1000) || null,
         String(job.error || '').slice(0, 1000) || null,
         Math.max(0, Number(job.attempts) || 0),
