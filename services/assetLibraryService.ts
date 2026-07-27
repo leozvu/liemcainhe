@@ -21,7 +21,9 @@ export const createLibraryItemFromCharacter = (character: Character): AssetLibra
     updatedAt: now,
     data: {
       ...character,
-      variations: (character.variations || []).map((v) => ({ ...v }))
+      variations: (character.variations || []).map((v) => ({ ...v })),
+      referencePack: character.referencePack?.map((reference) => ({ ...reference })),
+      lock: character.lock ? { ...character.lock } : undefined,
     }
   };
 };
@@ -43,6 +45,8 @@ export const cloneCharacterForProject = (character: Character): Character => {
     ...character,
     id: generateId('char'),
     variations: (character.variations || []).map(cloneCharacterVariation),
+    referencePack: character.referencePack?.map((reference) => ({ ...reference })),
+    lock: character.lock ? { ...character.lock } : undefined,
     status: character.referenceImage ? 'completed' : 'pending'
   };
 };

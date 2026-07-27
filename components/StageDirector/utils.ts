@@ -1,39 +1,10 @@
 import { Shot, ProjectState, Keyframe } from '../../types';
 import { VISUAL_STYLE_PROMPTS, VIDEO_PROMPT_TEMPLATES } from './constants';
 import { getCameraMovementCompositionGuide } from './cameraMovementGuides';
+import { buildShotReferenceImages } from '../../services/consistencyService';
 
 export const getRefImagesForShot = (shot: Shot, scriptData: ProjectState['scriptData']): string[] => {
-  const referenceImages: string[] = [];
-  
-  if (!scriptData) return referenceImages;
-  
-  // Ưu tiên ảnh bối cảnh, sau đó đến biến thể hoặc tạo hình cơ bản của nhân vật.
-  const scene = scriptData.scenes.find(s => String(s.id) === String(shot.sceneId));
-  if (scene?.referenceImage) {
-    referenceImages.push(scene.referenceImage);
-  }
-
-  if (shot.characters) {
-    shot.characters.forEach(charId => {
-      const char = scriptData.characters.find(c => String(c.id) === String(charId));
-      if (!char) return;
-
-      const varId = shot.characterVariations?.[charId];
-      if (varId) {
-        const variation = char.variations?.find(v => v.id === varId);
-        if (variation?.referenceImage) {
-          referenceImages.push(variation.referenceImage);
-          return;
-        }
-      }
-
-      if (char.referenceImage) {
-        referenceImages.push(char.referenceImage);
-      }
-    });
-  }
-  
-  return referenceImages;
+  return buildShotReferenceImages(shot, scriptData);
 };
 
 export const buildKeyframePrompt = (

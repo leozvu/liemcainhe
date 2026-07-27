@@ -1,4 +1,5 @@
 import {
+  AspectRatio,
   Character,
   CharacterReference,
   GenerationLock,
@@ -108,7 +109,10 @@ export const addReference = (
     ...character,
     referencePack: [
       ...pack,
-      { ...reference, id: reference.id ?? `${character.id}-ref-${pack.length + 1}` },
+      {
+        ...reference,
+        id: reference.id ?? `${character.id}-ref-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      },
     ],
   };
 };
@@ -120,6 +124,51 @@ export const approveReference = (character: Character, referenceId: string): Cha
     item.id === referenceId ? { ...item, approved: true } : item,
   ),
 });
+
+/** Xoá một ảnh phụ khỏi bộ tham chiếu. Ảnh gốc `referenceImage` không nằm trong mảng này. */
+export const removeReference = (character: Character, referenceId: string): Character => ({
+  ...character,
+  referencePack: (character.referencePack ?? []).filter((item) => item.id !== referenceId),
+});
+
+/**
+ * Dựng danh sách ảnh thực sự gửi vào lượt sinh keyframe.
+ *
+ * Bối cảnh đứng đầu như contract cũ. Với mỗi nhân vật, biến thể trang phục
+ * đứng trước bộ ảnh nhiều góc; `pickReferences` tự chọn góc hợp với cỡ cảnh.
+ * Danh sách cuối vẫn bị chặn ở `MAX_REFERENCES_PER_CALL` để tránh trộn mặt.
+ */
+export const buildShotReferenceImages = (
+  shot: Shot,
+  scriptData: ProjectState['scriptData'],
+  additionalImages: string[] = [],
+  limit = MAX_REFERENCES_PER_CALL,
+): string[] => {
+  if (!scriptData) return Array.from(new Set(additionalImages.filter(Boolean))).slice(0, limit);
+
+  const urls: string[] = [];
+  const push = (url?: string) => {
+    if (url && !urls.includes(url)) urls.push(url);
+  };
+
+  const scene = scriptData.scenes.find((item) => String(item.id) === String(shot.sceneId));
+  push(scene?.referenceImage);
+
+  for (const characterId of shot.characters ?? []) {
+    const character = scriptData.characters.find((item) => String(item.id) === String(characterId));
+    if (!character) continue;
+
+    const variationId = shot.characterVariations?.[characterId];
+    const variation = variationId
+      ? character.variations.find((item) => String(item.id) === String(variationId))
+      : undefined;
+    push(variation?.referenceImage);
+    pickReferences(character, shot).forEach((reference) => push(reference.imageUrl));
+  }
+
+  additionalImages.forEach(push);
+  return urls.slice(0, Math.max(1, limit));
+};
 
 /* ─────────────────────────  Khoá tham số sinh  ───────────────────────── */
 
@@ -152,9 +201,34 @@ export const resolveLockedModel = (
   characters: Character[],
   requestedModelId: string,
 ): { modelId: string; lockedBy?: string } => {
-  const locked = characters.find((character) => character.lock?.modelId);
-  if (!locked?.lock) return { modelId: requestedModelId };
-  return { modelId: locked.lock.modelId, lockedBy: locked.name };
+  const resolved = resolveGenerationParams(characters, requestedModelId);
+  return { modelId: resolved.modelId, lockedBy: resolved.lockedBy };
+};
+
+/** Khoá model và tỷ lệ ở đúng entry point sinh ảnh; seed được giữ để dùng khi adapter hỗ trợ. */
+export const resolveGenerationParams = (
+  characters: Character[],
+  requestedModelId: string,
+  requestedAspectRatio?: AspectRatio,
+): { modelId: string; aspectRatio?: AspectRatio; seed?: number; lockedBy?: string } => {
+  const lockedCharacters = characters.filter((character) => character.lock?.modelId);
+  const signatures = new Set(lockedCharacters.map((character) => [
+    character.lock!.modelId,
+    character.lock!.aspectRatio ?? '',
+    character.lock!.seed ?? '',
+  ].join('|')));
+  if (signatures.size > 1) {
+    throw new Error(`Các nhân vật ${lockedCharacters.map((character) => character.name).join(', ')} đang khóa tham số khác nhau. Hãy dùng cùng model/tỷ lệ hoặc mở khóa trước khi sinh.`);
+  }
+
+  const locked = lockedCharacters[0];
+  if (!locked?.lock) return { modelId: requestedModelId, aspectRatio: requestedAspectRatio };
+  return {
+    modelId: locked.lock.modelId,
+    aspectRatio: locked.lock.aspectRatio ?? requestedAspectRatio,
+    seed: locked.lock.seed,
+    lockedBy: locked.name,
+  };
 };
 
 /* ─────────────────────────  Đồ thị phụ thuộc  ───────────────────────── */

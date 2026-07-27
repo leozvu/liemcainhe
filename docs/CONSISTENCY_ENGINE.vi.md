@@ -69,6 +69,23 @@ Khoá chỉ áp khi người dùng chủ động khoá, nên không cản trở 
 
 `assessCharacterReadiness` chấm độ sẵn sàng của nhân vật: bao nhiêu ảnh, đủ góc chưa, đã khoá model chưa. Dùng để cảnh báo **trước khi** chạy Video Factory, thay vì phát hiện lệch mặt sau khi đã dựng xong hai mươi shot.
 
+## Đã nối vào workflow thật
+
+Entry point nằm tại **Nhân vật & bối cảnh → thẻ nhân vật → Nhất quán nhân vật**.
+Tại đây người dùng có thể:
+
+- thêm ảnh chính diện, ba phần tư, nghiêng hoặc sau lưng;
+- duyệt hoặc xóa từng ảnh phụ;
+- xem các lỗ hổng trước khi sinh hàng loạt;
+- khóa model và tỷ lệ đang dùng, hoặc chủ động mở khóa.
+
+Stage Director và nhiệm vụ tự động của Trợ lý Đạo diễn nay gọi `pickReferences`
+trước khi sinh keyframe, đưa đúng reference pack vào request và áp model/tỷ lệ
+đã khóa. Batch keyframe cảnh báo trước khi chạy nếu nhân vật chưa sẵn sàng.
+
+Reference pack cũng được sao lưu cloud, đi theo thư viện tài nguyên và có trong
+gói ZIP nguồn; ảnh nhiều góc không còn bị mắc kẹt trên một thiết bị.
+
 ## Kiểm chứng
 
 ```bash

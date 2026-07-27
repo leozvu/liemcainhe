@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Sparkles, RefreshCw, Loader2, MapPin, Archive, X, Search, Trash2 } from 'lucide-react';
-import { ProjectState, CharacterVariation, Character, Scene, AspectRatio, AssetLibraryItem } from '../../types';
+import { ProjectState, CharacterVariation, Character, Scene, AspectRatio, AssetLibraryItem, ReferenceAngle } from '../../types';
 import { generateImage, generateVisualPrompts } from '../../services/geminiService';
-import { 
+import {
   getRegionalPrefix, 
   handleImageUpload, 
   getProjectLanguage, 
@@ -32,6 +32,15 @@ import {
   patchProductionJob,
   setProductionJobStatus,
 } from '../../services/workflowService';
+import {
+  addReference,
+  approveReference,
+  lockGenerationParams,
+  pickReferences,
+  removeReference,
+  resolveGenerationParams,
+  unlockGenerationParams,
+} from '../../services/consistencyService';
 
 interface Props {
   project: ProjectState;
@@ -91,6 +100,70 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           : state.scriptData.scenes,
       },
     };
+  };
+
+  const updateCharacterConsistency = (
+    characterId: string,
+    transform: (character: Character) => Character,
+  ) => {
+    updateProject((previous) => {
+      if (!previous.scriptData) return previous;
+      const next: ProjectState = {
+        ...previous,
+        scriptData: {
+          ...previous.scriptData,
+          characters: previous.scriptData.characters.map((character) =>
+            compareIds(character.id, characterId) ? transform(character) : character,
+          ),
+        },
+      };
+      return markDependentShotsStale(next, 'character', characterId);
+    });
+  };
+
+  const handleAddCharacterReference = async (
+    characterId: string,
+    file: File,
+    angle: ReferenceAngle,
+  ) => {
+    try {
+      const imageUrl = await handleImageUpload(file);
+      updateCharacterConsistency(characterId, (character) => addReference(character, {
+        imageUrl,
+        angle,
+        approved: false,
+        addedAt: Date.now(),
+      }));
+      showAlert('Đã thêm ảnh tham chiếu. Hãy duyệt ảnh nếu nhận diện đúng.', { type: 'success' });
+    } catch (error: any) {
+      showAlert(error?.message || 'Không thể thêm ảnh tham chiếu.', { type: 'error' });
+    }
+  };
+
+  const handleApproveCharacterReference = (characterId: string, referenceId: string) => {
+    updateCharacterConsistency(characterId, (character) => approveReference(character, referenceId));
+  };
+
+  const handleRemoveCharacterReference = (characterId: string, referenceId: string) => {
+    showAlert('Xóa ảnh này khỏi bộ tham chiếu nhân vật?', {
+      type: 'warning',
+      showCancel: true,
+      onConfirm: () => updateCharacterConsistency(
+        characterId,
+        (character) => removeReference(character, referenceId),
+      ),
+    });
+  };
+
+  const handleLockCharacterGeneration = (characterId: string) => {
+    updateCharacterConsistency(characterId, (character) => lockGenerationParams(character, {
+      modelId: selectedImageModelId,
+      aspectRatio,
+    }));
+  };
+
+  const handleUnlockCharacterGeneration = (characterId: string) => {
+    updateCharacterConsistency(characterId, unlockGenerationParams);
   };
 
   // Khôi phục tác vụ bị gián đoạn để người dùng có thể tạo lại sau khi mở trang.
@@ -194,13 +267,22 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
 
       const regionalPrefix = getRegionalPrefix(language, type);
       const enhancedPrompt = regionalPrefix + prompt;
+      const character = type === 'character' ? currentAsset as Character | undefined : undefined;
+      const generation = resolveGenerationParams(
+        character ? [character] : [],
+        selectedImageModelId,
+        aspectRatio,
+      );
+      const referenceImages = character
+        ? pickReferences(character).map((reference) => reference.imageUrl)
+        : [];
 
       await generateImage(
         enhancedPrompt,
-        [],
-        aspectRatio,
+        referenceImages,
+        generation.aspectRatio || aspectRatio,
         false,
-        selectedImageModelId,
+        generation.modelId,
         `asset:${type}:${id}`,
         createProjectMediaExecutionContext({
           project,
@@ -598,16 +680,17 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       updateProject({ scriptData: newData });
     }
     try {
-      const refImages = char.referenceImage ? [char.referenceImage] : [];
+      const refImages = pickReferences(char).map((reference) => reference.imageUrl);
+      const generation = resolveGenerationParams([char], selectedImageModelId, aspectRatio);
       const regionalPrefix = getRegionalPrefix(language, 'character');
       const enhancedPrompt = `${regionalPrefix}Nhân vật "${char.name}" mặc TRANG PHỤC MỚI: ${variation.visualPrompt}. Đây chỉ là thay đổi trang phục; khuôn mặt và danh tính nhân vật phải giống hệt ảnh tham chiếu, đồng thời mặc đúng bộ đồ được mô tả.`;
       
       await generateImage(
         enhancedPrompt,
         refImages,
-        aspectRatio,
+        generation.aspectRatio || aspectRatio,
         true,
-        selectedImageModelId,
+        generation.modelId,
         `asset:character:${charId}:variation:${varId}`,
         createProjectMediaExecutionContext({
           project,
@@ -960,6 +1043,13 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 onUpdateInfo={(updates) => handleUpdateCharacterInfo(char.id, updates)}
                 onAddToLibrary={() => handleAddCharacterToLibrary(char)}
                 onReplaceFromLibrary={() => openLibrary('character', char.id)}
+                currentModelId={selectedImageModelId}
+                currentAspectRatio={aspectRatio}
+                onAddReference={(file, angle) => handleAddCharacterReference(char.id, file, angle)}
+                onApproveReference={(referenceId) => handleApproveCharacterReference(char.id, referenceId)}
+                onRemoveReference={(referenceId) => handleRemoveCharacterReference(char.id, referenceId)}
+                onLockGeneration={() => handleLockCharacterGeneration(char.id)}
+                onUnlockGeneration={() => handleUnlockCharacterGeneration(char.id)}
               />
             ))}
           </div>

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { User, Check, Sparkles, Loader2, Shirt, Trash2, Edit2, AlertCircle, FolderPlus } from 'lucide-react';
-import { Character } from '../../types';
+import { AspectRatio, Character, ReferenceAngle } from '../../types';
 import PromptEditor from './PromptEditor';
 import ImageUploadButton from './ImageUploadButton';
+import CharacterConsistencyPanel from './CharacterConsistencyPanel';
 
 interface CharacterCardProps {
   character: Character;
@@ -16,6 +17,13 @@ interface CharacterCardProps {
   onUpdateInfo: (updates: { name?: string; gender?: string; age?: string; personality?: string }) => void;
   onAddToLibrary: () => void;
   onReplaceFromLibrary: () => void;
+  currentModelId: string;
+  currentAspectRatio: AspectRatio;
+  onAddReference: (file: File, angle: ReferenceAngle) => void | Promise<void>;
+  onApproveReference: (referenceId: string) => void;
+  onRemoveReference: (referenceId: string) => void;
+  onLockGeneration: () => void;
+  onUnlockGeneration: () => void;
 }
 
 const CharacterCard: React.FC<CharacterCardProps> = ({
@@ -30,6 +38,13 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
   onUpdateInfo,
   onAddToLibrary,
   onReplaceFromLibrary,
+  currentModelId,
+  currentAspectRatio,
+  onAddReference,
+  onApproveReference,
+  onRemoveReference,
+  onLockGeneration,
+  onUnlockGeneration,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingGender, setIsEditingGender] = useState(false);
@@ -229,6 +244,19 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
             placeholder="Nhập mô tả hình ảnh nhân vật..."
           />
         </div>
+
+        <CharacterConsistencyPanel
+          character={character}
+          currentModelId={currentModelId}
+          currentAspectRatio={currentAspectRatio}
+          disabled={isGenerating}
+          onAddReference={onAddReference}
+          onApproveReference={onApproveReference}
+          onRemoveReference={onRemoveReference}
+          onLock={onLockGeneration}
+          onUnlock={onUnlockGeneration}
+          onImageClick={onImageClick}
+        />
 
         <button
           onClick={onGenerate}
