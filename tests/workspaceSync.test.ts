@@ -250,7 +250,7 @@ describe('chạy đồng bộ', () => {
     };
 
     const outcomes = await syncAllCollections(store, flaky);
-    expect(outcomes).toHaveLength(5);
+    expect(outcomes).toHaveLength(6);
     expect(outcomes[0].error).toBeDefined();
     expect(outcomes.slice(1).every((outcome) => !outcome.error)).toBe(true);
   });
@@ -261,6 +261,11 @@ describe('mỗi kho một hình dạng', () => {
     const record = toSyncRecord('agencyClients', { id: 'c1', updatedAt: 42, name: 'Hạnh' });
     expect(record.id).toBe('c1');
     expect(record.updatedAt).toBe(42);
+  });
+
+  it('Campaign 0 dùng campaignId làm khóa cloud', () => {
+    const record = toSyncRecord('campaignZeroRuns', { campaignId: 'campaign_0', updatedAt: 84, status: 'running' });
+    expect(record).toMatchObject({ id: 'campaign_0', updatedAt: 84 });
   });
 
   it('sổ cái đăng bài khoá theo fingerprint, KHÔNG phải id', () => {
@@ -281,7 +286,7 @@ describe('mỗi kho một hình dạng', () => {
     expect(toSyncRecord('agencyClients', { id: 'c1' }).updatedAt).toBe(0);
   });
 
-  it('cả năm bộ đều có hình dạng khai báo sẵn', () => {
+  it('mọi bộ workspace đều có hình dạng khai báo sẵn', () => {
     expect(Object.keys(COLLECTION_SHAPES).sort()).toEqual([...WORKSPACE_COLLECTIONS].sort());
   });
 });

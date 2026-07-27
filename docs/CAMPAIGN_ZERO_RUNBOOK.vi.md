@@ -48,6 +48,10 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 - Dashboard hiển thị chi phí telemetry là ước tính. Số dư provider trước/sau là bằng chứng đối soát.
 - Nếu chi phí thực tế lớn hơn telemetry, ghi nhận chênh lệch rồi điều tra billable attempt; không sửa số liệu cho khớp bằng tay.
 
-## Giới hạn hiện tại
+## Dữ liệu và đồng bộ
 
-Runbook Campaign 0 được lưu trên trình duyệt đang chạy. Team phải hoàn tất Golden Run trên cùng một thiết bị cho tới khi hợp đồng sync của runbook được đưa lên workspace cloud.
+- Runbook được lưu trước vào IndexedDB để thao tác không mất dữ liệu khi mạng chập chờn.
+- Trên bản production, app tự hợp nhất bản mới nhất lên workspace cloud khi mở hoặc lưu Campaign 0.
+- Nút **Đồng bộ ngay** cho phép thử lại chủ động. Nếu cloud lỗi, panel ghi rõ dữ liệu vẫn an toàn trên máy.
+- Các run cũ từng nằm trong `localStorage` được chuyển sang kho mới ở lần mở đầu tiên.
+- Xung đột giữa hai thiết bị được giải quyết bằng `updatedAt`; nếu cùng mốc, hai bên dùng cùng quy tắc phân thắng để không đồng bộ qua lại vô hạn.

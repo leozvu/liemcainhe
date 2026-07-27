@@ -2,6 +2,14 @@ import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import { getBrandKitReadiness } from './brandKitService';
 import { getCampaignBriefReadiness } from './campaignService';
 import { TelemetryDryRunReport, UsageRecord } from './usageService';
+import { readWorkspaceStore, writeWorkspaceStore } from './storageService';
+import {
+  cloudTransport,
+  indexedDbSyncStore,
+  LocalStore,
+  syncCollection,
+  SyncTransport,
+} from './workspaceSyncService';
 
 export type CampaignZeroStatus = 'running' | 'completed';
 export type CampaignZeroStage = 'brief' | 'pre-production' | 'production' | 'review' | 'editing' | 'delivery' | 'operations';
@@ -54,7 +62,7 @@ export interface CampaignZeroSnapshot {
 }
 
 const STORAGE_KEY = 'egoric_campaign_zero_runs_v1';
-const MAX_RUNS = 50;
+const STORE_NAME = 'campaignZeroRuns';
 const createId = (prefix: string, at: number): string => `${prefix}_${at.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const finiteAmount = (value?: number): number | undefined => Number.isFinite(value) ? Math.max(0, Number(value)) : undefined;
 
@@ -83,7 +91,7 @@ const normalizeRun = (value: Partial<CampaignZeroRun>): CampaignZeroRun | undefi
   };
 };
 
-const readRuns = (): CampaignZeroRun[] => {
+const readLegacyRuns = (): CampaignZeroRun[] => {
   if (typeof localStorage === 'undefined') return [];
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -93,19 +101,79 @@ const readRuns = (): CampaignZeroRun[] => {
   }
 };
 
-export const loadCampaignZeroRun = (campaignId: string): CampaignZeroRun | undefined =>
-  readRuns().find((run) => run.campaignId === campaignId);
+let migrationPromise: Promise<void> | undefined;
 
-export const saveCampaignZeroRun = (run: CampaignZeroRun): CampaignZeroRun => {
+const migrateLegacyCampaignZeroRuns = async (): Promise<void> => {
+  if (migrationPromise) return migrationPromise;
+  migrationPromise = (async () => {
+    if (typeof indexedDB === 'undefined') return;
+    const legacy = readLegacyRuns();
+    if (!legacy.length) return;
+    const current = await readWorkspaceStore<CampaignZeroRun>(STORE_NAME);
+    const byCampaign = new Map(current.map((run) => [run.campaignId, run]));
+    legacy.forEach((run) => {
+      const saved = byCampaign.get(run.campaignId);
+      if (!saved || run.updatedAt > saved.updatedAt) byCampaign.set(run.campaignId, run);
+    });
+    await writeWorkspaceStore(STORE_NAME, Array.from(byCampaign.values()));
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* Bản IndexedDB đã an toàn. */ }
+  })();
+  return migrationPromise;
+};
+
+const loadCampaignZeroRuns = async (): Promise<CampaignZeroRun[]> => {
+  if (typeof indexedDB === 'undefined') return readLegacyRuns();
+  await migrateLegacyCampaignZeroRuns();
+  const rows = await readWorkspaceStore<CampaignZeroRun>(STORE_NAME);
+  return rows
+    .map(normalizeRun)
+    .filter((run): run is CampaignZeroRun => Boolean(run))
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+};
+
+export const loadCampaignZeroRun = async (campaignId: string): Promise<CampaignZeroRun | undefined> =>
+  (await loadCampaignZeroRuns()).find((run) => run.campaignId === campaignId);
+
+export const saveCampaignZeroRun = async (run: CampaignZeroRun): Promise<CampaignZeroRun> => {
   const normalized = normalizeRun(run);
   if (!normalized) throw new Error('Dữ liệu Campaign 0 không hợp lệ.');
-  if (typeof localStorage !== 'undefined') {
-    const next = [normalized, ...readRuns().filter((item) => item.campaignId !== normalized.campaignId)]
-      .sort((left, right) => right.updatedAt - left.updatedAt)
-      .slice(0, MAX_RUNS);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  if (typeof indexedDB === 'undefined') {
+    if (typeof localStorage !== 'undefined') {
+      const next = [normalized, ...readLegacyRuns().filter((item) => item.campaignId !== normalized.campaignId)];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    }
+    return normalized;
   }
+  await migrateLegacyCampaignZeroRuns();
+  await writeWorkspaceStore(STORE_NAME, [normalized]);
   return normalized;
+};
+
+export type CampaignZeroCloudPhase = 'synced' | 'local-only' | 'error';
+
+export interface CampaignZeroSyncReport {
+  phase: CampaignZeroCloudPhase;
+  pulled: number;
+  pushed: number;
+  error?: string;
+}
+
+export const syncCampaignZeroRuns = async (options: {
+  hosted?: boolean;
+  full?: boolean;
+  store?: LocalStore;
+  transport?: SyncTransport;
+} = {}): Promise<CampaignZeroSyncReport> => {
+  const hosted = options.hosted ?? (typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site'));
+  if (!hosted) return { phase: 'local-only', pulled: 0, pushed: 0 };
+  const outcome = await syncCollection(
+    'campaignZeroRuns',
+    options.store ?? indexedDbSyncStore,
+    options.transport ?? cloudTransport,
+    options.full ? { since: 0 } : undefined,
+  );
+  if (outcome.error) return { phase: 'error', pulled: 0, pushed: 0, error: outcome.error };
+  return { phase: 'synced', pulled: outcome.pulled, pushed: outcome.pushed };
 };
 
 export const createCampaignZeroRun = (campaignId: string, at = Date.now()): CampaignZeroRun => {

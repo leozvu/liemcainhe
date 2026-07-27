@@ -1,8 +1,8 @@
 /**
  * Đồng bộ dữ liệu cấp workspace lên cloud.
  *
- * Năm bộ dữ liệu — khách hàng, chiến dịch, thư viện bài, sổ cái đăng bài, sổ
- * tài khoản đăng bài — trước đây chỉ nằm trong IndexedDB của đúng một trình
+ * Sáu bộ dữ liệu — khách hàng, chiến dịch, Campaign 0, thư viện bài, sổ cái
+ * đăng bài, sổ tài khoản đăng bài — trước đây chỉ nằm trong IndexedDB của đúng một trình
  * duyệt. `syncProjectToCloud` có sẵn nhưng chỉ chạy khi người dùng bấm nút, và
  * nó chỉ đồng bộ **dự án**, không đụng tới năm bộ này.
  *
@@ -24,7 +24,8 @@ export type WorkspaceCollection =
   | 'agencyCampaigns'
   | 'articleLibrary'
   | 'publishLedger'
-  | 'managedAccounts';
+  | 'managedAccounts'
+  | 'campaignZeroRuns';
 
 export const WORKSPACE_COLLECTIONS: WorkspaceCollection[] = [
   'agencyClients',
@@ -32,6 +33,7 @@ export const WORKSPACE_COLLECTIONS: WorkspaceCollection[] = [
   'articleLibrary',
   'publishLedger',
   'managedAccounts',
+  'campaignZeroRuns',
 ];
 
 /** Một bản ghi bất kỳ, đã chuẩn hoá về dạng đồng bộ hiểu được. */
@@ -248,7 +250,7 @@ export const syncCollection = async (
   }
 };
 
-/** Đồng bộ cả năm bộ. Một bộ hỏng không làm dừng các bộ còn lại. */
+/** Đồng bộ toàn bộ kho workspace. Một bộ hỏng không làm dừng các bộ còn lại. */
 export const syncAllCollections = async (
   store: LocalStore,
   transport: SyncTransport,
@@ -282,6 +284,7 @@ export const COLLECTION_SHAPES: Record<WorkspaceCollection, CollectionShape> = {
   agencyCampaigns: { store: 'agencyCampaigns', key: 'id', timestamp: (item) => Number(item.updatedAt) || 0 },
   articleLibrary: { store: 'articleLibrary', key: 'id', timestamp: (item) => Number(item.updatedAt) || 0 },
   managedAccounts: { store: 'managedAccounts', key: 'id', timestamp: (item) => Number(item.updatedAt) || 0 },
+  campaignZeroRuns: { store: 'campaignZeroRuns', key: 'campaignId', timestamp: (item) => Number(item.updatedAt) || 0 },
   publishLedger: {
     store: 'publishLedger',
     key: 'fingerprint',

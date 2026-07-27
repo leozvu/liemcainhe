@@ -121,6 +121,7 @@ const WORKSPACE_COLLECTIONS = new Set([
   'articleLibrary',
   'publishLedger',
   'managedAccounts',
+  'campaignZeroRuns',
 ]);
 const safeCollection = (value) => (WORKSPACE_COLLECTIONS.has(value) ? value : null);
 const safeReviewToken = (value) => /^[a-zA-Z0-9_-]{40,180}$/.test(value || '') ? value : null;
@@ -263,9 +264,9 @@ async function handleCloudApi(request, env, url) {
   }
 
   /**
-   * Dữ liệu cấp workspace: khách hàng, chiến dịch, thư viện bài, sổ cái đăng
-   * bài, sổ tài khoản. Năm bộ này trước đây chỉ nằm trong IndexedDB của đúng
-   * một trình duyệt.
+   * Dữ liệu cấp workspace: khách hàng, chiến dịch, Campaign 0, thư viện bài,
+   * sổ cái đăng bài và sổ tài khoản. Các bộ này trước đây chỉ nằm trong
+   * IndexedDB của đúng một trình duyệt.
    *
    * `deleted_at` là bia mộ: xoá mà không để lại dấu thì máy khác sẽ đẩy bản ghi
    * cũ lên lại và thứ vừa xoá sống dậy.
