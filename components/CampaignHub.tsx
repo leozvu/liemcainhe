@@ -67,6 +67,10 @@ import CampaignPreProduction from './CampaignPreProduction';
 import CampaignZeroPanel from './CampaignZeroPanel';
 import BrandKitEditor from './BrandKitEditor';
 import { getBrandKitReadiness, normalizeBrandKit } from '../services/brandKitService';
+import {
+  WORKSPACE_SYNC_APPLIED_EVENT,
+  WorkspaceSyncAppliedDetail,
+} from '../services/workspaceSyncCoordinatorService';
 
 interface CampaignHubProps {
   projects: ProjectState[];
@@ -191,8 +195,8 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
   const [showPreProduction, setShowPreProduction] = useState(false);
   const [brandKitClientId, setBrandKitClientId] = useState<string | null>(null);
 
-  const reloadWorkspace = async () => {
-    setIsLoading(true);
+  const reloadWorkspace = async (background = false) => {
+    if (!background) setIsLoading(true);
     try {
       const [nextClients, nextCampaigns] = await Promise.all([getAllAgencyClients(), getAllAgencyCampaigns()]);
       setClients(nextClients);
@@ -200,11 +204,22 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể tải Campaign Hub.', { type: 'error' });
     } finally {
-      setIsLoading(false);
+      if (!background) setIsLoading(false);
     }
   };
 
   useEffect(() => { void reloadWorkspace(); }, []);
+
+  useEffect(() => {
+    const refreshAfterCloudMerge = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceSyncAppliedDetail>).detail;
+      if (detail?.collections.some((collection) => collection === 'agencyClients' || collection === 'agencyCampaigns')) {
+        void reloadWorkspace(true);
+      }
+    };
+    window.addEventListener(WORKSPACE_SYNC_APPLIED_EVENT, refreshAfterCloudMerge);
+    return () => window.removeEventListener(WORKSPACE_SYNC_APPLIED_EVENT, refreshAfterCloudMerge);
+  }, []);
 
   const clientsById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const projectsById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);

@@ -316,7 +316,9 @@ async function handleCloudApi(request, env, url) {
              payload_json = excluded.payload_json,
              updated_at = excluded.updated_at,
              deleted_at = excluded.deleted_at
-           WHERE excluded.updated_at >= egoric_workspace_items.updated_at`
+           WHERE excluded.updated_at > egoric_workspace_items.updated_at
+              OR (excluded.updated_at = egoric_workspace_items.updated_at
+                  AND excluded.payload_json >= egoric_workspace_items.payload_json)`
         ).bind(email, collection, record.id.slice(0, 200), payload, updatedAt, deletedAt)
       );
     }

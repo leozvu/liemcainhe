@@ -24,6 +24,7 @@ import {
 } from '../services/content/managedAccountService';
 import { getPublishSecret, setPublishSecret } from '../services/credentialVault';
 import { getAllAgencyClients } from '../services/storageService';
+import { WORKSPACE_SYNC_APPLIED_EVENT, WorkspaceSyncAppliedDetail } from '../services/workspaceSyncCoordinatorService';
 
 /**
  * Sổ tài khoản đăng bài.
@@ -66,6 +67,18 @@ const ManagedAccountsPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => 
 
   useEffect(() => {
     if (isActive) void refresh();
+  }, [isActive, refresh]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const refreshAfterCloudMerge = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceSyncAppliedDetail>).detail;
+      if (detail?.collections.some((collection) => collection === 'managedAccounts' || collection === 'agencyClients')) {
+        void refresh();
+      }
+    };
+    window.addEventListener(WORKSPACE_SYNC_APPLIED_EVENT, refreshAfterCloudMerge);
+    return () => window.removeEventListener(WORKSPACE_SYNC_APPLIED_EVENT, refreshAfterCloudMerge);
   }, [isActive, refresh]);
 
   const warnings = useMemo(() => collectAccountWarnings(accounts), [accounts]);

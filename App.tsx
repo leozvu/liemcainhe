@@ -15,6 +15,7 @@ import { setPreflightBrandKit } from './services/promptPreflight';
 import { createProductionDemoProject } from './services/demoProjectService';
 import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobService';
 import { syncLinkedCampaignFromProject } from './services/productionControlService';
+import { startWorkspaceAutoSync } from './services/workspaceSyncCoordinatorService';
 
 const StageContent = React.lazy(() => import('./components/StageContent'));
 const StageScript = React.lazy(() => import('./components/StageScript'));
@@ -56,6 +57,8 @@ function App() {
       setShowOnboarding(true);
     }
   }, []);
+
+  useEffect(() => startWorkspaceAutoSync(), []);
 
   const handleOnboardingComplete = () => {
     setShowOnboarding(false);

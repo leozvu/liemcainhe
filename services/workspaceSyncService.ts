@@ -15,6 +15,7 @@
 
 import {
   deleteFromWorkspaceStore,
+  readWorkspaceTombstones,
   readWorkspaceStore,
   writeWorkspaceStore,
 } from './storageService';
@@ -67,6 +68,16 @@ const serialize = (record: SyncRecord): string => JSON.stringify(record.payload 
 const winner = (left: SyncRecord, right: SyncRecord): SyncRecord => {
   if (left.updatedAt !== right.updatedAt) return left.updatedAt > right.updatedAt ? left : right;
   return serialize(left) >= serialize(right) ? left : right;
+};
+
+/** Thu gọn bản sống và bia mộ cục bộ về đúng một quyết định cho mỗi khóa. */
+export const collapseSyncRecords = (records: SyncRecord[]): SyncRecord[] => {
+  const collapsed = new Map<string, SyncRecord>();
+  records.forEach((record) => {
+    const current = collapsed.get(record.id);
+    collapsed.set(record.id, current ? winner(current, record) : record);
+  });
+  return Array.from(collapsed.values());
 };
 
 /**
@@ -218,10 +229,16 @@ export const syncCollection = async (
   const since = options.since ?? getSyncMark(collection);
 
   try {
-    const [local, remote] = await Promise.all([
+    const [allLocal, remote] = await Promise.all([
       store.readAll(collection),
       transport.pull(collection, since),
     ]);
+
+    // GET cloud theo mốc chỉ trả bản ghi mới đổi. Vì vậy local cũng phải lọc
+    // cùng mốc; nếu đưa toàn bộ local vào merge, mọi bản ghi cũ không xuất hiện
+    // trong response incremental sẽ bị hiểu nhầm là "cloud chưa biết" và bị
+    // upload lại mỗi phút.
+    const local = since > 0 ? changedSince(allLocal, since) : allLocal;
 
     const plan = mergeCollection(local, remote);
 
@@ -254,10 +271,11 @@ export const syncCollection = async (
 export const syncAllCollections = async (
   store: LocalStore,
   transport: SyncTransport,
+  options: { since?: number } = {},
 ): Promise<SyncOutcome[]> => {
   const outcomes: SyncOutcome[] = [];
   for (const collection of WORKSPACE_COLLECTIONS) {
-    outcomes.push(await syncCollection(collection, store, transport));
+    outcomes.push(await syncCollection(collection, store, transport, options));
   }
   return outcomes;
 };
@@ -311,8 +329,19 @@ export const toSyncRecord = (
 export const indexedDbSyncStore: LocalStore = {
   readAll: async (collection) => {
     const shape = COLLECTION_SHAPES[collection];
-    const rows = await readWorkspaceStore<Record<string, unknown>>(shape.store);
-    return rows.map((row) => toSyncRecord(collection, row));
+    const [rows, tombstones] = await Promise.all([
+      readWorkspaceStore<Record<string, unknown>>(shape.store),
+      readWorkspaceTombstones(collection),
+    ]);
+    return collapseSyncRecords([
+      ...rows.map((row) => toSyncRecord(collection, row)),
+      ...tombstones.map((tombstone) => ({
+        id: tombstone.itemId,
+        updatedAt: tombstone.updatedAt,
+        deletedAt: tombstone.deletedAt,
+        payload: null,
+      })),
+    ]);
   },
 
   write: async (collection, records) => {

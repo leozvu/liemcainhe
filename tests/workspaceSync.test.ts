@@ -8,6 +8,7 @@ import {
   WorkspaceCollection,
   changedSince,
   clearSyncMarks,
+  collapseSyncRecords,
   describeSyncOutcomes,
   getSyncMark,
   highWaterMark,
@@ -86,6 +87,11 @@ describe('hợp nhất hai phía', () => {
 });
 
 describe('bia mộ', () => {
+  it('kho local thu gọn bản sống và bia mộ theo đúng mốc mới nhất', () => {
+    expect(collapseSyncRecords([rec('a', 10), tomb('a', 20)])).toEqual([tomb('a', 20)]);
+    expect(collapseSyncRecords([tomb('a', 20), rec('a', 30)])).toEqual([rec('a', 30)]);
+  });
+
   it('cloud báo đã xoá thì xoá luôn ở máy', () => {
     const plan = mergeCollection([rec('a', 10)], [tomb('a', 20)]);
     expect(plan.toDeleteLocal).toEqual(['a']);
@@ -235,6 +241,15 @@ describe('chạy đồng bộ', () => {
     const { store } = makeStore({ agencyClients: [rec('a', 70)] });
     await syncCollection('agencyClients', store, makeTransport([rec('b', 90)]));
     expect(getSyncMark('agencyClients')).toBe(90);
+  });
+
+  it('incremental không upload lại bản local cũ chỉ vì cloud không trả nó về', async () => {
+    setSyncMark('agencyClients', 100);
+    const { store } = makeStore({ agencyClients: [rec('old', 90), rec('new', 110)] });
+    const transport = makeTransport();
+    const result = await syncCollection('agencyClients', store, transport);
+    expect(result.pushed).toBe(1);
+    expect(transport.pushed.map((row) => row.id)).toEqual(['new']);
   });
 
   it('một bộ hỏng không làm dừng các bộ còn lại', async () => {

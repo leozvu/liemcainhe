@@ -20,6 +20,7 @@ import { describeInsights } from '../../services/content/insightsService';
 import { getPublishChannel } from '../../services/content/publishChannels';
 import { getPublishSecret } from '../../services/credentialVault';
 import { listAccounts } from '../../services/content/managedAccountService';
+import { WORKSPACE_SYNC_APPLIED_EVENT, WorkspaceSyncAppliedDetail } from '../../services/workspaceSyncCoordinatorService';
 
 interface Props {
   /** Bài đang mở, để lưu vào thư viện. Không có thì chỉ xem lại bài cũ. */
@@ -66,6 +67,17 @@ const ArticleLibrary: React.FC<Props> = ({
 
   useEffect(() => {
     void refresh();
+  }, []);
+
+  useEffect(() => {
+    const refreshAfterCloudMerge = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceSyncAppliedDetail>).detail;
+      if (detail?.collections.some((collection) => ['articleLibrary', 'publishLedger', 'managedAccounts'].includes(collection))) {
+        void refresh();
+      }
+    };
+    window.addEventListener(WORKSPACE_SYNC_APPLIED_EVENT, refreshAfterCloudMerge);
+    return () => window.removeEventListener(WORKSPACE_SYNC_APPLIED_EVENT, refreshAfterCloudMerge);
   }, []);
 
   const visible = useMemo(() => searchArticles(articles, query), [articles, query]);

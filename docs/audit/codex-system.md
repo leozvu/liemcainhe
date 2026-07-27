@@ -27,7 +27,7 @@ App có nhiều khung hệ thống đúng hướng, nhưng phần **bảo vệ t
 | Golden Workflow và entry point | 3–4 | Giữ, kiểm bằng Campaign 0 |
 | Lưu project cục bộ | 4 | Giữ |
 | Sao lưu project + media lên D1/R2 | 4 | Giữ, vẫn là thao tác tay |
-| Đồng bộ dữ liệu workspace | **2** | **Nối lại — gấp** |
+| Đồng bộ dữ liệu workspace | **4** | Đã nối autosync + recovery; cần test thực địa hai thiết bị để lên cấp 5 |
 | Job history và trạng thái gián đoạn | 3 | Sửa contract client/worker |
 | Chống gửi trùng job billable | **2** | **Nối vào mọi lời gọi media — gấp** |
 | Model routing và circuit breaker | 3 | Phủ hết đường gọi trực tiếp |
@@ -100,21 +100,22 @@ bàn giao tốt nhất hiện có và phải được chạy khô trước khi t
 
 ---
 
-## 4. Đồng bộ dữ liệu workspace — cấp 2, blocker dữ liệu
+## 4. Đồng bộ dữ liệu workspace — cấp 4, đã có entry point
 
 | Trường | Bằng chứng |
 |---|---|
-| Entry point | Campaign 0 tự đồng bộ khi mở/lưu và có nút **Đồng bộ ngay**; các kho workspace còn lại chưa có caller ở runtime |
+| Entry point | Trạng thái đồng bộ ở Dashboard và sidebar; Campaign 0 có nút **Đồng bộ ngay** |
 | Existing code | `workspaceSyncService.ts`, IndexedDB adapters, cloud transport, `/api/cloud/workspace` |
-| Integration | `campaignZeroRuns` gọi trực tiếp `syncCollection`; `syncAllCollections` vẫn chỉ được gọi trong test |
+| Integration | App root chạy `syncAllCollections` khi mở, online/focus, sau local write và theo heartbeat; Campaign 0 dùng chung coordinator |
 | Persistence | D1 migration và worker route đã có |
-| Real test | Chưa |
-| Measurement | Panel Campaign 0 hiển thị đang tải/đồng bộ/đã đồng bộ/local-only/lỗi; số pulled/pushed vẫn chưa đưa lên dashboard |
-| Blocking gap | Client, campaign, article, publish ledger và managed account chưa tự sync |
-| Decision | Campaign 0 đã có local-first, full pull và recovery thủ công; nối năm kho còn lại sau khi Golden Run xác nhận contract cloud ổn định |
+| Real test | Endpoint và Campaign 0 đã chạy production; test hai thiết bị với sửa/xóa thật còn chờ Golden Run |
+| Measurement | UI hiển thị syncing/synced/offline/local-only/error và số collection còn lỗi; controller giữ pulled/pushed/deleted |
+| Blocking gap | Chưa có field test hai thiết bị và compaction bia mộ lâu năm |
+| Decision | Giữ local-first + autosync; Campaign 0 phải kiểm tạo ở máy A, sửa/xóa ở máy B trước khi gọi là cấp 5 |
 
-Đây là ví dụ hệ thống tương ứng với Consistency Engine: code, adapter, endpoint
-và test đều có, nhưng không có caller nên người dùng nhận được **0 giá trị**.
+Mục này từng là ví dụ điển hình của tính năng có code nhưng không có caller.
+Coordinator và hai trạng thái UI nay là entry point thật; bước còn lại phải là
+bằng chứng thực địa hai thiết bị, không phải thêm một lớp service nữa.
 
 ---
 
@@ -302,8 +303,8 @@ trả tiền hai lần.
    `providerTaskId`.
 2. **Execution envelope:** mọi lời gọi billable có idempotency, provider task,
    usage event và trạng thái `unknown` khi mất kết nối.
-3. **Workspace sync entry point:** chạy nền có trạng thái, hoặc khóa Campaign 0
-   trên một thiết bị với cảnh báo rõ.
+3. ~~**Workspace sync entry point:**~~ đã có local-first autosync, trạng thái,
+   full recovery và bia mộ local; còn bước kiểm thực địa hai thiết bị.
 4. **Telemetry dry-run:** provider giả, zero-credit asset, review link và export;
    xác nhận mọi event trước một lời gọi thật.
 5. **CI:** chặn merge khi typecheck/test/build hỏng.
