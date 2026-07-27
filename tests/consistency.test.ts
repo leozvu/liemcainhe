@@ -4,6 +4,7 @@ import {
   addReference,
   approveReference,
   assessCharacterReadiness,
+  buildShotReferenceImages,
   buildDependencyGraph,
   classifyRegenerationScope,
   collectReferences,
@@ -11,6 +12,8 @@ import {
   getShotUpstreamSignature,
   lockGenerationParams,
   pickReferences,
+  removeReference,
+  resolveGenerationParams,
   resolveLockedModel,
   unlockGenerationParams,
 } from '../services/consistencyService';
@@ -79,6 +82,18 @@ describe('bộ ảnh tham chiếu', () => {
     c = approveReference(c, 'r1');
     expect(c.referencePack![0].approved).toBe(true);
   });
+
+  it('xóa đúng ảnh phụ mà không làm mất ảnh định trang gốc', () => {
+    const c = removeReference(character({
+      referenceImage: 'base',
+      referencePack: [
+        { id: 'r1', imageUrl: 'a', angle: 'front', approved: false, addedAt: 1 },
+        { id: 'r2', imageUrl: 'b', angle: 'profile', approved: false, addedAt: 2 },
+      ],
+    }), 'r1');
+    expect(c.referenceImage).toBe('base');
+    expect(c.referencePack?.map((item) => item.id)).toEqual(['r2']);
+  });
 });
 
 describe('chọn ảnh cho từng cỡ cảnh', () => {
@@ -142,6 +157,59 @@ describe('khoá tham số sinh', () => {
     const c = unlockGenerationParams(lockGenerationParams(character(), { modelId: 'x' }));
     expect(c.lock).toBeUndefined();
     expect(resolveLockedModel([c], 'tu-chon').modelId).toBe('tu-chon');
+  });
+
+  it('khóa áp cả model và tỷ lệ tại entry point sinh ảnh', () => {
+    const c = lockGenerationParams(character(), {
+      modelId: 'model-da-duyet',
+      aspectRatio: '9:16',
+      lockedAt: 1,
+    });
+    expect(resolveGenerationParams([c], 'model-moi', '16:9')).toMatchObject({
+      modelId: 'model-da-duyet',
+      aspectRatio: '9:16',
+      lockedBy: 'Hạnh',
+    });
+  });
+
+  it('chặn shot có hai nhân vật khóa tham số xung đột thay vì âm thầm chọn một', () => {
+    const first = lockGenerationParams(character({ name: 'Hạnh' }), { modelId: 'm1', aspectRatio: '9:16' });
+    const second = lockGenerationParams(character({ id: 'char_2', name: 'Minh' }), { modelId: 'm2', aspectRatio: '16:9' });
+    expect(() => resolveGenerationParams([first, second], 'm3', '1:1')).toThrow(/Hạnh, Minh/);
+  });
+});
+
+describe('ảnh tham chiếu thực sự gửi vào keyframe', () => {
+  it('đưa bối cảnh, biến thể và reference pack vào đúng luồng sinh', () => {
+    const data = project().scriptData!;
+    data.scenes[0].referenceImage = 'scene';
+    data.characters[0] = character({
+      referenceImage: 'base',
+      referencePack: [
+        { id: 'front', imageUrl: 'front', angle: 'front', approved: false, addedAt: 1 },
+        { id: 'profile', imageUrl: 'profile', angle: 'profile', approved: true, addedAt: 2 },
+      ],
+      variations: [{ id: 'look-1', name: 'Áo đỏ', visualPrompt: 'áo đỏ', referenceImage: 'wardrobe' }],
+    });
+    const target = shot({
+      shotSize: 'cận cảnh',
+      characterVariations: { char_1: 'look-1' },
+    });
+
+    expect(buildShotReferenceImages(target, data)).toEqual([
+      'scene',
+      'wardrobe',
+      'base',
+    ]);
+  });
+
+  it('khử trùng ảnh giữa nguồn cũ, reference pack và Brand Kit', () => {
+    const data = project().scriptData!;
+    data.characters[0] = character({
+      referenceImage: 'same',
+      referencePack: [{ id: 'same', imageUrl: 'same', angle: 'front', approved: true, addedAt: 1 }],
+    });
+    expect(buildShotReferenceImages(shot(), data, ['same', 'brand'])).toEqual(['same', 'brand']);
   });
 });
 

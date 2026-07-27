@@ -155,6 +155,11 @@ const collectMediaTasks = (project: ProjectState): { clone: ProjectState; tasks:
     add(character.referenceImage, `characters/${safeSegment(character.id)}.${extensionForDataUrl(character.referenceImage || '', 'jpg')}`, (url) => {
       clone.scriptData!.characters[charIndex].referenceImage = url;
     });
+    character.referencePack?.forEach((reference, referenceIndex) => {
+      add(reference.imageUrl, `characters/${safeSegment(character.id)}_ref_${safeSegment(reference.id)}.${extensionForDataUrl(reference.imageUrl, 'jpg')}`, (url) => {
+        clone.scriptData!.characters[charIndex].referencePack![referenceIndex].imageUrl = url;
+      });
+    });
     character.variations?.forEach((variation, variationIndex) => {
       add(variation.referenceImage, `characters/${safeSegment(character.id)}_${safeSegment(variation.id)}.${extensionForDataUrl(variation.referenceImage || '', 'jpg')}`, (url) => {
         clone.scriptData!.characters[charIndex].variations[variationIndex].referenceImage = url;

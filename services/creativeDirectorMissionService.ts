@@ -11,7 +11,8 @@ import {
   VoiceTake,
 } from '../types';
 import { generateImage, generateImageWithModel, generateVideoWithModel } from './modelService';
-import { getDefaultAspectRatio, getDefaultVideoDuration } from './modelRegistry';
+import { getActiveImageModel, getDefaultAspectRatio, getDefaultVideoDuration } from './modelRegistry';
+import { DEFAULT_IMAGE_MODEL_ID } from '../types/model';
 import { getUsagePolicy } from './usageService';
 import { createVoiceSourceHash, generateVoice } from './voiceService';
 import { getVoiceProvider, isVoiceProviderConfigured } from './voiceRegistry';
@@ -28,6 +29,11 @@ import {
   upsertProductionJob,
 } from './workflowService';
 import { checkMissionBudget, computeBudget } from './directorBriefingService';
+import {
+  buildShotReferenceImages,
+  pickReferences,
+  resolveGenerationParams,
+} from './consistencyService';
 import { saveProjectToDB } from './storageService';
 
 const createId = (prefix: string): string => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -477,21 +483,14 @@ const getFactoryModelId = (project: ProjectState, shot: Shot, type: 'image' | 'v
 
 const getReferenceImages = (project: ProjectState, shot: Shot): string[] => {
   if (!project.scriptData) return [];
-  const urls: string[] = [];
-  const scene = project.scriptData.scenes.find((item) => sameId(item.id, shot.sceneId));
-  if (scene?.referenceImage) urls.push(scene.referenceImage);
-  shot.characters.forEach((characterId) => {
-    const character = project.scriptData?.characters.find((item) => sameId(item.id, characterId));
-    const variationId = shot.characterVariations?.[characterId];
-    const variation = variationId ? character?.variations.find((item) => sameId(item.id, variationId)) : undefined;
-    const url = variation?.referenceImage || character?.referenceImage;
-    if (url) urls.push(url);
-  });
   const brandContext = [shot.actionSummary, shot.dialogue || '', ...shot.characters.map((id) => (
     project.scriptData?.characters.find((item) => sameId(item.id, id))?.name || ''
   ))].join(' ');
-  urls.push(...getBrandAssetReferences(project, ['product', 'character', 'reference'], brandContext));
-  return Array.from(new Set(urls));
+  return buildShotReferenceImages(
+    shot,
+    project.scriptData,
+    getBrandAssetReferences(project, ['product', 'character', 'reference'], brandContext),
+  );
 };
 
 const buildKeyframePrompt = (project: ProjectState, shot: Shot, frameType: 'start' | 'end'): string => {
@@ -613,10 +612,19 @@ export const executeCreativeDirectorAction = async (
     const character = project.scriptData?.characters.find((item) => sameId(item.id, action.resourceId));
     if (!character) throw new Error('Không tìm thấy nhân vật cần tạo ảnh.');
     const prompt = buildCharacterPrompt(project, character);
-    await generateImage({
-      prompt,
-      referenceImages: getBrandAssetReferences(project, ['character', 'reference'], character.name),
+    const generation = resolveGenerationParams(
+      [character],
+      getActiveImageModel()?.id || DEFAULT_IMAGE_MODEL_ID,
       aspectRatio,
+    );
+    const referenceImages = Array.from(new Set([
+      ...pickReferences(character).map((reference) => reference.imageUrl),
+      ...getBrandAssetReferences(project, ['character', 'reference'], character.name),
+    ]));
+    await generateImageWithModel({
+      prompt,
+      referenceImages,
+      aspectRatio: generation.aspectRatio || aspectRatio,
       usageResourceId: `asset:character:${action.resourceId}`,
       execution: execution(
         'asset-image',
@@ -625,7 +633,7 @@ export const executeCreativeDirectorAction = async (
         character.referenceImage,
         (imageUrl) => patchAsset(project, 'character', action.resourceId, imageUrl, prompt),
       ),
-    });
+    }, generation.modelId);
     return project;
   }
 
@@ -657,6 +665,14 @@ export const executeCreativeDirectorAction = async (
     const frameType = action.input?.frameType || (action.tool === 'generate-start-keyframe' ? 'start' : 'end');
     const prompt = buildKeyframePrompt(project, shot, frameType);
     const factoryAspectRatio = shot.factory?.aspectRatio || aspectRatio;
+    const shotCharacters = shot.characters
+      .map((id) => project.scriptData?.characters.find((character) => sameId(character.id, id)))
+      .filter((character): character is Character => Boolean(character));
+    const generation = resolveGenerationParams(
+      shotCharacters,
+      getFactoryModelId(project, shot, 'image') || getActiveImageModel()?.id || DEFAULT_IMAGE_MODEL_ID,
+      factoryAspectRatio,
+    );
     const previousFrame = shot.keyframes.find((item) => item.type === frameType)?.imageUrl;
     const commitKeyframe = (imageUrl: string): ProjectState => {
       const keyframe: Keyframe = {
@@ -692,7 +708,7 @@ export const executeCreativeDirectorAction = async (
       {
         prompt,
         referenceImages: getReferenceImages(project, shot),
-        aspectRatio: factoryAspectRatio,
+        aspectRatio: generation.aspectRatio || factoryAspectRatio,
         usageResourceId: `${shot.id}:keyframe:${frameType}`,
         execution: execution(
           'keyframe-image',
@@ -702,7 +718,7 @@ export const executeCreativeDirectorAction = async (
           commitKeyframe,
         ),
       },
-      getFactoryModelId(project, shot, 'image'),
+      generation.modelId,
     );
     return project;
   }

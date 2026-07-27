@@ -266,6 +266,13 @@ export async function downloadSourceAssets(
             path: `characters/${char.name.replace(/[\/\\?%*:|"<>]/g, '_')}_base.jpg`
           });
         }
+        for (const reference of char.referencePack || []) {
+          if (!reference.imageUrl || reference.imageUrl === char.referenceImage) continue;
+          assets.push({
+            url: reference.imageUrl,
+            path: `characters/${char.name.replace(/[\/\\?%*:|"<>]/g, '_')}_reference_${reference.angle}_${reference.id.replace(/[\/\\?%*:|"<>]/g, '_')}.jpg`,
+          });
+        }
         if (char.variations) {
           for (const variation of char.variations) {
             if (variation.referenceImage) {

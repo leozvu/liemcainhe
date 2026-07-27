@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutGrid, Sparkles, Loader2, AlertCircle, Edit2, Film, Video as VideoIcon } from 'lucide-react';
-import { ProjectState, Shot, Keyframe, AspectRatio, VideoDuration } from '../../types';
-import { migrateDeprecatedChatModelId, migrateDeprecatedVideoModelId } from '../../types/model';
+import { ProjectState, Shot, Keyframe, AspectRatio, VideoDuration, Character } from '../../types';
+import { DEFAULT_IMAGE_MODEL_ID, migrateDeprecatedChatModelId, migrateDeprecatedVideoModelId } from '../../types/model';
 import { generateImage, generateVideo, generateActionSuggestion, optimizeKeyframePrompt, optimizeBothKeyframes, enhanceKeyframePrompt, splitShotIntoSubShots, rewritePromptForModeration } from '../../services/geminiService';
 import { 
   getRefImagesForShot, 
@@ -24,8 +24,9 @@ import ShotCard from './ShotCard';
 import ShotWorkbench from './ShotWorkbench';
 import ImagePreviewModal from './ImagePreviewModal';
 import { useAlert } from '../GlobalAlert';
-import { getDefaultAspectRatio } from '../../services/modelRegistry';
+import { getActiveImageModel, getDefaultAspectRatio } from '../../services/modelRegistry';
 import { createProjectMediaExecutionContext } from '../../services/mediaExecutionService';
+import { assessCharacterReadiness, resolveGenerationParams } from '../../services/consistencyService';
 import {
   addProductionJob,
   clearShotStaleFlag,
@@ -131,12 +132,20 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     
     try {
       const referenceImages = getRefImagesForShot(shot, project.scriptData);
+      const shotCharacters = (shot.characters ?? [])
+        .map((id) => project.scriptData?.characters.find((character) => String(character.id) === String(id)))
+        .filter((character): character is Character => Boolean(character));
+      const generation = resolveGenerationParams(
+        shotCharacters,
+        getActiveImageModel()?.id || DEFAULT_IMAGE_MODEL_ID,
+        keyframeAspectRatio,
+      );
       await generateImage(
         prompt,
         referenceImages,
-        keyframeAspectRatio,
+        generation.aspectRatio || keyframeAspectRatio,
         false,
-        undefined,
+        generation.modelId,
         `${shot.id}:keyframe:${type}`,
         createProjectMediaExecutionContext({
           project,
@@ -388,25 +397,46 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
   };
 
   const handleBatchGenerateImages = async () => {
-    const isRegenerate = allStartFramesGenerated;
-    
-    let shotsToProcess = [];
-    if (isRegenerate) {
-      showAlert("Bạn có chắc muốn tạo lại khung bắt đầu của mọi cảnh quay? Ảnh hiện có sẽ bị ghi đè.", {
-        type: 'warning',
-        showCancel: true,
-        onConfirm: async () => {
-          shotsToProcess = [...project.shots];
-          await executeBatchGenerate(shotsToProcess, isRegenerate);
-        }
-      });
-      return;
-    } else {
+    const proceed = async () => {
+      const isRegenerate = allStartFramesGenerated;
+
+      let shotsToProcess = [];
+      if (isRegenerate) {
+        showAlert("Bạn có chắc muốn tạo lại khung bắt đầu của mọi cảnh quay? Ảnh hiện có sẽ bị ghi đè.", {
+          type: 'warning',
+          showCancel: true,
+          onConfirm: async () => {
+            shotsToProcess = [...project.shots];
+            await executeBatchGenerate(shotsToProcess, isRegenerate);
+          }
+        });
+        return;
+      }
+
       shotsToProcess = project.shots.filter(s => !s.keyframes?.find(k => k.type === 'start')?.imageUrl || s.workflow?.keyframesStale);
+      if (shotsToProcess.length === 0) return;
+      await executeBatchGenerate(shotsToProcess, isRegenerate);
+    };
+
+    const usedCharacterIds = new Set(project.shots.flatMap((shot) => shot.characters ?? []).map(String));
+    const atRisk = (project.scriptData?.characters ?? [])
+      .filter((character) => usedCharacterIds.has(String(character.id)))
+      .map(assessCharacterReadiness)
+      .filter((item) => item.gaps.length > 0);
+    if (atRisk.length) {
+      const names = atRisk.slice(0, 3).map((item) => item.name).join(', ');
+      showAlert(
+        `${atRisk.length} nhân vật chưa đủ reference hoặc chưa khóa model (${names}${atRisk.length > 3 ? ', …' : ''}). Tạo hàng loạt lúc này có nguy cơ lệch mặt và tốn lượt sinh lại.`,
+        {
+          type: 'warning',
+          showCancel: true,
+          onConfirm: () => void proceed(),
+        },
+      );
+      return;
     }
-    
-    if (shotsToProcess.length === 0) return;
-    await executeBatchGenerate(shotsToProcess, isRegenerate);
+
+    await proceed();
   };
 
   const executeBatchGenerate = async (shotsToProcess: any[], isRegenerate: boolean) => {
