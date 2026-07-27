@@ -44,6 +44,7 @@ export interface UsageSummary {
 const RECORDS_KEY = 'egoric_usage_records_v1';
 const POLICY_KEY = 'egoric_usage_policy_v1';
 const MAX_RECORDS = 500;
+export const TELEMETRY_DRY_RUN_PROVIDER_ID = 'egoric-telemetry-dry-run';
 let activeProjectId: string | undefined;
 
 const DEFAULT_POLICY: UsagePolicy = {
@@ -81,11 +82,26 @@ export const saveUsagePolicy = (policy: UsagePolicy): void => {
   localStorage.setItem(POLICY_KEY, JSON.stringify(policy));
 };
 
-export const getUsageRecords = (): UsageRecord[] => {
+const readStoredUsageRecords = (): UsageRecord[] => {
   try {
-    return JSON.parse(localStorage.getItem(RECORDS_KEY) || '[]');
+    const stored = JSON.parse(localStorage.getItem(RECORDS_KEY) || '[]');
+    return Array.isArray(stored) ? stored : [];
   } catch {
     return [];
+  }
+};
+
+export const isTelemetryDryRunRecord = (record: Pick<UsageRecord, 'providerId'>): boolean =>
+  record.providerId === TELEMETRY_DRY_RUN_PROVIDER_ID;
+
+/** Dry-run được lưu để kiểm đường telemetry nhưng không được tính vào giá vốn. */
+export const getUsageRecords = (): UsageRecord[] =>
+  readStoredUsageRecords().filter((record) => !isTelemetryDryRunRecord(record));
+
+const writeStoredUsageRecords = (records: UsageRecord[]): void => {
+  localStorage.setItem(RECORDS_KEY, JSON.stringify(records.slice(0, MAX_RECORDS)));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('egoric-usage-updated'));
   }
 };
 
@@ -147,14 +163,24 @@ const calculateUsage = (kind: UsageKind, inputSize = 0, durationSeconds = 0, mod
   return { units: 1, estimatedCostUsd: 0 };
 };
 
-const syncHostedUsage = (record: UsageRecord): void => {
-  if (typeof window === 'undefined' || !window.location.hostname.endsWith('.chatgpt.site')) return;
-  void fetch('/api/account/usage', {
+export type TelemetryCloudStatus = 'synced' | 'local-only';
+
+const postHostedUsage = async (record: UsageRecord): Promise<TelemetryCloudStatus> => {
+  if (typeof window === 'undefined' || !window.location.hostname.endsWith('.chatgpt.site')) {
+    return 'local-only';
+  }
+  const response = await fetch('/api/account/usage', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(record),
     keepalive: true,
-  }).catch(() => undefined);
+  });
+  if (!response.ok) throw new Error(`Telemetry cloud trả HTTP ${response.status}.`);
+  return 'synced';
+};
+
+const syncHostedUsage = (record: UsageRecord): void => {
+  void postHostedUsage(record).catch(() => undefined);
 };
 
 export const recordUsage = (input: {
@@ -185,9 +211,69 @@ export const recordUsage = (input: {
     status: input.status,
     error: input.error?.slice(0, 500),
   };
-  const records = [record, ...getUsageRecords()].slice(0, MAX_RECORDS);
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  const records = [record, ...readStoredUsageRecords()].slice(0, MAX_RECORDS);
+  writeStoredUsageRecords(records);
   syncHostedUsage(record);
-  window.dispatchEvent(new CustomEvent('egoric-usage-updated'));
   return record;
+};
+
+export interface TelemetryDryRunReport {
+  status: 'passed';
+  recordId: string;
+  checkedAt: number;
+  localPersisted: true;
+  cloud: TelemetryCloudStatus;
+  estimatedCostUsd: 0;
+  units: 0;
+}
+
+export interface TelemetryDryRunOptions {
+  now?: () => number;
+  projectId?: string;
+  read?: () => UsageRecord[];
+  write?: (records: UsageRecord[]) => void;
+  sync?: (record: UsageRecord) => Promise<TelemetryCloudStatus>;
+}
+
+/**
+ * Chạy xuyên đường ghi telemetry bằng một bản ghi 0đ, không gọi provider AI.
+ *
+ * Bản ghi có provider riêng và bị loại khỏi mọi thống kê usage/giá vốn. Trên
+ * Sites, hàm còn đợi D1 xác nhận HTTP 2xx để biết đường cloud thật sự hoạt động.
+ */
+export const runUsageTelemetryDryRun = async (
+  options: TelemetryDryRunOptions = {},
+): Promise<TelemetryDryRunReport> => {
+  const now = (options.now ?? Date.now)();
+  const read = options.read ?? readStoredUsageRecords;
+  const write = options.write ?? writeStoredUsageRecords;
+  const record: UsageRecord = {
+    id: `usage_dry_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: now,
+    projectId: options.projectId ?? activeProjectId,
+    kind: 'cloud',
+    providerId: TELEMETRY_DRY_RUN_PROVIDER_ID,
+    modelId: 'Egoric Telemetry Self-check',
+    resourceId: 'telemetry-dry-run',
+    units: 0,
+    estimatedCostUsd: 0,
+    durationMs: 0,
+    status: 'success',
+  };
+
+  write([record, ...read()].slice(0, MAX_RECORDS));
+  if (!read().some((item) => item.id === record.id && isTelemetryDryRunRecord(item))) {
+    throw new Error('Telemetry không đọc lại được bản ghi local vừa tạo.');
+  }
+
+  const cloud = await (options.sync ?? postHostedUsage)(record);
+  return {
+    status: 'passed',
+    recordId: record.id,
+    checkedAt: now,
+    localPersisted: true,
+    cloud,
+    estimatedCostUsd: 0,
+    units: 0,
+  };
 };
