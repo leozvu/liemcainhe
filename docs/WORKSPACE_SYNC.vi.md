@@ -4,10 +4,10 @@ Phase 2 trong [ROADMAP_2026H2](ROADMAP_2026H2.vi.md).
 
 ## Vấn đề
 
-Năm bộ dữ liệu chỉ nằm trong IndexedDB của **đúng một trình duyệt**:
+Sáu bộ dữ liệu từng chỉ nằm trong IndexedDB của **đúng một trình duyệt**:
 
 ```
-agencyClients · agencyCampaigns · articleLibrary · publishLedger · managedAccounts
+agencyClients · agencyCampaigns · articleLibrary · publishLedger · managedAccounts · campaignZeroRuns
 ```
 
 `syncProjectToCloud` đã có từ trước, nhưng nó chỉ đồng bộ **dự án**, và chỉ chạy khi người dùng bấm nút ở một trong hai chỗ.
@@ -55,7 +55,35 @@ Có test riêng cho việc này: mô phỏng cùng một tranh chấp nhìn từ
 
 Và khi lỗi thì **mốc đồng bộ không nhích**. Nhích sớm là lần sau bỏ qua đúng những bản ghi vừa lỗi — mất dữ liệu im lặng, đúng thứ lớp này sinh ra để tránh.
 
-Một bộ hỏng không làm dừng bốn bộ còn lại.
+Một bộ hỏng không làm dừng các bộ còn lại.
+
+## Entry point và nhịp tự động
+
+Đồng bộ nay được khởi động một lần ở App root và có hai entry point nhìn thấy
+được: trạng thái trên thanh đầu Dashboard và trạng thái trong sidebar dự án.
+Bấm vào trạng thái sẽ chạy full pull để phục hồi chủ động.
+
+App tự chạy:
+
+- full pull khi mở app, có mạng trở lại hoặc quay lại tab sau hơn một phút;
+- incremental sync sau 1,2 giây kể từ lần ghi workspace gần nhất;
+- heartbeat incremental mỗi phút;
+- gộp tín hiệu đến cùng lúc thành một hàng đợi, không chạy chồng request.
+
+Khi cloud kéo dữ liệu mới, Campaign Hub, Thư viện nội dung và Sổ tài khoản đang
+mở sẽ tự đọc lại IndexedDB. Mất mạng không chặn thao tác; UI nói rõ bản local
+đang an toàn và tự thử lại.
+
+## Bia mộ local thật
+
+IndexedDB version 8 có store `workspaceTombstones`. Xóa khách hàng, chiến dịch,
+bài viết hoặc tài khoản sẽ xóa bản sống và ghi bia mộ trong **cùng transaction**.
+Lần sync kế tiếp đẩy bia mộ lên cloud. Nếu một bản sửa mới hơn được tải về, việc
+ghi bản sống đồng thời gỡ bia mộ cũ.
+
+Điểm này sửa một lỗ hổng của lớp logic ban đầu: merge đã hiểu bia mộ nhưng các
+hàm xóa local chưa từng tạo nó, nên bật autosync ngay có thể làm dữ liệu đã xóa
+sống lại.
 
 ## Mỗi kho một hình dạng, không gộp mù
 
@@ -84,13 +112,15 @@ npx vitest run tests/workspaceSync.test.ts
 - Mất mạng → không ném lỗi, **và không nhích mốc**
 - Đẩy hỏng cũng không nhích mốc
 - Sổ cái lấy đúng `fingerprint` và đúng `finishedAt ?? startedAt`
-- Cả năm bộ đều có hình dạng khai báo sẵn — thêm bộ thứ sáu mà quên khai là test đỏ
+- Cả sáu bộ đều có hình dạng khai báo sẵn — thêm bộ mới mà quên khai là test đỏ
 
-580 test / 42 file toàn bộ xanh, `tsc` sạch, build sạch, `node --check` worker sạch.
+Các test bao phủ merge, bia mộ local, incremental sync, lỗi từng nhóm, offline,
+full recovery và gộp nhiều yêu cầu cùng lúc. CI chạy `tsc`, toàn bộ Vitest,
+build Sites và kiểm tra whitespace trước khi merge.
 
-## Chưa làm
+## Còn lại
 
-- **Chưa nối vào giao diện.** Không có nút, không có chỉ báo trạng thái, không tự chạy nền. Lớp logic xong nhưng chưa ai gọi nó.
-- **Endpoint worker chưa chạy thử lần nào** — cần deploy. Cùng lý do với OAuth ở Phase B: `node --check` chỉ bảo đảm cú pháp, không bảo đảm câu SQL chạy đúng trên D1 thật.
-- Chưa có giới hạn tốc độ hay gộp lô theo thời gian; hiện đồng bộ là gọi thẳng.
+- Chưa có màn chi tiết số bản ghi đã kéo/đẩy theo từng collection; trạng thái hiện chỉ tóm tắt và báo số nhóm lỗi.
 - Chưa xử lý bản ghi quá 1 MB (worker trả 413) — cần cắt hoặc đẩy media ra R2 trước.
+- Chưa có compaction bia mộ lâu năm; giữ lại hiện an toàn hơn xóa sớm và làm dữ liệu sống lại.
+- Cần một bài kiểm tra thực địa: tạo campaign trên máy A, mở máy B, sửa/xóa rồi xác nhận hai phía hội tụ.

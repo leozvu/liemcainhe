@@ -7,7 +7,7 @@ import { normalizeAgencyClient } from './brandKitService';
 const DB_NAME = 'EgoricStudioDB';
 const LEGACY_DB_NAME = atob('QWlNYW5nYVN0dWRpb0RC');
 const DB_MIGRATION_KEY = 'egoric_studio_db_migrated';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_NAME = 'projects';
 const ASSET_STORE_NAME = 'assetLibrary';
 const CLIENT_STORE_NAME = 'agencyClients';
@@ -16,6 +16,36 @@ const PUBLISH_LEDGER_STORE_NAME = 'publishLedger';
 const ARTICLE_LIBRARY_STORE_NAME = 'articleLibrary';
 const MANAGED_ACCOUNT_STORE_NAME = 'managedAccounts';
 const CAMPAIGN_ZERO_STORE_NAME = 'campaignZeroRuns';
+const WORKSPACE_TOMBSTONE_STORE_NAME = 'workspaceTombstones';
+
+export const WORKSPACE_DATA_CHANGED_EVENT = 'egoric:workspace-data-changed';
+
+export interface WorkspaceTombstone {
+  key: string;
+  collection: string;
+  itemId: string;
+  updatedAt: number;
+  deletedAt: number;
+  payload: null;
+}
+
+const workspaceKeyField = (storeName: string): string => {
+  if (storeName === PUBLISH_LEDGER_STORE_NAME) return 'fingerprint';
+  if (storeName === CAMPAIGN_ZERO_STORE_NAME) return 'campaignId';
+  return 'id';
+};
+
+const workspaceItemId = (storeName: string, item: unknown): string => {
+  if (!item || typeof item !== 'object') return '';
+  return String((item as Record<string, unknown>)[workspaceKeyField(storeName)] ?? '');
+};
+
+const tombstoneKey = (collection: string, itemId: string): string => `${collection}:${itemId}`;
+
+const notifyWorkspaceDataChanged = (collection: string): void => {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(WORKSPACE_DATA_CHANGED_EVENT, { detail: { collection } }));
+};
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -69,6 +99,11 @@ const openNamedDB = (dbName: string): Promise<IDBDatabase> => {
         const store = db.createObjectStore(CAMPAIGN_ZERO_STORE_NAME, { keyPath: 'campaignId' });
         store.createIndex('updatedAt', 'updatedAt', { unique: false });
         store.createIndex('status', 'status', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(WORKSPACE_TOMBSTONE_STORE_NAME)) {
+        const store = db.createObjectStore(WORKSPACE_TOMBSTONE_STORE_NAME, { keyPath: 'key' });
+        store.createIndex('collection', 'collection', { unique: false });
+        store.createIndex('deletedAt', 'deletedAt', { unique: false });
       }
     };
   });
@@ -313,20 +348,36 @@ Bao giờ cơn mưa này mới dừng?`,
 const putWorkspaceItem = async <T extends { id: string }>(storeName: string, item: T): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const request = tx.objectStore(storeName).put(item);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    const tx = db.transaction([storeName, WORKSPACE_TOMBSTONE_STORE_NAME], 'readwrite');
+    tx.objectStore(storeName).put(item);
+    tx.objectStore(WORKSPACE_TOMBSTONE_STORE_NAME).delete(tombstoneKey(storeName, item.id));
+    tx.oncomplete = () => {
+      notifyWorkspaceDataChanged(storeName);
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
   });
 };
 
 const deleteWorkspaceItem = async (storeName: string, id: string): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const request = tx.objectStore(storeName).delete(id);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    const deletedAt = Date.now();
+    const tx = db.transaction([storeName, WORKSPACE_TOMBSTONE_STORE_NAME], 'readwrite');
+    tx.objectStore(storeName).delete(id);
+    tx.objectStore(WORKSPACE_TOMBSTONE_STORE_NAME).put({
+      key: tombstoneKey(storeName, id),
+      collection: storeName,
+      itemId: id,
+      updatedAt: deletedAt,
+      deletedAt,
+      payload: null,
+    } satisfies WorkspaceTombstone);
+    tx.oncomplete = () => {
+      notifyWorkspaceDataChanged(storeName);
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
   });
 };
 
@@ -341,13 +392,29 @@ export const readWorkspaceStore = async <T>(storeName: string): Promise<T[]> => 
   return readStoreItems<T>(db, storeName);
 };
 
+export const readWorkspaceTombstones = async (collection: string): Promise<WorkspaceTombstone[]> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(WORKSPACE_TOMBSTONE_STORE_NAME, 'readonly');
+    const index = tx.objectStore(WORKSPACE_TOMBSTONE_STORE_NAME).index('collection');
+    const request = index.getAll(collection);
+    request.onsuccess = () => resolve((request.result as WorkspaceTombstone[]) || []);
+    request.onerror = () => reject(request.error);
+  });
+};
+
 export const writeWorkspaceStore = async (storeName: string, items: unknown[]): Promise<void> => {
   if (!items.length) return;
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
+    const tx = db.transaction([storeName, WORKSPACE_TOMBSTONE_STORE_NAME], 'readwrite');
     const store = tx.objectStore(storeName);
-    items.forEach((item) => store.put(item));
+    const tombstones = tx.objectStore(WORKSPACE_TOMBSTONE_STORE_NAME);
+    items.forEach((item) => {
+      store.put(item);
+      const id = workspaceItemId(storeName, item);
+      if (id) tombstones.delete(tombstoneKey(storeName, id));
+    });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -432,10 +499,14 @@ export const savePublishLedgerEntry = async <T extends { fingerprint: string }>(
 ): Promise<void> => {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(PUBLISH_LEDGER_STORE_NAME, 'readwrite');
-    const request = tx.objectStore(PUBLISH_LEDGER_STORE_NAME).put(entry);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    const tx = db.transaction([PUBLISH_LEDGER_STORE_NAME, WORKSPACE_TOMBSTONE_STORE_NAME], 'readwrite');
+    tx.objectStore(PUBLISH_LEDGER_STORE_NAME).put(entry);
+    tx.objectStore(WORKSPACE_TOMBSTONE_STORE_NAME).delete(tombstoneKey(PUBLISH_LEDGER_STORE_NAME, entry.fingerprint));
+    tx.oncomplete = () => {
+      notifyWorkspaceDataChanged(PUBLISH_LEDGER_STORE_NAME);
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
   });
 };
 

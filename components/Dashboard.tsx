@@ -40,6 +40,7 @@ import { applyLibraryItemToProject } from '../services/assetLibraryService';
 import { useAlert } from './GlobalAlert';
 import { CloudProjectMetadata, deleteCloudProject, listCloudProjects, loadCloudProject } from '../services/cloudSyncService';
 import CampaignHub from './CampaignHub';
+import WorkspaceSyncStatus from './WorkspaceSyncStatus';
 
 interface Props {
   onOpenProject: (project: ProjectState) => void;
@@ -229,6 +230,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
             <button type="button" onClick={() => setDashboardView('projects')} aria-pressed={dashboardView === 'projects'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'projects' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderOpen className="h-3.5 w-3.5" /><span>Dự án</span></button>
           </div>
           <nav className="flex items-center gap-2" aria-label="Công cụ ứng dụng">
+            <WorkspaceSyncStatus />
             {onShowOperations && (
               <button type="button" onClick={onShowOperations} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Trung tâm vận hành" title="Trung tâm vận hành"><Gauge className="h-4 w-4" /></button>
             )}

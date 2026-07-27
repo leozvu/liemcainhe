@@ -33,10 +33,9 @@ import {
   setCampaignZeroProviderBalances,
   startCampaignZeroWorkSession,
   stopCampaignZeroWorkSession,
-  syncCampaignZeroRuns,
-  CampaignZeroCloudPhase,
 } from '../services/campaignZeroService';
 import { getUsageRecords, runUsageTelemetryDryRun } from '../services/usageService';
+import { requestWorkspaceSync, WorkspaceSyncRuntimePhase } from '../services/workspaceSyncCoordinatorService';
 
 interface Props {
   campaign: AgencyCampaign;
@@ -53,6 +52,11 @@ const STAGE_LABELS: Record<CampaignZeroStage, string> = {
   delivery: 'Bàn giao',
   operations: 'Vận hành và đối soát',
 };
+
+type PanelCloudPhase = Exclude<WorkspaceSyncRuntimePhase, 'idle'> | 'loading';
+
+const toPanelCloudPhase = (phase: WorkspaceSyncRuntimePhase): PanelCloudPhase =>
+  phase === 'idle' ? 'syncing' : phase;
 
 const GROUP_LABELS: Record<CampaignZeroGateGroup, string> = {
   foundation: 'Nền móng',
@@ -75,7 +79,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
   const [usageRevision, setUsageRevision] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
   const [error, setError] = useState('');
-  const [cloudPhase, setCloudPhase] = useState<CampaignZeroCloudPhase | 'loading' | 'syncing'>('loading');
+  const [cloudPhase, setCloudPhase] = useState<PanelCloudPhase>('loading');
 
   useEffect(() => {
     let active = true;
@@ -91,7 +95,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
         setBalanceBefore(local?.providerBalanceBeforeUsd?.toString() || '');
         setBalanceAfter(local?.providerBalanceAfterUsd?.toString() || '');
         setCloudPhase('syncing');
-        const report = await syncCampaignZeroRuns({ full: true });
+        const report = await requestWorkspaceSync({ full: true });
         const merged = await loadCampaignZeroRun(campaign.id);
         if (!active) return;
         setRun(merged);
@@ -99,8 +103,8 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
         setProxyName(merged?.clientProxyName || '');
         setBalanceBefore(merged?.providerBalanceBeforeUsd?.toString() || '');
         setBalanceAfter(merged?.providerBalanceAfterUsd?.toString() || '');
-        setCloudPhase(report.phase);
-        if (report.error) setError(`Không đồng bộ được Campaign 0: ${report.error} Dữ liệu vẫn an toàn trên máy này.`);
+        setCloudPhase(toPanelCloudPhase(report.phase));
+        if (report.phase === 'error') setError(`Không đồng bộ được Campaign 0: ${report.summary}`);
       } catch (nextError) {
         if (!active) return;
         setCloudPhase('error');
@@ -139,11 +143,11 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     setError('');
     const saved = await saveCampaignZeroRun(next);
     setRun(saved);
-    const report = await syncCampaignZeroRuns();
+    const report = await requestWorkspaceSync();
     const merged = await loadCampaignZeroRun(campaign.id);
     setRun(merged || saved);
-    setCloudPhase(report.phase);
-    if (report.error) setError(`Không đồng bộ được Campaign 0: ${report.error} Dữ liệu vẫn an toàn trên máy này.`);
+    setCloudPhase(toPanelCloudPhase(report.phase));
+    if (report.phase === 'error') setError(`Không đồng bộ được Campaign 0: ${report.summary}`);
   };
 
   const mutate = async (operation: (current: CampaignZeroRun) => CampaignZeroRun) => {
@@ -170,14 +174,14 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     setCloudPhase('syncing');
     setError('');
     try {
-      const report = await syncCampaignZeroRuns({ full: true });
+      const report = await requestWorkspaceSync({ full: true });
       const merged = await loadCampaignZeroRun(campaign.id);
       setRun(merged);
       setProxyName(merged?.clientProxyName || '');
       setBalanceBefore(merged?.providerBalanceBeforeUsd?.toString() || '');
       setBalanceAfter(merged?.providerBalanceAfterUsd?.toString() || '');
-      setCloudPhase(report.phase);
-      if (report.error) setError(`Không đồng bộ được Campaign 0: ${report.error} Dữ liệu vẫn an toàn trên máy này.`);
+      setCloudPhase(toPanelCloudPhase(report.phase));
+      if (report.phase === 'error') setError(`Không đồng bộ được Campaign 0: ${report.summary}`);
     } catch (nextError) {
       setCloudPhase('error');
       setError(nextError instanceof Error ? nextError.message : 'Không thể đồng bộ Campaign 0. Hãy thử lại.');
@@ -207,6 +211,8 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     ? { label: 'Đã đồng bộ workspace', tone: 'text-emerald-200 border-emerald-200/20 bg-emerald-200/[.06]', icon: CheckCircle2 }
     : cloudPhase === 'local-only'
       ? { label: 'Chỉ lưu trên máy', tone: 'text-amber-200 border-amber-200/20 bg-amber-200/[.06]', icon: CloudOff }
+      : cloudPhase === 'offline'
+        ? { label: 'Mất mạng · đã lưu local', tone: 'text-amber-200 border-amber-200/20 bg-amber-200/[.06]', icon: CloudOff }
       : cloudPhase === 'error'
         ? { label: 'Đồng bộ đang lỗi', tone: 'text-rose-200 border-rose-200/20 bg-rose-200/[.06]', icon: AlertTriangle }
         : { label: cloudPhase === 'loading' ? 'Đang tải runbook' : 'Đang đồng bộ', tone: 'text-cyan-100 border-cyan-200/20 bg-cyan-200/[.06]', icon: Loader2 };

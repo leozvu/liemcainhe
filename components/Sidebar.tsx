@@ -17,6 +17,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { CoreStage, ProjectStage } from '../types';
+import WorkspaceSyncStatus from './WorkspaceSyncStatus';
 
 const LOGO_URL = '/egoric-agency-icon.png';
 
@@ -127,6 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="eg-sidebar-tools border-t eg-divider p-3">
+        <WorkspaceSyncStatus variant="sidebar" />
         {onOpenCreativeDirector && (
           <button type="button" onClick={onOpenCreativeDirector} className="eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-amber-100/70 hover:bg-amber-200/[.06] hover:text-amber-50" title="Mở Đạo diễn AI">
             <Sparkles className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">Đạo diễn AI</span>
