@@ -64,6 +64,7 @@ import {
 } from '../services/storageService';
 import { useAlert } from './GlobalAlert';
 import CampaignPreProduction from './CampaignPreProduction';
+import CampaignZeroPanel from './CampaignZeroPanel';
 import BrandKitEditor from './BrandKitEditor';
 import { getBrandKitReadiness, normalizeBrandKit } from '../services/brandKitService';
 
@@ -708,6 +709,13 @@ const CampaignHub: React.FC<CampaignHubProps> = ({ projects, onOpenProject, onOp
                 <label className="eg-card block p-4 text-[9px] uppercase tracking-wider text-zinc-600"><PauseCircle className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block">Trạng thái</span><select value={selectedCampaign.status} onChange={(event) => void changeCampaignStatus(selectedCampaign, event.target.value as CampaignStatus)} className="mt-1 w-full bg-transparent text-xs font-semibold normal-case tracking-normal text-white outline-none">{STATUS_COLUMNS.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}</select></label>
               </div>
               <div className="mt-5 grid gap-4 xl:grid-cols-3"><section className="eg-card p-5"><div className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-cyan-100/60" /><h3 className="text-xs font-semibold text-white">Brief</h3></div><p className="mt-4 whitespace-pre-wrap text-xs leading-6 text-zinc-400">{selectedCampaign.brief || 'Chưa có brief chi tiết.'}</p></section><section className="eg-card p-5"><div className="flex items-center gap-2"><Film className="h-4 w-4 text-cyan-100/60" /><h3 className="text-xs font-semibold text-white">Sản phẩm và content pillar</h3></div><div className="mt-4 space-y-4 text-xs leading-5"><div><span className="block text-[9px] uppercase tracking-wider text-zinc-600">Sản phẩm / dịch vụ</span><p className="mt-1 whitespace-pre-wrap text-zinc-400">{selectedCampaign.product || 'Chưa xác định'}</p></div><div><span className="block text-[9px] uppercase tracking-wider text-zinc-600">Content pillar</span><div className="mt-2 flex flex-wrap gap-2">{selectedCampaign.contentPillars.length ? selectedCampaign.contentPillars.map((pillar) => <span key={pillar} className="eg-chip">{pillar}</span>) : <span className="text-zinc-500">Chưa xác định</span>}</div></div></div></section><section className="eg-card p-5"><div className="flex items-center gap-2"><Target className="h-4 w-4 text-cyan-100/60" /><h3 className="text-xs font-semibold text-white">Đối tượng và CTA</h3></div><div className="mt-4 space-y-4 text-xs leading-5"><div><span className="block text-[9px] uppercase tracking-wider text-zinc-600">Khách hàng mục tiêu</span><p className="mt-1 text-zinc-400">{selectedCampaign.targetAudience || 'Chưa xác định'}</p></div><div><span className="block text-[9px] uppercase tracking-wider text-zinc-600">Offer / CTA</span><p className="mt-1 text-zinc-400">{selectedCampaign.offer || 'Chưa xác định'}</p></div></div></section></div>
+              {selectedClient && (
+                <CampaignZeroPanel
+                  campaign={selectedCampaign}
+                  client={selectedClient}
+                  projects={projects}
+                />
+              )}
               {selectedClient && selectedCampaignReadiness && (
                 <section className="mt-5 overflow-hidden rounded-2xl border border-cyan-200/[.14] bg-[linear-gradient(115deg,rgba(24,39,50,.78),rgba(8,13,18,.82))] p-5">
                   <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">

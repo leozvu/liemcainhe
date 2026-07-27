@@ -1,0 +1,288 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Activity,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleDollarSign,
+  CloudCog,
+  FlaskConical,
+  Gauge,
+  Loader2,
+  Play,
+  ShieldCheck,
+  Square,
+  TimerReset,
+  UserCheck,
+} from 'lucide-react';
+import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
+import {
+  attachCampaignZeroTelemetry,
+  buildCampaignZeroSnapshot,
+  CampaignZeroGateGroup,
+  CampaignZeroRun,
+  CampaignZeroStage,
+  completeCampaignZeroRun,
+  createCampaignZeroRun,
+  loadCampaignZeroRun,
+  saveCampaignZeroRun,
+  setCampaignZeroClientProxy,
+  setCampaignZeroProviderBalances,
+  startCampaignZeroWorkSession,
+  stopCampaignZeroWorkSession,
+} from '../services/campaignZeroService';
+import { getUsageRecords, runUsageTelemetryDryRun } from '../services/usageService';
+
+interface Props {
+  campaign: AgencyCampaign;
+  client: AgencyClient;
+  projects: ProjectState[];
+}
+
+const STAGE_LABELS: Record<CampaignZeroStage, string> = {
+  brief: 'Brief và account',
+  'pre-production': 'Tiền kỳ',
+  production: 'Sản xuất media',
+  review: 'Duyệt nội bộ/khách hàng',
+  editing: 'Dựng và hoàn thiện',
+  delivery: 'Bàn giao',
+  operations: 'Vận hành và đối soát',
+};
+
+const GROUP_LABELS: Record<CampaignZeroGateGroup, string> = {
+  foundation: 'Nền móng',
+  instrumentation: 'Đo lường',
+  production: 'Sản xuất',
+  review: 'Duyệt',
+  delivery: 'Bàn giao',
+};
+
+const usd = (value?: number): string => value === undefined ? '—' : `${value.toFixed(4)} USD`;
+
+const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
+  const [run, setRun] = useState<CampaignZeroRun | undefined>();
+  const [expanded, setExpanded] = useState(false);
+  const [proxyName, setProxyName] = useState('');
+  const [stage, setStage] = useState<CampaignZeroStage>('pre-production');
+  const [balanceBefore, setBalanceBefore] = useState('');
+  const [balanceAfter, setBalanceAfter] = useState('');
+  const [isDryRunning, setIsDryRunning] = useState(false);
+  const [usageRevision, setUsageRevision] = useState(0);
+  const [clock, setClock] = useState(() => Date.now());
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const stored = loadCampaignZeroRun(campaign.id);
+    setRun(stored);
+    setExpanded(Boolean(stored));
+    setProxyName(stored?.clientProxyName || '');
+    setBalanceBefore(stored?.providerBalanceBeforeUsd?.toString() || '');
+    setBalanceAfter(stored?.providerBalanceAfterUsd?.toString() || '');
+    setError('');
+  }, [campaign.id]);
+
+  useEffect(() => {
+    const refresh = () => setUsageRevision((value) => value + 1);
+    window.addEventListener('egoric-usage-updated', refresh);
+    return () => window.removeEventListener('egoric-usage-updated', refresh);
+  }, []);
+
+  const hasActiveSession = Boolean(run?.workSessions.some((session) => !session.endedAt));
+  useEffect(() => {
+    if (!hasActiveSession) return undefined;
+    const interval = window.setInterval(() => setClock(Date.now()), 15_000);
+    return () => window.clearInterval(interval);
+  }, [hasActiveSession]);
+
+  const usageRecords = useMemo(() => getUsageRecords(), [usageRevision, run?.updatedAt]);
+  const snapshot = useMemo(() => buildCampaignZeroSnapshot({
+    campaign,
+    client,
+    projects,
+    run,
+    usageRecords,
+    now: clock,
+  }), [campaign, client, clock, projects, run, usageRecords]);
+
+  const persist = (next: CampaignZeroRun) => {
+    const saved = saveCampaignZeroRun(next);
+    setRun(saved);
+    setError('');
+  };
+
+  const mutate = (operation: (current: CampaignZeroRun) => CampaignZeroRun) => {
+    if (!run) return;
+    try {
+      persist(operation(run));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Không thể cập nhật Campaign 0.');
+    }
+  };
+
+  const startRun = () => {
+    try {
+      persist(createCampaignZeroRun(campaign.id));
+      setExpanded(true);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Không thể bắt đầu Campaign 0.');
+    }
+  };
+
+  const runDryTelemetry = async () => {
+    if (!run) return;
+    setIsDryRunning(true);
+    setError('');
+    try {
+      const report = await runUsageTelemetryDryRun({ projectId: campaign.id });
+      persist(attachCampaignZeroTelemetry(run, report));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Telemetry chạy khô thất bại. Hãy thử lại trên bản production.');
+    } finally {
+      setIsDryRunning(false);
+    }
+  };
+
+  const progressTone = snapshot.progress === 100
+    ? 'text-emerald-200'
+    : snapshot.progress >= 50 ? 'text-cyan-100' : 'text-amber-200';
+  const completed = run?.status === 'completed';
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-2xl border border-white/[.09] bg-[linear-gradient(130deg,rgba(19,27,37,.92),rgba(8,12,17,.96))]">
+      <div className="p-5 md:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-amber-200/20 bg-amber-200/[.055] text-amber-200">
+              <FlaskConical className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="eg-kicker">Golden workflow · không tự tiêu tiền</div>
+              <h3 className="mt-1 text-base font-semibold text-white">Campaign 0 — ca vận hành chuẩn đầu tiên</h3>
+              <p className="mt-2 max-w-3xl text-xs leading-5 text-zinc-500">
+                Gom brief, telemetry, thời gian team, duyệt và đối soát provider vào một đường chạy có bằng chứng. Dữ liệu hiện khóa trên thiết bị này để tránh ghi đè khi team chưa có sync cho runbook.
+              </p>
+            </div>
+          </div>
+          {!run ? (
+            <button type="button" onClick={startRun} className="eg-button-primary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-bold">
+              <Play className="h-4 w-4" /> Bắt đầu Campaign 0
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              className="eg-button-secondary inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-xs font-semibold"
+              aria-expanded={expanded}
+              aria-controls={`campaign-zero-${campaign.id}`}
+            >
+              <Gauge className="h-4 w-4" /> {snapshot.completedGates}/{snapshot.totalGates} cổng
+              <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </div>
+
+        {run && (
+          <div className="mt-5" aria-live="polite">
+            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wider">
+              <span className="text-zinc-600">Tiến độ Golden Run</span>
+              <strong className={`font-mono ${progressTone}`}>{snapshot.progress}%</strong>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[.06]">
+              <div className="h-full rounded-full bg-[var(--eg-accent)] transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${snapshot.progress}%` }} />
+            </div>
+            {snapshot.nextGate && (
+              <div className="mt-4 flex items-start gap-3 rounded-xl border border-cyan-200/[.12] bg-cyan-200/[.035] p-3">
+                <Activity className="mt-0.5 h-4 w-4 shrink-0 text-cyan-100" />
+                <div><span className="text-[9px] font-semibold uppercase tracking-wider text-cyan-100/70">Việc tiếp theo</span><p className="mt-1 text-xs font-semibold text-white">{snapshot.nextGate.label}</p><p className="mt-1 text-xs leading-5 text-zinc-500">{snapshot.nextGate.detail}</p></div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {run && expanded && (
+        <div id={`campaign-zero-${campaign.id}`} className="border-t eg-divider p-5 md:p-6">
+          {error && <div role="alert" className="mb-4 rounded-xl border border-rose-200/20 bg-rose-200/[.06] p-3 text-xs leading-5 text-rose-100">{error}</div>}
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="eg-card p-4"><CircleDollarSign className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">API ước tính</span><strong className="mt-1 block font-mono text-sm text-white">{usd(snapshot.estimatedCostUsd)}</strong><span className="mt-1 block text-[9px] text-zinc-600">{snapshot.requestCount} request · {snapshot.failureCount} lỗi</span></div>
+            <div className="eg-card p-4"><ShieldCheck className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Provider thực tế</span><strong className="mt-1 block font-mono text-sm text-white">{usd(snapshot.actualProviderSpendUsd)}</strong><span className="mt-1 block text-[9px] text-zinc-600">Lệch {usd(snapshot.costVarianceUsd)}</span></div>
+            <div className="eg-card p-4"><TimerReset className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Thời gian team</span><strong className="mt-1 block font-mono text-sm text-white">{snapshot.workMinutes} phút</strong><span className="mt-1 block text-[9px] text-zinc-600">{run.workSessions.filter((session) => session.endedAt).length} phiên đã đóng</span></div>
+            <div className="eg-card p-4"><CloudCog className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Telemetry</span><strong className={`mt-1 block text-sm ${run.telemetry?.cloud === 'synced' ? 'text-emerald-200' : 'text-amber-200'}`}>{run.telemetry?.cloud === 'synced' ? 'Cloud đã xác nhận' : 'Chưa xác nhận'}</strong><span className="mt-1 block text-[9px] text-zinc-600">Dry-run luôn 0 USD</span></div>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
+            <section className="eg-card p-5">
+              <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">13 cổng bằng chứng</h4></div>
+              <div className="mt-4 space-y-5">
+                {(Object.keys(GROUP_LABELS) as CampaignZeroGateGroup[]).map((group) => (
+                  <div key={group}>
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-zinc-600">{GROUP_LABELS[group]}</div>
+                    <div className="mt-2 space-y-2">
+                      {snapshot.gates.filter((gate) => gate.group === group).map((gate) => (
+                        <div key={gate.id} className="flex items-start gap-3 rounded-xl border border-white/[.06] bg-black/10 p-3">
+                          {gate.complete ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-200" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-zinc-700" />}
+                          <div><p className="text-xs font-semibold text-zinc-200">{gate.label}</p><p className="mt-1 text-xs leading-5 text-zinc-600">{gate.detail}</p></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="space-y-4">
+              <section className="eg-card p-5">
+                <div className="flex items-center gap-2"><CloudCog className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Kiểm tra trước khi tốn credit</h4></div>
+                <p className="mt-2 text-xs leading-5 text-zinc-600">Ghi một event giả, đọc lại local và đợi cloud trả 2xx. Không gọi model hoặc provider media.</p>
+                <button type="button" onClick={() => void runDryTelemetry()} disabled={isDryRunning || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">
+                  {isDryRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudCog className="h-4 w-4" />} {isDryRunning ? 'Đang kiểm tra…' : 'Chạy dry-run 0đ'}
+                </button>
+              </section>
+
+              <section className="eg-card p-5">
+                <div className="flex items-center gap-2"><UserCheck className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Người đóng vai khách hàng</h4></div>
+                <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Họ tên
+                  <input value={proxyName} onChange={(event) => setProxyName(event.target.value)} disabled={completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" placeholder="Người không tham gia sinh nội dung" />
+                </label>
+                <button type="button" onClick={() => mutate((current) => setCampaignZeroClientProxy(current, proxyName))} disabled={completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><UserCheck className="h-4 w-4" /> Lưu người duyệt proxy</button>
+              </section>
+
+              <section className="eg-card p-5">
+                <div className="flex items-center gap-2"><TimerReset className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Đồng hồ nhân sự</h4></div>
+                <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Công đoạn
+                  <select value={stage} onChange={(event) => setStage(event.target.value as CampaignZeroStage)} disabled={Boolean(snapshot.activeSession) || completed} className="eg-input mt-2 px-3 text-xs normal-case tracking-normal disabled:opacity-50">
+                    {(Object.keys(STAGE_LABELS) as CampaignZeroStage[]).map((value) => <option key={value} value={value}>{STAGE_LABELS[value]}</option>)}
+                  </select>
+                </label>
+                <button type="button" onClick={() => snapshot.activeSession ? mutate((current) => stopCampaignZeroWorkSession(current)) : mutate((current) => startCampaignZeroWorkSession(current, stage))} disabled={completed} className={`mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200/60 disabled:opacity-50 ${snapshot.activeSession ? 'border-rose-200/20 text-rose-100 hover:bg-rose-200/[.06]' : 'border-white/[.1] text-zinc-200 hover:bg-white/[.05]'}`}>
+                  {snapshot.activeSession ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />} {snapshot.activeSession ? `Kết thúc · ${STAGE_LABELS[snapshot.activeSession.stage]}` : 'Bắt đầu tính giờ'}
+                </button>
+              </section>
+
+              <section className="eg-card p-5">
+                <div className="flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Đối soát provider</h4></div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Trước (USD)<input type="number" min="0" step="0.0001" value={balanceBefore} onChange={(event) => setBalanceBefore(event.target.value)} disabled={completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Sau (USD)<input type="number" min="0" step="0.0001" value={balanceAfter} onChange={(event) => setBalanceAfter(event.target.value)} disabled={completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
+                </div>
+                <button type="button" onClick={() => mutate((current) => setCampaignZeroProviderBalances(current, balanceBefore.trim() ? Number(balanceBefore) : Number.NaN, balanceAfter.trim() ? Number(balanceAfter) : Number.NaN))} disabled={completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><CircleDollarSign className="h-4 w-4" /> Lưu đối soát</button>
+              </section>
+
+              <button
+                type="button"
+                onClick={() => mutate((current) => completeCampaignZeroRun(current, snapshot))}
+                disabled={snapshot.completedGates !== snapshot.totalGates || Boolean(snapshot.activeSession)}
+                className="eg-button-primary inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <CheckCircle2 className="h-4 w-4" /> {run.status === 'completed' ? 'Campaign 0 đã hoàn tất' : 'Đóng Campaign 0'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
+
+export default CampaignZeroPanel;
