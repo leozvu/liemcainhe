@@ -75,8 +75,8 @@ export const deriveIdempotencyKey = (
 /**
  * Đã có job nào đang làm đúng việc này chưa.
  *
- * Chỉ tính job chưa kết thúc và job đã hoàn thành. Job thất bại hay bị huỷ thì
- * cho làm lại, vì chắc chắn không còn gì đang chạy bên nhà cung cấp.
+ * Job `interrupted` cũng phải chặn: ta không biết provider đã nhận và tính tiền
+ * chưa. Chỉ job thất bại chắc chắn hoặc bị huỷ mới cho phép làm lại.
  */
 export const findDuplicateJob = (
   jobs: ProductionJob[],
@@ -85,7 +85,7 @@ export const findDuplicateJob = (
   jobs.find(
     (job) =>
       job.idempotencyKey === idempotencyKey &&
-      ['queued', 'running', 'completed'].includes(job.status),
+      ['queued', 'running', 'completed', 'interrupted'].includes(job.status),
   );
 
 export interface SubmitDecision {
@@ -106,6 +106,13 @@ export const decideSubmit = (
 
   if (existing.status === 'completed') {
     return { proceed: false, existing, reason: 'Việc này đã chạy xong, dùng lại kết quả cũ.' };
+  }
+  if (existing.status === 'interrupted') {
+    return {
+      proceed: false,
+      existing,
+      reason: 'Tác vụ trước bị gián đoạn và có thể đã bị tính tiền. Hãy đối chiếu với nhà cung cấp trước khi chạy lại.',
+    };
   }
   return {
     proceed: false,

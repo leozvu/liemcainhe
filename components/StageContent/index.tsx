@@ -511,6 +511,8 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
             draft={draft}
             brief={brief}
             brandKit={project.brandKitSnapshot}
+            project={project}
+            updateProject={updateProject}
             onChange={(illustrations) => setDraft({ ...draft, illustrations })}
           />
         )}

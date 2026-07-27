@@ -1,4 +1,5 @@
 import { localizeApiErrorMessage } from './apiErrorLocalization';
+import { createBillableHttpError } from './mediaExecutionService';
 
 export type ParsedApiError = { message?: string; type?: string; code?: string; param?: string };
 
@@ -73,7 +74,7 @@ export function formatVideoTaskErrorForUser(
 }
 
 export function throwFromVideoHttpError(status: number, bodyText: string, mode: 'sora' | 'veo' = 'sora'): never {
-  throw new Error(formatVideoRequestErrorForUser(status, bodyText, mode));
+  throw createBillableHttpError(formatVideoRequestErrorForUser(status, bodyText, mode), status);
 }
 
 export async function throwFromVideoResponse(res: Response, mode: 'sora' | 'veo' = 'sora'): Promise<never> {

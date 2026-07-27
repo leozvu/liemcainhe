@@ -7,32 +7,7 @@ import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import { callReplicateVideoApi } from './replicateAdapter';
 import { callKieVideoApi } from './kieAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
-
-const retryOperation = async <T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 2000
-): Promise<T> => {
-  let lastError: Error | null = null;
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-      if (error.message?.includes('400') || 
-          error.message?.includes('401') || 
-          error.message?.includes('403')) {
-        throw error;
-      }
-      if (i < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
-      }
-    }
-  }
-  
-  throw lastError;
-};
+import { createConfirmedBillableFailure, submitPaidTaskSafely } from '../mediaExecutionService';
 
 const resizeImageToSize = async (base64Data: string, targetWidth: number, targetHeight: number): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -115,7 +90,7 @@ const callVeoApi = async (
   const timeoutId = setTimeout(() => controller.abort(), 1200000);
 
   try {
-    const response = await retryOperation(async () => {
+    const response = await submitPaidTaskSafely(async () => {
       const res = await fetch(`${apiBase}/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -136,6 +111,7 @@ const callVeoApi = async (
         throwFromVideoHttpError(res.status, errorText, 'veo');
       }
 
+      await options.onProviderAccepted?.();
       return res;
     });
 
@@ -214,18 +190,21 @@ const callSoraApi = async (
     formData.append('input_reference', blob, 'reference.png');
   }
 
-  const createResponse = await fetch(`${apiBase}/v1/videos`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: formData,
+  const createResponse = await submitPaidTaskSafely(async () => {
+    const response = await fetch(`${apiBase}/v1/videos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throwFromVideoHttpError(response.status, errorText, 'sora');
+    }
+    return response;
   });
-
-  if (!createResponse.ok) {
-    const errorText = await createResponse.text();
-    throwFromVideoHttpError(createResponse.status, errorText, 'sora');
-  }
+  await options.onProviderAccepted?.();
 
   const createData = await createResponse.json();
   const taskId = createData.id || createData.task_id;
@@ -233,6 +212,7 @@ const callSoraApi = async (
   if (!taskId) {
     throw new Error('Không thể tạo tác vụ video: máy chủ không trả về mã tác vụ');
   }
+  await options.onProviderTaskId?.(String(taskId));
 
   const maxPollingTime = 1200000;
   const pollingInterval = 5000;
@@ -272,7 +252,9 @@ const callSoraApi = async (
       }
       break;
     } else if (status === 'failed' || status === 'error') {
-      throw new Error(formatVideoTaskErrorForUser(statusData.error ?? statusData, statusData.message, 'sora'));
+      throw createConfirmedBillableFailure(
+        formatVideoTaskErrorForUser(statusData.error ?? statusData, statusData.message, 'sora'),
+      );
     }
   }
 

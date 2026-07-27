@@ -25,8 +25,10 @@ import {
   markShotWorkflowStale,
   patchProductionJob,
   setProductionJobStatus,
+  upsertProductionJob,
 } from './workflowService';
 import { checkMissionBudget, computeBudget } from './directorBriefingService';
+import { saveProjectToDB } from './storageService';
 
 const createId = (prefix: string): string => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const sameId = (left?: string | number, right?: string | number): boolean => String(left) === String(right);
@@ -578,32 +580,73 @@ const isActionAlreadyComplete = (project: ProjectState, action: CreativeDirector
 export const executeCreativeDirectorAction = async (
   project: ProjectState,
   action: CreativeDirectorMissionAction,
+  options: { onProjectUpdate?: (project: ProjectState) => void } = {},
 ): Promise<ProjectState> => {
   if (isActionAlreadyComplete(project, action)) return project;
   const aspectRatio = getDefaultAspectRatio();
+  const execution = (
+    kind: 'asset-image' | 'keyframe-image' | 'video',
+    stage: 'assets' | 'director',
+    resourceId: string,
+    previousOutput?: string,
+    commitResult?: (result: string) => ProjectState,
+  ) => ({
+    projectId: project.id,
+    jobs: project.workflow?.jobs || [],
+    kind,
+    stage,
+    label: action.label,
+    resourceId,
+    previousOutput,
+    commitResult: commitResult ? async (result: string) => {
+      project = commitResult(result);
+      options.onProjectUpdate?.(project);
+      await saveProjectToDB(project);
+    } : undefined,
+    onJobChange: (job: Parameters<typeof upsertProductionJob>[1]) => {
+      project = upsertProductionJob(project, job);
+      options.onProjectUpdate?.(project);
+    },
+  });
 
   if (action.tool === 'generate-character-image') {
     const character = project.scriptData?.characters.find((item) => sameId(item.id, action.resourceId));
     if (!character) throw new Error('Không tìm thấy nhân vật cần tạo ảnh.');
     const prompt = buildCharacterPrompt(project, character);
-    const imageUrl = await generateImage({
+    await generateImage({
       prompt,
       referenceImages: getBrandAssetReferences(project, ['character', 'reference'], character.name),
       aspectRatio,
+      usageResourceId: `asset:character:${action.resourceId}`,
+      execution: execution(
+        'asset-image',
+        'assets',
+        `character:${action.resourceId}`,
+        character.referenceImage,
+        (imageUrl) => patchAsset(project, 'character', action.resourceId, imageUrl, prompt),
+      ),
     });
-    return patchAsset(project, 'character', action.resourceId, imageUrl, prompt);
+    return project;
   }
 
   if (action.tool === 'generate-scene-image') {
     const scene = project.scriptData?.scenes.find((item) => sameId(item.id, action.resourceId));
     if (!scene) throw new Error('Không tìm thấy bối cảnh cần tạo ảnh.');
     const prompt = buildScenePrompt(project, scene);
-    const imageUrl = await generateImage({
+    await generateImage({
       prompt,
       referenceImages: getBrandAssetReferences(project, ['product', 'reference'], `${scene.location} ${scene.atmosphere}`),
       aspectRatio,
+      usageResourceId: `asset:scene:${action.resourceId}`,
+      execution: execution(
+        'asset-image',
+        'assets',
+        `scene:${action.resourceId}`,
+        scene.referenceImage,
+        (imageUrl) => patchAsset(project, 'scene', action.resourceId, imageUrl, prompt),
+      ),
     });
-    return patchAsset(project, 'scene', action.resourceId, imageUrl, prompt);
+    return project;
   }
 
   const shotId = action.input?.shotId || action.resourceId;
@@ -614,38 +657,54 @@ export const executeCreativeDirectorAction = async (
     const frameType = action.input?.frameType || (action.tool === 'generate-start-keyframe' ? 'start' : 'end');
     const prompt = buildKeyframePrompt(project, shot, frameType);
     const factoryAspectRatio = shot.factory?.aspectRatio || aspectRatio;
-    const imageUrl = await generateImageWithModel(
-      { prompt, referenceImages: getReferenceImages(project, shot), aspectRatio: factoryAspectRatio },
+    const previousFrame = shot.keyframes.find((item) => item.type === frameType)?.imageUrl;
+    const commitKeyframe = (imageUrl: string): ProjectState => {
+      const keyframe: Keyframe = {
+        id: shot.keyframes.find((item) => item.type === frameType)?.id || `${shot.id}-${frameType}`,
+        type: frameType,
+        visualPrompt: prompt,
+        imageUrl,
+        status: 'completed',
+      };
+      return {
+        ...project,
+        shots: project.shots.map((item) => {
+          if (!sameId(item.id, shot.id)) return item;
+          const keyframes = item.keyframes.some((frame) => frame.type === frameType)
+            ? item.keyframes.map((frame) => frame.type === frameType ? keyframe : frame)
+            : [...item.keyframes, keyframe];
+          const allFramesReady = (['start', 'end'] as const).every((type) => keyframes.some((frame) => frame.type === type && frame.imageUrl));
+          return {
+            ...item,
+            keyframes,
+            workflow: {
+              ...item.workflow,
+              keyframesStale: !allFramesReady,
+              videoStale: true,
+              approved: false,
+              updatedAt: Date.now(),
+            },
+          };
+        }),
+      };
+    };
+    await generateImageWithModel(
+      {
+        prompt,
+        referenceImages: getReferenceImages(project, shot),
+        aspectRatio: factoryAspectRatio,
+        usageResourceId: `${shot.id}:keyframe:${frameType}`,
+        execution: execution(
+          'keyframe-image',
+          'director',
+          `${shot.id}:keyframe:${frameType}`,
+          previousFrame,
+          commitKeyframe,
+        ),
+      },
       getFactoryModelId(project, shot, 'image'),
     );
-    const keyframe: Keyframe = {
-      id: shot.keyframes.find((item) => item.type === frameType)?.id || `${shot.id}-${frameType}`,
-      type: frameType,
-      visualPrompt: prompt,
-      imageUrl,
-      status: 'completed',
-    };
-    return {
-      ...project,
-      shots: project.shots.map((item) => {
-        if (!sameId(item.id, shot.id)) return item;
-        const keyframes = item.keyframes.some((frame) => frame.type === frameType)
-          ? item.keyframes.map((frame) => frame.type === frameType ? keyframe : frame)
-          : [...item.keyframes, keyframe];
-        const allFramesReady = (['start', 'end'] as const).every((type) => keyframes.some((frame) => frame.type === type && frame.imageUrl));
-        return {
-          ...item,
-          keyframes,
-          workflow: {
-            ...item.workflow,
-            keyframesStale: !allFramesReady,
-            videoStale: true,
-            approved: false,
-            updatedAt: Date.now(),
-          },
-        };
-      }),
-    };
+    return project;
   }
 
   if (action.tool === 'generate-video') {
@@ -655,14 +714,7 @@ export const executeCreativeDirectorAction = async (
     if (!textToVideoOnly && !startFrame?.imageUrl) throw new Error('Cảnh chưa có khung đầu để tạo video.');
     const duration = Math.max(1, Number(action.input?.duration || shot.interval?.duration || getDefaultVideoDuration()));
     const prompt = buildVideoPrompt(project, shot);
-    const videoUrl = await generateVideoWithModel({
-      prompt,
-      startImage: textToVideoOnly ? undefined : startFrame?.imageUrl,
-      endImage: textToVideoOnly ? undefined : endFrame?.imageUrl,
-      aspectRatio: shot.factory?.aspectRatio || aspectRatio,
-      duration,
-    }, getFactoryModelId(project, shot, 'video'));
-    return {
+    const commitVideo = (videoUrl: string): ProjectState => ({
       ...project,
       shots: project.shots.map((item) => sameId(item.id, shot.id) ? clearShotStaleFlag({
         ...item,
@@ -678,7 +730,17 @@ export const executeCreativeDirectorAction = async (
           status: 'completed',
         },
       }, 'video') : item),
-    };
+    });
+    await generateVideoWithModel({
+      prompt,
+      startImage: textToVideoOnly ? undefined : startFrame?.imageUrl,
+      endImage: textToVideoOnly ? undefined : endFrame?.imageUrl,
+      aspectRatio: shot.factory?.aspectRatio || aspectRatio,
+      duration,
+      usageResourceId: `${shot.id}:video`,
+      execution: execution('video', 'director', shot.id, shot.interval?.videoUrl, commitVideo),
+    }, getFactoryModelId(project, shot, 'video'));
+    return project;
   }
 
   if (action.tool === 'generate-voice') {

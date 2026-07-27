@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, RefreshCw, WifiOff } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, FlaskConical, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import { API_ERROR_CATEGORY_LABELS, ApiErrorCategory } from '../services/apiErrorLocalization';
 import {
   HEALTH_WINDOW_MS,
@@ -20,6 +20,7 @@ import {
   readCalibrationRecords,
   summarizeCalibration,
 } from '../services/supervisorCalibrationService';
+import { runUsageTelemetryDryRun, TelemetryDryRunReport } from '../services/usageService';
 
 const TRUST_STYLE: Record<CalibrationTrust, string> = {
   trusted: 'border-emerald-300/25 bg-emerald-400/[.08] text-emerald-100',
@@ -71,6 +72,9 @@ const ProviderHealthPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
   const [health, setHealth] = useState<ProviderHealth[]>([]);
   const [calibration, setCalibration] = useState<KindCalibration[]>([]);
   const [refreshedAt, setRefreshedAt] = useState<number>(0);
+  const [dryRunBusy, setDryRunBusy] = useState(false);
+  const [dryRunReport, setDryRunReport] = useState<TelemetryDryRunReport | null>(null);
+  const [dryRunError, setDryRunError] = useState<string | null>(null);
 
   const calibSummary = useMemo(() => summarizeCalibration(calibration), [calibration]);
 
@@ -78,6 +82,21 @@ const ProviderHealthPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
     setHealth(getProviderHealth(Date.now(), windowMs));
     setCalibration(computeCalibration(readCalibrationRecords()));
     setRefreshedAt(Date.now());
+  };
+
+  const runDry = async () => {
+    setDryRunBusy(true);
+    setDryRunError(null);
+    try {
+      const report = await runUsageTelemetryDryRun();
+      setDryRunReport(report);
+      refresh();
+    } catch (error) {
+      setDryRunReport(null);
+      setDryRunError(error instanceof Error ? error.message : 'Dry-run telemetry thất bại.');
+    } finally {
+      setDryRunBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -112,8 +131,20 @@ const ProviderHealthPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
           <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={refresh}>
             <RefreshCw className="mr-2 inline h-4 w-4" />Làm mới
           </button>
+          <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={() => void runDry()} disabled={dryRunBusy}>
+            {dryRunBusy ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <FlaskConical className="mr-2 inline h-4 w-4" />}
+            Dry-run 0đ
+          </button>
         </div>
       </div>
+
+      {(dryRunReport || dryRunError) && (
+        <div className={`mt-4 rounded-xl border px-4 py-3 text-xs ${dryRunReport ? 'border-emerald-300/20 bg-emerald-300/[.06] text-emerald-100' : 'border-rose-300/25 bg-rose-500/[.08] text-rose-100'}`} role="status">
+          {dryRunReport
+            ? `Telemetry đạt: local đã ghi · cloud ${dryRunReport.cloud === 'synced' ? 'đã đồng bộ' : 'bỏ qua ở môi trường local'} · chi phí $0.`
+            : dryRunError}
+        </div>
+      )}
 
       {health.length === 0 ? (
         <p className="mt-6 text-sm text-zinc-500">

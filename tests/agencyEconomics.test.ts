@@ -6,7 +6,7 @@ import {
   CampaignFinancialProfile,
   EconomicsProjectRef,
 } from '../services/agencyEconomicsService';
-import { UsageRecord } from '../services/usageService';
+import { TELEMETRY_DRY_RUN_PROVIDER_ID, UsageRecord } from '../services/usageService';
 
 const campaign = (id: string, clientId: string, name: string) => ({
   id, clientId, name, createdAt: 1, updatedAt: 1,
@@ -110,5 +110,24 @@ describe('Agency economics', () => {
     const report = analyzeAgencyEconomics(workspace(), 'campaign_1', 45);
     expect(report.totals.requests).toBe(2);
     expect(report.totals.apiCostVnd).toBe(5_000);
+  });
+
+  it('không tính bản ghi dry-run vào request hoặc giá vốn', () => {
+    const input = workspace();
+    input.usage.push(usage({
+      id: 'dry_1',
+      timestamp: 80,
+      projectId: 'project_1',
+      resourceId: 'telemetry-dry-run',
+      kind: 'cloud',
+      providerId: TELEMETRY_DRY_RUN_PROVIDER_ID,
+      status: 'success',
+      estimatedCostUsd: 999,
+    }));
+
+    const report = analyzeAgencyEconomics(input, 'campaign_1');
+    expect(report.totals.requests).toBe(6);
+    expect(report.campaigns[0].apiCostUsd).toBe(1.25);
+    expect(report.providers.some((row) => row.providerId === TELEMETRY_DRY_RUN_PROVIDER_ID)).toBe(false);
   });
 });

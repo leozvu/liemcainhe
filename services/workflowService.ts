@@ -18,6 +18,7 @@ import {
 } from './modelRegistry';
 import { isVoiceProviderConfigured, normalizeProductionVoiceProviderId } from './voiceRegistry';
 import { normalizeCreativeDirectorState } from './creativeDirectorState';
+import { applyTransition } from './jobStateMachine';
 
 export interface StageReadiness {
   id: CoreStage;
@@ -274,6 +275,8 @@ export const createProductionJob = (input: {
   totalUnits?: number;
   resourceId?: string;
   detail?: string;
+  idempotencyKey?: string;
+  providerTaskId?: string;
 }): ProductionJob => {
   const now = Date.now();
   return {
@@ -287,10 +290,22 @@ export const createProductionJob = (input: {
     totalUnits: input.totalUnits,
     resourceId: input.resourceId,
     detail: input.detail,
+    idempotencyKey: input.idempotencyKey,
+    providerTaskId: input.providerTaskId,
     attempts: 0,
     createdAt: now,
     updatedAt: now,
   };
+};
+
+/** Ghi đúng snapshot job từ execution envelope, thêm mới nếu chưa tồn tại. */
+export const upsertProductionJob = (project: ProjectState, job: ProductionJob): ProjectState => {
+  const workflow = project.workflow || createDefaultWorkflowState();
+  const exists = workflow.jobs.some((item) => item.id === job.id);
+  const jobs = exists
+    ? workflow.jobs.map((item) => item.id === job.id ? job : item)
+    : [job, ...workflow.jobs];
+  return { ...project, workflow: { ...workflow, jobs: jobs.slice(0, 100) } };
 };
 
 export const addProductionJob = (project: ProjectState, job: ProductionJob): ProjectState => {
@@ -324,6 +339,26 @@ export const setProductionJobStatus = (
   error,
   attempts: (project.workflow?.jobs.find((job) => job.id === jobId)?.attempts || 0) + (status === 'running' ? 1 : 0),
 });
+
+/** Mở khóa sau khi người vận hành đã đối chiếu tác vụ mơ hồ với provider. */
+export const resolveInterruptedProductionJob = (
+  project: ProjectState,
+  jobId: string,
+): ProjectState => {
+  const workflow = project.workflow || createDefaultWorkflowState();
+  return {
+    ...project,
+    workflow: {
+      ...workflow,
+      jobs: workflow.jobs.map((job) => job.id === jobId && job.status === 'interrupted'
+        ? applyTransition(job, 'failed', {
+          detail: 'Đã được người vận hành đối chiếu với provider và mở khóa để tạo lượt mới.',
+          error: undefined,
+        })
+        : job),
+    },
+  };
+};
 
 export const clearFinishedJobs = (project: ProjectState): ProjectState => {
   const workflow = project.workflow || createDefaultWorkflowState();

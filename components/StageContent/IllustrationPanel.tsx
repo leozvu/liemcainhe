@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ImagePlus, Loader2, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
-import { BrandKit } from '../../types';
+import { BrandKit, ProjectState } from '../../types';
 import { ArticleDraft, ArticleIllustration, ContentBrief } from '../../types/content';
 import {
   countRendered,
@@ -12,11 +12,14 @@ import {
   describePreflight,
   preflightPrompt,
 } from '../../services/promptPreflight';
+import { createProjectMediaExecutionContext } from '../../services/mediaExecutionService';
 
 interface Props {
   draft: ArticleDraft;
   brief: ContentBrief;
   brandKit?: BrandKit | null;
+  project: ProjectState;
+  updateProject: (updates: Partial<ProjectState> | ((previous: ProjectState) => ProjectState)) => void;
   onChange: (illustrations: ArticleIllustration[]) => void;
 }
 
@@ -27,7 +30,7 @@ interface Props {
  * từng ảnh bằng model ảnh (đắt). Prompt hiện ra để sửa được trước khi bấm vẽ,
  * và vẽ từng ảnh một để dừng lại được khi thấy ảnh đầu đã sai hướng.
  */
-const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, onChange }) => {
+const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, project, updateProject, onChange }) => {
   const illustrations = draft.illustrations ?? [];
   const [sectionCount, setSectionCount] = useState(0);
   const [planning, setPlanning] = useState(false);
@@ -75,7 +78,36 @@ const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, onChange }
     );
     onChange(marked);
 
-    const done = await renderIllustration(target);
+    const done = await renderIllustration(target, {
+      execution: createProjectMediaExecutionContext({
+        project,
+        updateProject,
+        kind: 'asset-image',
+        stage: 'script',
+        label: `Vẽ ảnh minh hoạ ${target.purpose}`,
+        resourceId: `content-illustration:${target.id}`,
+        previousOutput: target.imageUrl,
+        commitResult: (previous, imageUrl) => {
+          const studio = previous.contentStudio;
+          const currentDraft = studio?.draft;
+          if (!studio || !currentDraft) return previous;
+          const currentIllustrations = currentDraft.illustrations || marked;
+          return {
+            ...previous,
+            contentStudio: {
+              ...studio,
+              draft: {
+                ...currentDraft,
+                illustrations: currentIllustrations.map((item) => item.id === target.id
+                  ? { ...item, imageUrl, status: 'done' as const, error: undefined }
+                  : item),
+              },
+              updatedAt: Date.now(),
+            },
+          };
+        },
+      }),
+    });
     onChange(marked.map((item) => (item.id === target.id ? done : item)));
     setRenderingId(null);
   };

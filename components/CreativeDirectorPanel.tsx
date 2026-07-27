@@ -319,9 +319,13 @@ const CreativeDirectorPanel: React.FC<CreativeDirectorPanelProps> = ({
     setPausingMissionId(null);
     missionPauseRef.current = null;
     let working = baseProject;
+    const publishWorking = (next: ProjectState) => {
+      working = next;
+      updateProject((current) => current.id === next.id ? next : current);
+    };
     try {
       working = startCreativeDirectorMission(working, missionId);
-      updateProject(working);
+      publishWorking(working);
 
       while (true) {
         const mission = normalizeCreativeDirectorState(working.creativeDirector).missions.find((item) => item.id === missionId);
@@ -329,25 +333,29 @@ const CreativeDirectorPanel: React.FC<CreativeDirectorPanelProps> = ({
         const action = getNextRunnableMissionAction(mission);
         if (!action) {
           working = finalizeCreativeDirectorMission(working, missionId);
-          updateProject(working);
+          publishWorking(working);
           break;
         }
 
         working = markCreativeDirectorActionRunning(working, missionId, action.id);
-        updateProject(working);
+        publishWorking(working);
         try {
-          working = await executeCreativeDirectorAction(working, action);
+          working = await executeCreativeDirectorAction(working, action, {
+            onProjectUpdate: (updated) => {
+              publishWorking(updated);
+            },
+          });
           working = markCreativeDirectorActionCompleted(working, missionId, action.id);
-          updateProject(working);
+          publishWorking(working);
         } catch (caught: any) {
           const message = caught?.message || `Không thể chạy ${action.label}.`;
           working = markCreativeDirectorActionFailed(working, missionId, action.id, message);
-          updateProject(working);
+          publishWorking(working);
           const currentAction = normalizeCreativeDirectorState(working.creativeDirector)
             .missions.find((item) => item.id === missionId)?.actions.find((item) => item.id === action.id);
           if (currentAction?.status === 'failed') {
             working = finalizeCreativeDirectorMission(working, missionId);
-            updateProject(working);
+            publishWorking(working);
             setError(`${action.label}: ${message}`);
             break;
           }
@@ -355,7 +363,7 @@ const CreativeDirectorPanel: React.FC<CreativeDirectorPanelProps> = ({
 
         if (missionPauseRef.current === missionId) {
           working = pauseCreativeDirectorMission(working, missionId);
-          updateProject(working);
+          publishWorking(working);
           break;
         }
       }

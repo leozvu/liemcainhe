@@ -754,6 +754,65 @@ async function handleAgencyEconomicsApi(request, env) {
   return json({ error: 'Economics route không tồn tại.' }, 405);
 }
 
+const JOB_SELECT_COLUMNS = `id, kind, stage, label, status, progress,
+  completed_units AS completedUnits, total_units AS totalUnits, resource_id AS resourceId,
+  idempotency_key AS idempotencyKey, provider_task_id AS providerTaskId,
+  detail, error, attempts, created_at AS createdAt, updated_at AS updatedAt`;
+
+const isValidProductionJob = (job) =>
+  /^[a-zA-Z0-9_-]{6,160}$/.test(job?.id || '')
+  && PRODUCTION_JOB_KINDS.includes(job?.kind)
+  && PRODUCTION_JOB_STAGES.includes(job?.stage)
+  && PRODUCTION_JOB_STATUSES.includes(job?.status);
+
+const prepareProductionJobWrite = (env, email, projectId, job, claimOnly = false) => env.DB.prepare(
+  `INSERT INTO egoric_jobs
+   (id, owner_email, project_id, kind, stage, label, status, progress, completed_units, total_units,
+    resource_id, idempotency_key, provider_task_id, detail, error, attempts, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+   ${claimOnly ? 'ON CONFLICT DO NOTHING' : `ON CONFLICT DO UPDATE SET
+     label = excluded.label, status = excluded.status, progress = excluded.progress,
+     completed_units = excluded.completed_units, total_units = excluded.total_units,
+     resource_id = excluded.resource_id,
+     idempotency_key = COALESCE(excluded.idempotency_key, egoric_jobs.idempotency_key),
+     provider_task_id = COALESCE(excluded.provider_task_id, egoric_jobs.provider_task_id),
+     detail = excluded.detail, error = excluded.error,
+     attempts = excluded.attempts, updated_at = excluded.updated_at
+   WHERE egoric_jobs.owner_email = excluded.owner_email
+     AND egoric_jobs.project_id = excluded.project_id
+     AND egoric_jobs.status NOT IN ('completed', 'cancelled')
+     AND NOT (egoric_jobs.status = 'interrupted' AND excluded.status NOT IN ('interrupted', 'failed'))
+     AND (
+       excluded.updated_at > egoric_jobs.updated_at
+       OR (
+         excluded.updated_at = egoric_jobs.updated_at
+         AND CASE excluded.status
+           WHEN 'queued' THEN 0 WHEN 'running' THEN 1
+           WHEN 'interrupted' THEN 2 WHEN 'failed' THEN 3
+           WHEN 'completed' THEN 4 WHEN 'cancelled' THEN 4
+           ELSE -1 END
+         >= CASE egoric_jobs.status
+           WHEN 'queued' THEN 0 WHEN 'running' THEN 1
+           WHEN 'interrupted' THEN 2 WHEN 'failed' THEN 3
+           WHEN 'completed' THEN 4 WHEN 'cancelled' THEN 4
+           ELSE -1 END
+       )
+     )`}`
+).bind(
+  job.id, email, projectId, job.kind, job.stage, String(job.label || 'Tác vụ').slice(0, 240), job.status,
+  Math.max(0, Math.min(100, Number(job.progress) || 0)),
+  Number.isFinite(Number(job.completedUnits)) ? Math.max(0, Number(job.completedUnits)) : null,
+  Number.isFinite(Number(job.totalUnits)) ? Math.max(0, Number(job.totalUnits)) : null,
+  String(job.resourceId || '').slice(0, 180) || null,
+  cleanText(job.idempotencyKey, 240) || null,
+  cleanText(job.providerTaskId, 240) || null,
+  String(job.detail || '').slice(0, 1000) || null,
+  String(job.error || '').slice(0, 1000) || null,
+  Math.max(0, Number(job.attempts) || 0),
+  Math.max(0, Number(job.createdAt) || Date.now()),
+  Math.min(Date.now(), Math.max(0, Number(job.updatedAt) || Date.now())),
+);
+
 async function handleJobsApi(request, env, url) {
   if (!env.DB) return json({ error: 'Workspace chưa được cấp cơ sở dữ liệu.' }, 503);
   const email = getAuthenticatedEmail(request);
@@ -763,57 +822,48 @@ async function handleJobsApi(request, env, url) {
 
   if (request.method === 'GET') {
     const result = await env.DB.prepare(
-      `SELECT id, kind, stage, label, status, progress, completed_units AS completedUnits,
-              total_units AS totalUnits, resource_id AS resourceId,
-              idempotency_key AS idempotencyKey, provider_task_id AS providerTaskId,
-              detail, error, attempts,
-              created_at AS createdAt, updated_at AS updatedAt
+      `SELECT ${JOB_SELECT_COLUMNS}
        FROM egoric_jobs WHERE owner_email = ? AND project_id = ?
        ORDER BY updated_at DESC LIMIT 100`
     ).bind(email, projectId).all();
     return json({ jobs: result.results || [] });
   }
 
+  if (request.method === 'POST') {
+    const payload = await request.json();
+    const job = payload?.job;
+    const idempotencyKey = cleanText(job?.idempotencyKey, 240);
+    if (!isValidProductionJob(job) || !idempotencyKey) {
+      return json({ error: 'Tác vụ billable hoặc khóa chống trùng không hợp lệ.' }, 400);
+    }
+
+    const findExisting = () => env.DB.prepare(
+      `SELECT ${JOB_SELECT_COLUMNS} FROM egoric_jobs
+       WHERE owner_email = ? AND project_id = ? AND idempotency_key = ?
+         AND status IN ('queued', 'running', 'completed', 'interrupted')
+       ORDER BY updated_at DESC LIMIT 1`
+    ).bind(email, projectId, idempotencyKey).first();
+    const existing = await findExisting();
+    if (existing) return json({ claimed: false, existing }, 409);
+
+    const result = await prepareProductionJobWrite(env, email, projectId, job, true).run();
+    const changes = Number(result?.meta?.changes ?? result?.changes ?? 0);
+    if (changes < 1) {
+      return json({ claimed: false, existing: await findExisting() }, 409);
+    }
+    return json({ claimed: true, job }, 201);
+  }
+
   if (request.method === 'PUT') {
     const payload = await request.json();
     const jobs = Array.isArray(payload?.jobs) ? payload.jobs.slice(0, 100) : [];
     if (!jobs.length) return json({ saved: 0 });
-    const kinds = new Set(PRODUCTION_JOB_KINDS);
-    const stages = new Set(PRODUCTION_JOB_STAGES);
-    const statuses = new Set(PRODUCTION_JOB_STATUSES);
     const statements = [];
     for (const job of jobs) {
-      if (!/^[a-zA-Z0-9_-]{6,160}$/.test(job?.id || '') || !kinds.has(job?.kind) || !stages.has(job?.stage) || !statuses.has(job?.status)) {
+      if (!isValidProductionJob(job)) {
         return json({ error: 'Hàng đợi chứa tác vụ không hợp lệ.' }, 400);
       }
-      statements.push(env.DB.prepare(
-        `INSERT INTO egoric_jobs
-         (id, owner_email, project_id, kind, stage, label, status, progress, completed_units, total_units,
-          resource_id, idempotency_key, provider_task_id, detail, error, attempts, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           label = excluded.label, status = excluded.status, progress = excluded.progress,
-           completed_units = excluded.completed_units, total_units = excluded.total_units,
-           resource_id = excluded.resource_id,
-           idempotency_key = COALESCE(excluded.idempotency_key, egoric_jobs.idempotency_key),
-           provider_task_id = COALESCE(excluded.provider_task_id, egoric_jobs.provider_task_id),
-           detail = excluded.detail, error = excluded.error,
-           attempts = excluded.attempts, updated_at = excluded.updated_at
-         WHERE egoric_jobs.owner_email = excluded.owner_email AND egoric_jobs.project_id = excluded.project_id`
-      ).bind(
-        job.id, email, projectId, job.kind, job.stage, String(job.label || 'Tác vụ').slice(0, 240), job.status,
-        Math.max(0, Math.min(100, Number(job.progress) || 0)),
-        Number.isFinite(Number(job.completedUnits)) ? Math.max(0, Number(job.completedUnits)) : null,
-        Number.isFinite(Number(job.totalUnits)) ? Math.max(0, Number(job.totalUnits)) : null,
-        String(job.resourceId || '').slice(0, 180) || null,
-        cleanText(job.idempotencyKey, 240) || null,
-        cleanText(job.providerTaskId, 240) || null,
-        String(job.detail || '').slice(0, 1000) || null,
-        String(job.error || '').slice(0, 1000) || null,
-        Math.max(0, Number(job.attempts) || 0),
-        Math.max(0, Number(job.createdAt) || Date.now()),
-        Math.min(Date.now(), Math.max(0, Number(job.updatedAt) || Date.now())),
-      ));
+      statements.push(prepareProductionJobWrite(env, email, projectId, job));
     }
     await env.DB.batch(statements);
     return json({ saved: statements.length });

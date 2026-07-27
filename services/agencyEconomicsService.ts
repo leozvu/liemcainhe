@@ -1,6 +1,6 @@
 import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import { getAllAgencyCampaigns, getAllAgencyClients, getAllProjectsMetadata } from './storageService';
-import { getUsageRecords, UsageKind, UsageRecord } from './usageService';
+import { getUsageRecords, isTelemetryDryRunRecord, UsageKind, UsageRecord } from './usageService';
 
 export interface CampaignFinancialProfile {
   campaignId: string;
@@ -247,6 +247,7 @@ export const analyzeAgencyEconomics = (
   const campaignMap = new Map(workspace.campaigns.map((campaign) => [campaign.id, campaign]));
   const financeMap = new Map(workspace.financials.map((profile) => [profile.campaignId, profile]));
   const usage = workspace.usage.filter((record) => {
+    if (isTelemetryDryRunRecord(record)) return false;
     if (since && record.timestamp < since) return false;
     const campaignId = record.projectId ? projectMap.get(record.projectId)?.campaignId : undefined;
     return campaignFilter === 'all' || campaignId === campaignFilter;
