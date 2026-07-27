@@ -69,6 +69,20 @@ Bấm vào trạng thái mở **Trung tâm đồng bộ workspace**. Tại đây
 - năm phiên gần nhất, cùng báo cáo chẩn đoán có thể sao chép mà không chứa API key;
 - checklist A/B để kiểm chứng tạo, sửa và xóa trên hai thiết bị.
 
+Checklist nay có một protocol bằng chứng cloud chạy ngay trong UI:
+
+1. Thiết bị A đặt tên và tạo mã 8 ký tự.
+2. Thiết bị B đăng nhập cùng workspace, nhập mã và xác nhận.
+3. Worker từ chối nếu A và B có cùng danh tính cục bộ.
+4. Thiết bị A đọc lại trạng thái rồi chốt bằng chứng.
+5. Campaign 0 nạp bằng chứng đã chốt từ D1; bằng chứng còn hiệu lực 7 ngày.
+
+Phiên chờ hết hạn sau 24 giờ. Worker lưu protocol trong collection nội bộ
+`syncFieldTests` của `egoric_workspace_items`, tách khỏi danh sách trắng sáu kho
+đồng bộ nên nó không bị kéo vào IndexedDB hoặc làm sai số liệu health. Payload
+chỉ chứa mã ngẫu nhiên, nhãn/danh tính thiết bị và thời điểm; không chứa API key,
+nội dung khách hàng hay media. Luồng không gọi provider AI nên chi phí bằng 0.
+
 Nút **Kiểm tra và đồng bộ toàn bộ** chạy full pull rồi đọc lại local và endpoint
 `/api/cloud/workspace/health`. Health endpoint chỉ trả số lượng và mốc mới nhất,
 không tải payload khách hàng và không gọi bất kỳ model AI nào.
@@ -124,6 +138,7 @@ Các test đáng chú ý:
 - Sổ cái lấy đúng `fingerprint` và đúng `finishedAt ?? startedAt`
 - Cả sáu bộ đều có hình dạng khai báo sẵn — thêm bộ mới mà quên khai là test đỏ
 - Health endpoint trả đủ sáu bộ, kể cả kho cloud đang rỗng, và chặn người chưa đăng nhập
+- Protocol hai thiết bị chặn cùng device, chặn B chốt thay A và chỉ trả bằng chứng đã xác minh
 - Coordinator giữ tối đa 12 phiên chẩn đoán, không để lịch sử phình bộ nhớ
 
 Các test bao phủ merge, bia mộ local, incremental sync, lỗi từng nhóm, offline,
@@ -134,6 +149,6 @@ build Sites và kiểm tra whitespace trước khi merge.
 
 - Chưa xử lý bản ghi quá 1 MB (worker trả 413) — cần cắt hoặc đẩy media ra R2 trước.
 - Chưa có compaction bia mộ lâu năm; giữ lại hiện an toàn hơn xóa sớm và làm dữ liệu sống lại.
-- Cần hoàn tất checklist thực địa ngay trong Trung tâm đồng bộ: tạo trên máy A,
-  sửa/xóa ở máy B rồi xác nhận hai phía hội tụ. Chỉ sau bằng chứng này mới nâng
-  năng lực đồng bộ từ cấp 4 lên cấp 5.
+- Protocol D1 đã tạo được bằng chứng máy A ↔ máy B. Vẫn cần hoàn tất checklist
+  tạo/sửa/xóa dữ liệu thử trên hai máy thật để chứng minh cả sáu adapter và bia
+  mộ hội tụ. Chỉ sau bằng chứng thực địa đó mới nâng năng lực từ cấp 4 lên cấp 5.

@@ -11,7 +11,7 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 3. Trong chi tiết chiến dịch, mở **Campaign 0 — ca vận hành chuẩn đầu tiên**.
 4. Bấm **Bắt đầu Campaign 0**.
 
-## 13 cổng bắt buộc
+## 14 cổng bắt buộc
 
 ### Nền móng
 
@@ -23,6 +23,7 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 
 - Chỉ định một người đóng vai khách hàng. Ưu tiên người không tham gia sinh nội dung.
 - Telemetry dry-run được cloud xác nhận, chi phí 0 USD.
+- Bằng chứng hai thiết bị đã được thiết bị A tạo, thiết bị B xác nhận và thiết bị A chốt trong 7 ngày gần nhất.
 - Có ít nhất một phiên thời gian nhân sự đã kết thúc.
 
 ### Sản xuất
@@ -55,7 +56,9 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 - Bấm trạng thái **Workspace đã lưu** ở Dashboard hoặc sidebar để mở Trung tâm
   đồng bộ. Bảng này đối chiếu số bản ghi local/cloud, ghi lỗi theo từng kho và
   có nút **Kiểm tra và đồng bộ toàn bộ**.
-- Trước lượt media đầu tiên, hoàn tất checklist hai thiết bị trong Trung tâm
-  đồng bộ bằng dữ liệu thử. Bài kiểm tra này có chi phí AI bằng 0.
+- Trước lượt media đầu tiên, mở Trung tâm đồng bộ trên thiết bị A để tạo mã,
+  xác nhận mã trên thiết bị B rồi quay về A chốt. Sau đó bấm **Nạp bằng chứng
+  từ cloud** trong Campaign 0. Tiếp tục checklist tạo/sửa/xóa bằng dữ liệu thử
+  để kiểm chứng adapter và bia mộ. Toàn bộ bước này có chi phí AI bằng 0.
 - Các run cũ từng nằm trong `localStorage` được chuyển sang kho mới ở lần mở đầu tiên.
 - Xung đột giữa hai thiết bị được giải quyết bằng `updatedAt`; nếu cùng mốc, hai bên dùng cùng quy tắc phân thắng để không đồng bộ qua lại vô hạn.

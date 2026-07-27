@@ -113,6 +113,13 @@ const hashOwner = async (email) => {
 
 const safeProjectId = (value) => /^[a-zA-Z0-9_-]{3,120}$/.test(value || '') ? value : null;
 const safeReviewId = (value) => /^[a-zA-Z0-9_-]{6,180}$/.test(value || '') ? value : null;
+const safeFieldTestCode = (value) => /^[A-HJ-NP-Z2-9]{8}$/.test(value || '') ? value : null;
+const safeFieldTestDeviceId = (value) => /^[a-zA-Z0-9_-]{8,160}$/.test(value || '') ? value : null;
+const createFieldTestCode = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
+};
 // Danh sách trắng chứ không phải kiểm định dạng: tên bộ dữ liệu đi thẳng vào
 // câu truy vấn, và số bộ là hữu hạn nên không có lý do gì để nhận tên tự do.
 const WORKSPACE_COLLECTIONS = new Set([
@@ -271,6 +278,100 @@ async function handleCloudApi(request, env, url) {
    * `deleted_at` là bia mộ: xoá mà không để lại dấu thì máy khác sẽ đẩy bản ghi
    * cũ lên lại và thứ vừa xoá sống dậy.
    */
+  if (url.pathname === '/api/cloud/workspace/field-tests' && request.method === 'POST') {
+    const body = await request.json().catch(() => null);
+    const deviceId = safeFieldTestDeviceId(body?.deviceId);
+    const deviceLabel = cleanText(body?.deviceLabel, 80);
+    if (!deviceId || !deviceLabel) return json({ error: 'Danh tính thiết bị A không hợp lệ.' }, 400);
+
+    const now = Date.now();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = createFieldTestCode();
+      const existing = await env.DB.prepare(
+        'SELECT item_id AS id FROM egoric_workspace_items WHERE owner_email = ? AND collection = ? AND item_id = ?'
+      ).bind(email, 'syncFieldTests', code).first();
+      if (existing) continue;
+      const session = {
+        version: 1, id: code, code, status: 'waiting',
+        deviceA: { id: deviceId, label: deviceLabel },
+        createdAt: now, updatedAt: now, expiresAt: now + 24 * 60 * 60 * 1000,
+      };
+      await env.DB.prepare(
+        `INSERT INTO egoric_workspace_items (owner_email, collection, item_id, payload_json, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, NULL)`
+      ).bind(email, 'syncFieldTests', code, JSON.stringify(session), now).run();
+      return json({ session }, 201);
+    }
+    return json({ error: 'Không tạo được mã duy nhất. Hãy thử lại.' }, 503);
+  }
+
+  if (url.pathname === '/api/cloud/workspace/field-tests/latest' && request.method === 'GET') {
+    const result = await env.DB.prepare(
+      `SELECT payload_json AS payload FROM egoric_workspace_items
+       WHERE owner_email = ? AND collection = ? AND deleted_at IS NULL
+       ORDER BY updated_at DESC LIMIT 20`
+    ).bind(email, 'syncFieldTests').all();
+    const now = Date.now();
+    const session = (result.results || [])
+      .map((row) => { try { return JSON.parse(row.payload); } catch { return null; } })
+      .find((item) => item?.status === 'verified' && Number(item.expiresAt) > now);
+    return json({ session: session || null });
+  }
+
+  const fieldTestMatch = url.pathname.match(/^\/api\/cloud\/workspace\/field-tests\/([^/]+?)(?:\/(ack|verify))?$/);
+  if (fieldTestMatch) {
+    const code = safeFieldTestCode(decodeURIComponent(fieldTestMatch[1]).toUpperCase());
+    if (!code) return json({ error: 'Mã kiểm tra không hợp lệ.' }, 400);
+    const action = fieldTestMatch[2];
+    const row = await env.DB.prepare(
+      `SELECT payload_json AS payload FROM egoric_workspace_items
+       WHERE owner_email = ? AND collection = ? AND item_id = ? AND deleted_at IS NULL`
+    ).bind(email, 'syncFieldTests', code).first();
+    if (!row) return json({ error: 'Không tìm thấy mã kiểm tra trong workspace này.' }, 404);
+    let session;
+    try { session = JSON.parse(row.payload); } catch { return json({ error: 'Bằng chứng cloud bị hỏng.' }, 500); }
+
+    const now = Date.now();
+    if (Number(session.expiresAt) <= now) return json({ error: 'Mã kiểm tra đã hết hạn. Hãy tạo mã mới.' }, 410);
+    if (!action && request.method === 'GET') return json({ session });
+
+    const body = await request.json().catch(() => null);
+    const deviceId = safeFieldTestDeviceId(body?.deviceId);
+    if (!deviceId) return json({ error: 'Danh tính thiết bị không hợp lệ.' }, 400);
+
+    if (action === 'ack' && request.method === 'PUT') {
+      const deviceLabel = cleanText(body?.deviceLabel, 80);
+      if (!deviceLabel) return json({ error: 'Hãy đặt tên cho thiết bị B.' }, 400);
+      if (deviceId === session.deviceA?.id) return json({ error: 'Phải xác nhận bằng một thiết bị khác thiết bị A.' }, 409);
+      if (session.status === 'verified') return json({ session });
+      if (session.deviceB?.id && session.deviceB.id !== deviceId) {
+        return json({ error: 'Mã này đã được một thiết bị B khác xác nhận.' }, 409);
+      }
+      session = {
+        ...session, status: 'acknowledged', deviceB: { id: deviceId, label: deviceLabel },
+        acknowledgedAt: session.acknowledgedAt || now, updatedAt: now,
+      };
+    } else if (action === 'verify' && request.method === 'PUT') {
+      if (deviceId !== session.deviceA?.id) return json({ error: 'Chỉ thiết bị A đã tạo mã mới được chốt bằng chứng.' }, 403);
+      if (session.status === 'verified') return json({ session });
+      if (session.status !== 'acknowledged' || !session.deviceB?.id) {
+        return json({ error: 'Thiết bị B chưa xác nhận mã này.' }, 409);
+      }
+      session = {
+        ...session, status: 'verified', verifiedAt: now, updatedAt: now,
+        expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      };
+    } else {
+      return json({ error: 'Phương thức không được hỗ trợ.' }, 405);
+    }
+
+    await env.DB.prepare(
+      `UPDATE egoric_workspace_items SET payload_json = ?, updated_at = ?
+       WHERE owner_email = ? AND collection = ? AND item_id = ?`
+    ).bind(JSON.stringify(session), now, email, 'syncFieldTests', code).run();
+    return json({ session });
+  }
+
   if (url.pathname === '/api/cloud/workspace/health' && request.method === 'GET') {
     const result = await env.DB.prepare(
       `SELECT collection,
