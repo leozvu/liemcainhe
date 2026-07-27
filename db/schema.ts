@@ -44,7 +44,16 @@ export const systemEventsSchema = {
 export const productionJobsSchema = {
   table: 'egoric_jobs',
   primaryKey: ['id'],
-  indexes: [['owner_email', 'project_id', 'updated_at']],
+  indexes: [
+    ['owner_email', 'project_id', 'updated_at'],
+    ['owner_email', 'project_id', 'idempotency_key'],
+  ],
+  columns: [
+    'id', 'owner_email', 'project_id', 'kind', 'stage', 'label', 'status',
+    'progress', 'completed_units', 'total_units', 'resource_id',
+    'idempotency_key', 'provider_task_id', 'detail', 'error', 'attempts',
+    'created_at', 'updated_at',
+  ],
 } as const;
 
 export const mediaMetadataSchema = {
