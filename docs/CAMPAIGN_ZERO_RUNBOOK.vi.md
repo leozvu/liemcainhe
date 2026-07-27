@@ -52,6 +52,10 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 
 - Runbook được lưu trước vào IndexedDB để thao tác không mất dữ liệu khi mạng chập chờn.
 - Trên bản production, app tự hợp nhất bản mới nhất lên workspace cloud khi mở hoặc lưu Campaign 0.
-- Nút **Đồng bộ ngay** cho phép thử lại chủ động. Nếu cloud lỗi, panel ghi rõ dữ liệu vẫn an toàn trên máy.
+- Bấm trạng thái **Workspace đã lưu** ở Dashboard hoặc sidebar để mở Trung tâm
+  đồng bộ. Bảng này đối chiếu số bản ghi local/cloud, ghi lỗi theo từng kho và
+  có nút **Kiểm tra và đồng bộ toàn bộ**.
+- Trước lượt media đầu tiên, hoàn tất checklist hai thiết bị trong Trung tâm
+  đồng bộ bằng dữ liệu thử. Bài kiểm tra này có chi phí AI bằng 0.
 - Các run cũ từng nằm trong `localStorage` được chuyển sang kho mới ở lần mở đầu tiên.
 - Xung đột giữa hai thiết bị được giải quyết bằng `updatedAt`; nếu cùng mốc, hai bên dùng cùng quy tắc phân thắng để không đồng bộ qua lại vô hạn.

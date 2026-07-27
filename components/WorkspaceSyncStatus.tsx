@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -10,10 +10,11 @@ import {
 } from 'lucide-react';
 import {
   getWorkspaceSyncState,
-  requestWorkspaceSync,
   subscribeWorkspaceSync,
   WorkspaceSyncRuntimePhase,
 } from '../services/workspaceSyncCoordinatorService';
+
+const WorkspaceSyncCenter = React.lazy(() => import('./WorkspaceSyncCenter'));
 
 interface Props {
   variant?: 'header' | 'sidebar';
@@ -36,50 +37,63 @@ const formatSyncTime = (timestamp?: number): string => timestamp
   ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(timestamp)
   : 'chưa có';
 
+const SyncCenterFallback = () => (
+  <div className="fixed inset-0 z-[340] flex items-center justify-center bg-black/80 backdrop-blur-xl" role="status">
+    <Loader2 className="h-6 w-6 animate-spin text-cyan-200" />
+    <span className="ml-3 text-xs text-zinc-400">Đang mở Trung tâm đồng bộ…</span>
+  </div>
+);
+
 const WorkspaceSyncStatus: React.FC<Props> = ({ variant = 'header' }) => {
   const [state, setState] = useState(getWorkspaceSyncState);
+  const [showCenter, setShowCenter] = useState(false);
+  const closeCenter = useCallback(() => setShowCenter(false), []);
 
   useEffect(() => subscribeWorkspaceSync(setState), []);
 
   const meta = META[state.phase];
   const Icon = meta.icon;
   const title = useMemo(
-    () => `${meta.label}. ${state.summary} Đồng bộ thành công gần nhất: ${formatSyncTime(state.lastSyncedAt)}. Bấm để thử đồng bộ toàn bộ.`,
+    () => `${meta.label}. ${state.summary} Đồng bộ thành công gần nhất: ${formatSyncTime(state.lastSyncedAt)}. Bấm để mở Trung tâm đồng bộ.`,
     [meta.label, state.lastSyncedAt, state.summary],
   );
   const busy = state.phase === 'syncing';
 
   if (variant === 'sidebar') {
     return (
-      <button
-        type="button"
-        onClick={() => void requestWorkspaceSync({ full: true })}
-        disabled={busy}
-        className={`eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left hover:bg-white/[.035] disabled:cursor-wait ${meta.tone}`}
-        title={title}
-        aria-label={title}
-      >
-        <Icon className={`h-4 w-4 shrink-0 ${busy ? 'animate-spin' : ''}`} />
-        <span className="eg-sidebar-copy min-w-0 flex-1 truncate text-[11px] font-medium">{meta.label}</span>
-        {state.pendingCollections > 0 && <span className="eg-sidebar-copy font-mono text-[9px]">{state.pendingCollections}</span>}
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={() => setShowCenter(true)}
+          className={`eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left hover:bg-white/[.035] ${meta.tone}`}
+          title={title}
+          aria-label={title}
+        >
+          <Icon className={`h-4 w-4 shrink-0 ${busy ? 'animate-spin' : ''}`} />
+          <span className="eg-sidebar-copy min-w-0 flex-1 truncate text-[11px] font-medium">{meta.label}</span>
+          {state.pendingCollections > 0 && <span className="eg-sidebar-copy font-mono text-[9px]">{state.pendingCollections}</span>}
+        </button>
+        {showCenter && <React.Suspense fallback={<SyncCenterFallback />}><WorkspaceSyncCenter isOpen onClose={closeCenter} /></React.Suspense>}
+      </>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void requestWorkspaceSync({ full: true })}
-      disabled={busy}
-      className={`eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-3 text-[10px] font-semibold disabled:cursor-wait ${meta.tone}`}
-      title={title}
-      aria-label={title}
-    >
-      <Icon className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-      <span className="hidden xl:inline">{meta.label}</span>
-      {!busy && state.phase !== 'synced' && <RefreshCw className="hidden h-3 w-3 sm:block" />}
-      {state.pendingCollections > 0 && <span className="font-mono text-[9px]">{state.pendingCollections}</span>}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setShowCenter(true)}
+        className={`eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-3 text-[10px] font-semibold ${meta.tone}`}
+        title={title}
+        aria-label={title}
+      >
+        <Icon className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+        <span className="hidden xl:inline">{meta.label}</span>
+        {!busy && state.phase !== 'synced' && <RefreshCw className="hidden h-3 w-3 sm:block" />}
+        {state.pendingCollections > 0 && <span className="font-mono text-[9px]">{state.pendingCollections}</span>}
+      </button>
+      {showCenter && <React.Suspense fallback={<SyncCenterFallback />}><WorkspaceSyncCenter isOpen onClose={closeCenter} /></React.Suspense>}
+    </>
   );
 };
 

@@ -271,6 +271,31 @@ async function handleCloudApi(request, env, url) {
    * `deleted_at` là bia mộ: xoá mà không để lại dấu thì máy khác sẽ đẩy bản ghi
    * cũ lên lại và thứ vừa xoá sống dậy.
    */
+  if (url.pathname === '/api/cloud/workspace/health' && request.method === 'GET') {
+    const result = await env.DB.prepare(
+      `SELECT collection,
+              SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS active,
+              SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS tombstones,
+              MAX(updated_at) AS newestAt
+       FROM egoric_workspace_items
+       WHERE owner_email = ?
+       GROUP BY collection`
+    ).bind(email).all();
+
+    const byCollection = new Map((result.results || []).map((row) => [row.collection, row]));
+    const collections = Array.from(WORKSPACE_COLLECTIONS).map((collection) => {
+      const row = byCollection.get(collection);
+      return {
+        collection,
+        active: Number(row?.active) || 0,
+        tombstones: Number(row?.tombstones) || 0,
+        newestAt: Number(row?.newestAt) || undefined,
+      };
+    });
+
+    return json({ ok: true, serverTime: Date.now(), collections });
+  }
+
   if (url.pathname === '/api/cloud/workspace' && request.method === 'GET') {
     const collection = safeCollection(url.searchParams.get('collection'));
     if (!collection) return json({ error: 'Bộ dữ liệu không hợp lệ.' }, 400);
