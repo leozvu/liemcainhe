@@ -1,5 +1,6 @@
 import { AspectRatio } from '../types/model';
 import { localizeApiErrorMessage } from './apiErrorLocalization';
+import { createBillableHttpError, submitPaidTaskSafely } from './mediaExecutionService';
 
 /** Các mô hình ảnh dùng giao thức OpenAI Images thay vì chat/completions. */
 export const shouldUseImagesGenerationsEndpoint = (
@@ -191,34 +192,39 @@ export const callImagesGenerationsApi = async (params: {
   model: string;
   prompt: string;
   aspectRatio: AspectRatio;
+  onProviderAccepted?: () => void | Promise<void>;
 }): Promise<string> => {
-  const res = await fetch(`${params.apiBase.replace(/\/+$/, '')}/v1/images/generations`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${params.apiKey}`,
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      model: params.model,
-      prompt: params.prompt,
-      n: 1,
-      response_format: 'b64_json',
-      size: aspectRatioToImageSize(params.aspectRatio),
-    }),
-  });
+  const res = await submitPaidTaskSafely(async () => {
+    const response = await fetch(`${params.apiBase.replace(/\/+$/, '')}/v1/images/generations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${params.apiKey}`,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        model: params.model,
+        prompt: params.prompt,
+        n: 1,
+        response_format: 'b64_json',
+        size: aspectRatioToImageSize(params.aspectRatio),
+      }),
+    });
 
-  if (!res.ok) {
-    let errorMessage = `Tạo ảnh thất bại: HTTP ${res.status}`;
-    try {
-      const errBody = await res.json();
-      errorMessage = (errBody as { error?: { message?: string } }).error?.message || errorMessage;
-    } catch {
-      const text = await res.text();
-      if (text) errorMessage = text;
+    if (!response.ok) {
+      let errorMessage = `Tạo ảnh thất bại: HTTP ${response.status}`;
+      try {
+        const errBody = await response.json();
+        errorMessage = (errBody as { error?: { message?: string } }).error?.message || errorMessage;
+      } catch {
+        const text = await response.text();
+        if (text) errorMessage = text;
+      }
+      throw createBillableHttpError(localizeApiErrorMessage(errorMessage, response.status), response.status);
     }
-    throw new Error(localizeApiErrorMessage(errorMessage, res.status));
-  }
+    await params.onProviderAccepted?.();
+    return response;
+  });
 
   const data = await res.json();
   const extracted = extractImageFromApiResponse(data);

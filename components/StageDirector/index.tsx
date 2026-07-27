@@ -25,6 +25,7 @@ import ShotWorkbench from './ShotWorkbench';
 import ImagePreviewModal from './ImagePreviewModal';
 import { useAlert } from '../GlobalAlert';
 import { getDefaultAspectRatio } from '../../services/modelRegistry';
+import { createProjectMediaExecutionContext } from '../../services/mediaExecutionService';
 import {
   addProductionJob,
   clearShotStaleFlag,
@@ -130,15 +131,33 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     
     try {
       const referenceImages = getRefImagesForShot(shot, project.scriptData);
-      const url = await generateImage(prompt, referenceImages, keyframeAspectRatio, false, undefined, `${shot.id}:keyframe:${type}`);
-
-      updateProject((prevProject: ProjectState) => ({
-        ...prevProject,
-        shots: prevProject.shots.map(s => {
-          if (s.id !== shot.id) return s;
-          return markShotWorkflowStale(updateKeyframeInShot(s, type, createKeyframe(kfId, type, prompt, url, 'completed')), 'keyframe');
-        })
-      }));
+      await generateImage(
+        prompt,
+        referenceImages,
+        keyframeAspectRatio,
+        false,
+        undefined,
+        `${shot.id}:keyframe:${type}`,
+        createProjectMediaExecutionContext({
+          project,
+          updateProject,
+          kind: 'keyframe-image',
+          stage: 'director',
+          label: `Tạo khung ${type === 'start' ? 'đầu' : 'cuối'} cảnh ${project.shots.findIndex((item) => item.id === shot.id) + 1}`,
+          resourceId: `${shot.id}:keyframe:${type}`,
+          previousOutput: existingKf?.imageUrl,
+          commitResult: (prevProject, url) => ({
+            ...prevProject,
+            shots: prevProject.shots.map((item) => {
+              if (item.id !== shot.id) return item;
+              return markShotWorkflowStale(
+                updateKeyframeInShot(item, type, createKeyframe(kfId, type, prompt, url, 'completed')),
+                'keyframe',
+              );
+            }),
+          }),
+        }),
+      );
       return true;
     } catch (e: any) {
       console.error(e);
@@ -238,16 +257,6 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     );
     
     const intervalId = shot.interval?.id || generateId(`int-${shot.id}`);
-    const job = createProductionJob({
-      kind: 'video',
-      stage: 'director',
-      label: `Tạo video cảnh ${project.shots.findIndex((item) => item.id === shot.id) + 1}`,
-      totalUnits: 1,
-      resourceId: shot.id,
-      detail: `Đang gửi yêu cầu tới ${selectedModel}.`,
-    });
-    updateProject((previous) => setProductionJobStatus(addProductionJob(previous, job), job.id, 'running'));
-    
     updateShot(shot.id, (s) => ({
       ...s,
       videoModel: selectedModel as any,
@@ -264,7 +273,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     }));
     
     try {
-      const videoUrl = await generateVideo(
+      await generateVideo(
         videoPrompt, 
         textToVideoOnly ? undefined : sKf?.imageUrl, 
         textToVideoOnly ? undefined : eKf?.imageUrl,
@@ -272,31 +281,39 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         aspectRatio,
         duration,
         `${shot.id}:video`,
+        createProjectMediaExecutionContext({
+          project,
+          updateProject,
+          kind: 'video',
+          stage: 'director',
+          label: `Tạo video cảnh ${project.shots.findIndex((item) => item.id === shot.id) + 1}`,
+          resourceId: shot.id,
+          previousOutput: shot.interval?.videoUrl,
+          commitResult: (previous, videoUrl) => ({
+            ...previous,
+            shots: previous.shots.map((item) => item.id === shot.id ? clearShotStaleFlag({
+              ...item,
+              interval: item.interval ? { ...item.interval, videoUrl, status: 'completed', textToVideoOnly } : {
+                id: intervalId,
+                startKeyframeId: sKf?.id || '',
+                endKeyframeId: eKf?.id || '',
+                duration: 10,
+                motionStrength: 5,
+                videoPrompt,
+                textToVideoOnly,
+                videoUrl,
+                status: 'completed',
+              },
+            }, 'video') : item),
+          }),
+        }),
       );
-
-      updateShot(shot.id, (s) => clearShotStaleFlag({
-        ...s,
-        interval: s.interval ? { ...s.interval, videoUrl, status: 'completed', textToVideoOnly } : {
-          id: intervalId,
-          startKeyframeId: sKf?.id || '',
-          endKeyframeId: eKf?.id || '',
-          duration: 10,
-          motionStrength: 5,
-          videoPrompt,
-          textToVideoOnly,
-          videoUrl,
-          status: 'completed'
-        }
-      }, 'video'));
-      updateProject((previous) => setProductionJobStatus(previous, job.id, 'completed'));
     } catch (e: any) {
       console.error(e);
       updateShot(shot.id, (s) => ({
         ...s,
         interval: s.interval ? { ...s.interval, status: 'failed', textToVideoOnly } : undefined
       }));
-      updateProject((previous) => setProductionJobStatus(previous, job.id, 'failed', e.message || 'Tạo video thất bại'));
-      
       if (onApiKeyError && onApiKeyError(e)) return;
       showAlert(e.message || 'Tạo video thất bại', { type: 'error' });
     }

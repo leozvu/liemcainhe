@@ -1,10 +1,10 @@
 import { BrandKit } from '../../types';
-import { AspectRatio } from '../../types/model';
+import { AspectRatio, ImageGenerateOptions, MediaExecutionContext } from '../../types/model';
 import { ArticleDraft, ArticleIllustration, ContentBrief } from '../../types/content';
 import { callChatApi } from '../adapters/chatAdapter';
-import { callImageApi } from '../adapters/imageAdapter';
 import { buildBrandVisualGuardrails } from '../brandKitService';
 import { parseModelJson } from '../jsonResponse';
+import { generateImage } from '../modelService';
 import { getAudience, getVoice } from './contentAxes';
 
 /**
@@ -156,7 +156,8 @@ export const planIllustrations = async (
 
 export interface RenderIllustrationOptions {
   usageResourceId?: string;
-  image?: typeof callImageApi;
+  execution?: MediaExecutionContext;
+  image?: (options: ImageGenerateOptions) => Promise<string>;
 }
 
 /**
@@ -173,12 +174,13 @@ export const renderIllustration = async (
     return { ...illustration, status: 'failed', error: 'Prompt rỗng, không có gì để vẽ.' };
   }
 
-  const image = options.image ?? callImageApi;
+  const image = options.image ?? generateImage;
   try {
     const imageUrl = await image({
       prompt: illustration.prompt,
       aspectRatio: illustration.aspectRatio,
       usageResourceId: options.usageResourceId ?? `content-illustration-${illustration.purpose}`,
+      execution: options.execution,
     });
     return { ...illustration, imageUrl, status: 'done', error: undefined };
   } catch (error) {

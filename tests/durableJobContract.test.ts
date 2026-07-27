@@ -2,16 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { PRODUCTION_JOB_KINDS, ProductionJob } from '../types';
-import { loadDurableJobs, syncDurableJobs } from '../services/durableJobService';
+import { claimDurableJob, loadDurableJobs, syncDurableJobs } from '../services/durableJobService';
 import worker from '../worker/index.js';
 
 const root = path.join(__dirname, '..');
 const workerSource = readFileSync(path.join(root, 'worker', 'index.js'), 'utf8');
 const migrationSource = readFileSync(path.join(root, 'drizzle', '0007_durable_job_contract.sql'), 'utf8');
+const claimMigrationSource = readFileSync(path.join(root, 'drizzle', '0008_billable_job_claims.sql'), 'utf8');
 
 const hostedWindow = { location: { hostname: 'egoric-studio-vietnam.example.chatgpt.site' } };
 
-const createFakeD1 = () => {
+const createFakeD1 = (firstResults: unknown[] = [], changes = 1) => {
   const prepared: Array<{ sql: string; bindings: unknown[]; bind: (...values: unknown[]) => unknown }> = [];
   const batch = vi.fn().mockResolvedValue([]);
   const prepare = (sql: string) => {
@@ -23,8 +24,8 @@ const createFakeD1 = () => {
         return this;
       },
       all: vi.fn().mockResolvedValue({ results: [] }),
-      run: vi.fn().mockResolvedValue({ success: true }),
-      first: vi.fn().mockResolvedValue(null),
+      run: vi.fn().mockResolvedValue({ success: true, meta: { changes } }),
+      first: vi.fn().mockImplementation(async () => firstResults.shift() ?? null),
     };
     prepared.push(statement);
     return statement;
@@ -92,6 +93,53 @@ describe('contract durable jobs giữa client và worker', () => {
     expect(workerSource).toContain('provider_task_id = COALESCE');
   });
 
+  it('migration tạo unique partial index cho tác vụ có thể đã bị tính tiền', () => {
+    expect(claimMigrationSource).toContain('ROW_NUMBER() OVER');
+    expect(claimMigrationSource).toContain("status = 'cancelled'");
+    expect(claimMigrationSource).toContain('CREATE UNIQUE INDEX');
+    expect(claimMigrationSource).toContain('owner_email, project_id, idempotency_key');
+    expect(claimMigrationSource).toContain("status IN ('queued', 'running', 'completed', 'interrupted')");
+  });
+
+  it('worker claim job bằng POST trước khi provider được gọi', async () => {
+    const { db, prepared } = createFakeD1();
+    const response = await worker.fetch(new Request('https://studio.test/api/jobs?projectId=project_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'oai-authenticated-user-email': 'owner@egoric.vn',
+      },
+      body: JSON.stringify({ job: { ...job(), kind: 'video' } }),
+    }), { DB: db });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ claimed: true });
+    expect(prepared.some((statement) => statement.sql.includes('ON CONFLICT DO NOTHING'))).toBe(true);
+  });
+
+  it('worker không cho snapshot tab cũ ghi lùi trạng thái job', () => {
+    expect(workerSource).toContain("egoric_jobs.status NOT IN ('completed', 'cancelled')");
+    expect(workerSource).toContain('excluded.updated_at > egoric_jobs.updated_at');
+    expect(workerSource).toContain("egoric_jobs.status = 'interrupted'");
+  });
+
+  it('worker trả 409 và job cũ khi tab khác đã claim cùng khóa', async () => {
+    const existing = { ...job(), kind: 'video', status: 'running' };
+    const { db, prepared } = createFakeD1([existing]);
+    const response = await worker.fetch(new Request('https://studio.test/api/jobs?projectId=project_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'oai-authenticated-user-email': 'owner@egoric.vn',
+      },
+      body: JSON.stringify({ job: { ...job(), kind: 'video' } }),
+    }), { DB: db });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ claimed: false, existing });
+    expect(prepared.some((statement) => statement.sql.includes('INSERT INTO egoric_jobs'))).toBe(false);
+  });
+
   it('client gửi nguyên khóa chống trùng và mã provider lên API', async () => {
     vi.stubGlobal('window', hostedWindow);
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
@@ -117,6 +165,20 @@ describe('contract durable jobs giữa client và worker', () => {
       kind: 'video-factory',
       idempotencyKey: 'idem_video_shot_1',
       providerTaskId: 'kie_task_123',
+    });
+  });
+
+  it('client hiểu 409 là tab khác đã giữ claim, không coi là lỗi provider', async () => {
+    vi.stubGlobal('window', hostedWindow);
+    const existing = { ...job(), kind: 'video', status: 'running' as const };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ claimed: false, existing }),
+      { status: 409, headers: { 'content-type': 'application/json' } },
+    )));
+
+    await expect(claimDurableJob('project_1', { ...job(), kind: 'video' })).resolves.toEqual({
+      claimed: false,
+      existing,
     });
   });
 });

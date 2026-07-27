@@ -23,6 +23,7 @@ import { AspectRatioSelector } from '../AspectRatioSelector';
 import { getDefaultAspectRatio, getImageModels, getActiveImageModel, getModelById } from '../../services/modelRegistry';
 import ModelSelector from '../ModelSelector';
 import { ImageModelDefinition, DEFAULT_IMAGE_MODEL_ID } from '../../types/model';
+import { createProjectMediaExecutionContext } from '../../services/mediaExecutionService';
 import {
   addProductionJob,
   createProductionJob,
@@ -152,6 +153,9 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   };
 
   const handleGenerateAsset = async (type: 'character' | 'scene', id: string): Promise<boolean> => {
+    const currentAsset = type === 'character'
+      ? project.scriptData?.characters.find((item) => compareIds(item.id, id))
+      : project.scriptData?.scenes.find((item) => compareIds(item.id, id));
     updateProject((previous) => patchAssetInProject(previous, type, id, { status: 'generating' }));
     try {
       let prompt = "";
@@ -191,13 +195,28 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       const regionalPrefix = getRegionalPrefix(language, type);
       const enhancedPrompt = regionalPrefix + prompt;
 
-      const imageUrl = await generateImage(enhancedPrompt, [], aspectRatio, false, selectedImageModelId, `asset:${type}:${id}`);
-
-      updateProject((previous) => markDependentShotsStale(
-        patchAssetInProject(previous, type, id, { referenceImage: imageUrl, status: 'completed' }),
-        type,
-        id,
-      ));
+      await generateImage(
+        enhancedPrompt,
+        [],
+        aspectRatio,
+        false,
+        selectedImageModelId,
+        `asset:${type}:${id}`,
+        createProjectMediaExecutionContext({
+          project,
+          updateProject,
+          kind: 'asset-image',
+          stage: 'assets',
+          label: `Tạo ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'} ${currentAsset?.name || id}`,
+          resourceId: `${type}:${id}`,
+          previousOutput: currentAsset?.referenceImage,
+          commitResult: (previous, imageUrl) => markDependentShotsStale(
+            patchAssetInProject(previous, type, id, { referenceImage: imageUrl, status: 'completed' }),
+            type,
+            id,
+          ),
+        }),
+      );
       return true;
     } catch (e: any) {
       console.error(e);
@@ -583,17 +602,38 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       const regionalPrefix = getRegionalPrefix(language, 'character');
       const enhancedPrompt = `${regionalPrefix}Nhân vật "${char.name}" mặc TRANG PHỤC MỚI: ${variation.visualPrompt}. Đây chỉ là thay đổi trang phục; khuôn mặt và danh tính nhân vật phải giống hệt ảnh tham chiếu, đồng thời mặc đúng bộ đồ được mô tả.`;
       
-      const imageUrl = await generateImage(enhancedPrompt, refImages, aspectRatio, true, selectedImageModelId, `asset:character:${charId}:variation:${varId}`);
-
-      const newData = { ...project.scriptData! };
-      const c = newData.characters.find(c => compareIds(c.id, charId));
-      const v = c?.variations?.find(v => compareIds(v.id, varId));
-      if (v) {
-        v.referenceImage = imageUrl;
-        v.status = 'completed';
-      }
-
-      updateProject({ scriptData: newData });
+      await generateImage(
+        enhancedPrompt,
+        refImages,
+        aspectRatio,
+        true,
+        selectedImageModelId,
+        `asset:character:${charId}:variation:${varId}`,
+        createProjectMediaExecutionContext({
+          project,
+          updateProject,
+          kind: 'asset-image',
+          stage: 'assets',
+          label: `Tạo biến thể ${variation.name || varId} của ${char.name}`,
+          resourceId: `character:${charId}:variation:${varId}`,
+          previousOutput: variation.referenceImage,
+          commitResult: (previous, imageUrl) => {
+            if (!previous.scriptData) return previous;
+            const scriptData = {
+              ...previous.scriptData,
+              characters: previous.scriptData.characters.map((item) => compareIds(item.id, charId)
+                ? {
+                  ...item,
+                  variations: item.variations?.map((candidate) => compareIds(candidate.id, varId)
+                    ? { ...candidate, referenceImage: imageUrl, status: 'completed' as const }
+                    : candidate),
+                }
+                : item),
+            };
+            return { ...previous, scriptData };
+          },
+        }),
+      );
     } catch (e: any) {
       console.error(e);
       if (project.scriptData) {

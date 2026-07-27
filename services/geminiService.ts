@@ -6,6 +6,7 @@ import {
   DEFAULT_PROVIDER_ID,
   ChatModelDefinition,
   ImageModelDefinition,
+  MediaExecutionContext,
   VideoModelDefinition,
 } from '../types/model';
 import {
@@ -36,6 +37,13 @@ import { verifyProviderApiKey } from './providerService';
 import { parseModelJson } from './jsonResponse';
 import { assertGenerationAllowed } from './promptPreflight';
 import { selectImageModelForGeneration } from './imageModelSelection';
+import {
+  buildMediaInputSignature,
+  createBillableHttpError,
+  createConfirmedBillableFailure,
+  executeBillableMedia,
+  submitPaidTaskSafely,
+} from './mediaExecutionService';
 
 export class ApiKeyError extends Error {
   constructor(message: string) {
@@ -903,13 +911,15 @@ Chỉ trả về nội dung câu lệnh hình ảnh, không giải thích.`;
  * @returns Ảnh dạng base64.
  * @throws Lỗi khi tạo ảnh thất bại.
  */
-export const generateImage = async (
+const generateImageOnce = async (
   prompt: string, 
   referenceImages: string[] = [],
   aspectRatio: AspectRatio = '16:9',
   isVariation: boolean = false,
   modelId?: string,
   usageResourceId?: string,
+  onProviderAccepted?: () => void | Promise<void>,
+  onProviderTaskId?: (taskId: string) => void | Promise<void>,
 ): Promise<string> => {
   // Chặn trước khi tiêu tiền. Chỉ luật cục bộ nên không tốn phí, không thêm
   // độ trễ, và chỉ chặn những lỗi chắc chắn sai.
@@ -944,7 +954,14 @@ export const generateImage = async (
           : `${prompt}\n\nYêu cầu bắt buộc: duy trì chính xác khuôn mặt, mái tóc, trang phục, tỷ lệ nhân vật, ánh sáng và bối cảnh từ các ảnh tham chiếu.`
         : prompt;
       const rawResult = await callImageApi(
-        { prompt: providerPrompt, referenceImages, aspectRatio, usageResourceId },
+        {
+          prompt: providerPrompt,
+          referenceImages,
+          aspectRatio,
+          usageResourceId,
+          onProviderAccepted,
+          onProviderTaskId,
+        },
         activeImageModel
       );
       const result = await normalizeImageResult(rawResult);
@@ -968,6 +985,7 @@ export const generateImage = async (
         model: imageModelId,
         prompt,
         aspectRatio,
+        onProviderAccepted,
       });
       addRenderLogWithTokens({
         type: 'keyframe',
@@ -1060,7 +1078,7 @@ export const generateImage = async (
     max_tokens: 2048,
   };
 
-  const response = await retryOperation(async () => {
+  const response = await submitPaidTaskSafely(async () => {
     const res = await fetch(`${apiBase}${requestEndpoint}`, {
       method: 'POST',
       headers: {
@@ -1074,10 +1092,10 @@ export const generateImage = async (
     if (!res.ok) {
       // Xử lý riêng lỗi 400/500 do bộ lọc nội dung.
       if (res.status === 400) {
-        throw new Error('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh câu lệnh khung hình, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.');
+        throw createBillableHttpError('Yêu cầu bị chặn vì an toàn nội dung. Hãy chỉnh câu lệnh khung hình, loại bỏ mô tả bạo lực, máu me hoặc nhạy cảm rồi thử lại.', res.status);
       }
       else if (res.status === 500) {
-        throw new Error('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.');
+        throw createBillableHttpError('Hệ thống đang có nhiều yêu cầu. Vui lòng thử lại sau.', res.status);
       }
       
       let errorMessage = `Lỗi HTTP: ${res.status}`;
@@ -1092,9 +1110,10 @@ export const generateImage = async (
       } catch (_) {
         // Dùng thông báo mặc định khi body đã đọc hoặc không phân tích được.
       }
-      throw new Error(localizeApiErrorMessage(errorMessage, res.status));
+      throw createBillableHttpError(localizeApiErrorMessage(errorMessage, res.status), res.status);
     }
 
+    await onProviderAccepted?.();
     return await res.json();
   });
 
@@ -1133,6 +1152,42 @@ export const generateImage = async (
     throw error;
   }
 };
+
+/**
+ * Cổng chung cho mọi lần tạo ảnh từ UI cũ. Khi có execution context, tác vụ
+ * được claim bền vững trước khi provider nhận request; khi chưa có context vẫn
+ * chặn được double-click trong cùng tab bằng Promise dùng chung.
+ */
+export const generateImage = async (
+  prompt: string,
+  referenceImages: string[] = [],
+  aspectRatio: AspectRatio = '16:9',
+  isVariation: boolean = false,
+  modelId?: string,
+  usageResourceId?: string,
+  execution?: MediaExecutionContext,
+): Promise<string> => executeBillableMedia({
+  context: execution,
+  mediaType: 'image',
+  resourceId: usageResourceId,
+  inputSignature: buildMediaInputSignature({
+    modelId,
+    prompt,
+    referenceImages,
+    aspectRatio,
+    isVariation,
+  }),
+  operation: ({ onProviderAccepted, onProviderTaskId }) => generateImageOnce(
+    prompt,
+    referenceImages,
+    aspectRatio,
+    isVariation,
+    modelId,
+    usageResourceId,
+    onProviderAccepted,
+    onProviderTaskId,
+  ),
+});
 
 /**
  * Chuyển URL video sang base64.
@@ -1220,7 +1275,9 @@ const generateVideoWithSora2 = async (
   apiKey: string,
   aspectRatio: AspectRatio = '16:9',
   duration: VideoDuration = 8,
-  modelName: string = 'sora-2'
+  modelName: string = 'sora-2',
+  onProviderAccepted?: () => void | Promise<void>,
+  onProviderTaskId?: (taskId: string) => void | Promise<void>,
 ): Promise<string> => {
   console.log(`🎬 Đang tạo video bất đồng bộ (${modelName}, ${aspectRatio}, ${duration} giây)...`);
   
@@ -1261,18 +1318,21 @@ const generateVideoWithSora2 = async (
   }
   
   // Gửi yêu cầu tạo tác vụ.
-  const createResponse = await fetch(`${apiBase}/v1/videos`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: formData
+  const createResponse = await submitPaidTaskSafely(async () => {
+    const response = await fetch(`${apiBase}/v1/videos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: formData
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throwFromVideoHttpError(response.status, errorText, 'sora');
+    }
+    return response;
   });
-  
-  if (!createResponse.ok) {
-    const errorText = await createResponse.text();
-    throwFromVideoHttpError(createResponse.status, errorText, 'sora');
-  }
+  await onProviderAccepted?.();
   
   const createData = await createResponse.json();
   // Phản hồi có thể dùng trường id hoặc task_id.
@@ -1280,6 +1340,7 @@ const generateVideoWithSora2 = async (
   if (!taskId) {
     throw new Error('Không thể tạo tác vụ video: máy chủ không trả về mã tác vụ');
   }
+  await onProviderTaskId?.(String(taskId));
   
   console.log('📋 Đã tạo tác vụ sora-2, mã tác vụ:', taskId);
   
@@ -1325,7 +1386,9 @@ const generateVideoWithSora2 = async (
       console.log('✅ Tác vụ hoàn tất, ID dùng để tải:', videoId);
       break;
     } else if (status === 'failed' || status === 'error') {
-      throw new Error(formatVideoTaskErrorForUser(statusData.error ?? statusData, statusData.message, 'sora'));
+      throw createConfirmedBillableFailure(
+        formatVideoTaskErrorForUser(statusData.error ?? statusData, statusData.message, 'sora'),
+      );
     }
     // Tiếp tục kiểm tra với các trạng thái đang chờ hoặc đang xử lý.
   }
@@ -1357,7 +1420,7 @@ const generateVideoWithSora2 = async (
  * @throws Lỗi khi quá trình tạo video thất bại.
  * @note URL video có thể hết hạn nên kết quả được chuyển sang base64.
  */
-export const generateVideo = async (
+const generateVideoOnce = async (
   prompt: string, 
   startImageBase64?: string, 
   endImageBase64?: string, 
@@ -1365,6 +1428,8 @@ export const generateVideo = async (
   aspectRatio: AspectRatio = '16:9',
   duration: VideoDuration = 8,
   usageResourceId?: string,
+  onProviderAccepted?: () => void | Promise<void>,
+  onProviderTaskId?: (taskId: string) => void | Promise<void>,
 ): Promise<string> => {
   // Video là lời gọi đắt nhất trong app, nên cổng chặn ở đây đáng giá nhất.
   assertGenerationAllowed(prompt, 'video');
@@ -1386,6 +1451,8 @@ export const generateVideo = async (
         aspectRatio,
         duration,
         usageResourceId,
+        onProviderAccepted,
+        onProviderTaskId,
       },
       resolvedVideoModel
     );
@@ -1410,7 +1477,9 @@ export const generateVideo = async (
       apiKey,
       aspectRatio,
       duration,
-      requestModel || DEFAULT_VIDEO_MODEL_ID
+      requestModel || DEFAULT_VIDEO_MODEL_ID,
+      onProviderAccepted,
+      onProviderTaskId,
     );
   }
   
@@ -1463,7 +1532,7 @@ export const generateVideo = async (
   const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 minutes timeout
 
   try {
-    const response = await retryOperation(async () => {
+    const response = await submitPaidTaskSafely(async () => {
       const res = await fetch(`${apiBase}/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -1484,6 +1553,7 @@ export const generateVideo = async (
         throwFromVideoHttpError(res.status, errorText, 'veo');
       }
 
+      await onProviderAccepted?.();
       return res;
     });
 
@@ -1521,6 +1591,41 @@ export const generateVideo = async (
     throw error;
   }
 };
+
+/** Cổng chống gửi trùng cho toàn bộ luồng video positional API. */
+export const generateVideo = async (
+  prompt: string,
+  startImageBase64?: string,
+  endImageBase64?: string,
+  model: string = DEFAULT_VIDEO_MODEL_ID,
+  aspectRatio: AspectRatio = '16:9',
+  duration: VideoDuration = 8,
+  usageResourceId?: string,
+  execution?: MediaExecutionContext,
+): Promise<string> => executeBillableMedia({
+  context: execution,
+  mediaType: 'video',
+  resourceId: usageResourceId,
+  inputSignature: buildMediaInputSignature({
+    model,
+    prompt,
+    startImageBase64,
+    endImageBase64,
+    aspectRatio,
+    duration,
+  }),
+  operation: ({ onProviderAccepted, onProviderTaskId }) => generateVideoOnce(
+    prompt,
+    startImageBase64,
+    endImageBase64,
+    model,
+    aspectRatio,
+    duration,
+    usageResourceId,
+    onProviderAccepted,
+    onProviderTaskId,
+  ),
+});
 
 const buildContinueScriptPrompt = (existingScript: string, language: string): string => `
 Bạn là một biên kịch giàu kinh nghiệm. Hãy đọc kỹ phần kịch bản hiện có dưới đây và viết tiếp diễn biến.
