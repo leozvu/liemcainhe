@@ -145,9 +145,84 @@ Thiếu đo lường thời gian tay: `UsageRecord` có `durationMs` của lời
 
 ---
 
+## Entry point → dữ liệu thật đi vào service
+
+Bảng Codex yêu cầu ở vòng sửa cuối. Cột cuối trả lời: **dữ liệu chạy qua đây có phải dữ liệu thật của người dùng không**, hay chỉ là hình dạng đúng.
+
+| Năng lực | Entry point | Đường dữ liệu | Thật? |
+|---|---|---|---|
+| Prompt Preflight | Tự động, không thao tác | `geminiService.generateImage/generateVideo` ← prompt người dùng gõ | **Có** |
+| Editing Intelligence | Bảng "Trí tuệ dựng phim", Auto Editor | `autoEditorService.buildTimeline` ← `autoEditor.pacing` trong project | **Có** |
+| Supervisor + Calibration | `ProductionCenter.tsx:353` | `setSupervisorIssueStatus` → `recordSupervisorDecision(issue, …)` ← `issue.id` thật | **Có** (nay có dedupe) |
+| Client Memory | `StageContent/index.tsx` | `articleService:190` ← `articleLibrary` IndexedDB | **Một nửa** — bài thật, nhưng **không có metadata chất lượng quyết định** |
+| Director Agent | `App.tsx:446` | `ProjectState.creativeDirector` | **Có** |
+| Director **Briefing** | **Không có** | Chỉ `creativeDirectorMissionService` gọi; người không đọc được | **Không kiểm được** |
+| Consistency Engine | **Không có** | `geminiService` có 0 tham chiếu tới `referencePack` | **Không** |
+
+---
+
+## Rút khỏi PR: ngưỡng Client Memory
+
+Theo đúng chỉ dẫn *"nếu 5 file hiện tại không đủ để truyền metadata thật từ entry point thì rút runtime memory change; không giả lập dữ liệu"*.
+
+**Contract hiện tại không đủ:**
+
+```ts
+// types/content.ts:264 — không thuộc 5 file của Claude
+export interface ReviewRecord {
+  decision: ReviewDecision;
+  reviewer?: string;
+  note?: string;
+  decidedAt?: number;
+}
+```
+
+Không có trường nào phân biệt `individual | batch | client-portal`, không có vai trò người duyệt, không có `artifactVersion` hay `gate` để gộp quyết định cuối. Nơi duy nhất ghi review là `reviewQueueService.ts:437` — cũng ngoài phạm vi.
+
+Đặt ngưỡng đếm thuần trên dữ liệu không phân loại thì **tệ hơn không có ngưỡng**: duyệt hàng loạt 20 mục một cú bấm là đạt mốc ngay, mà đó đúng là loại nhiễu ngưỡng sinh ra để chặn. Một hàng rào dễ vượt bằng nhiễu tạo cảm giác an toàn giả.
+
+`clientMemoryService.ts` và test của nó đã **khôi phục nguyên trạng** — `git diff` với `main` rỗng.
+
+### Contract cần cho Sprint 0B
+
+```ts
+export type ReviewMode = 'individual' | 'batch' | 'client-portal';
+export type ReviewerRole = 'director' | 'editor' | 'account' | 'client' | 'client-proxy';
+
+export interface ReviewRecord {
+  decision: ReviewDecision;
+  reviewer?: string;
+  note?: string;
+  decidedAt?: number;
+
+  mode: ReviewMode;
+  role: ReviewerRole;
+  /** Người duyệt đã mở mục ra xem chưa. `batch` luôn false. */
+  opened: boolean;
+  /** Gộp quyết định cuối cùng theo cùng artifact + version + gate. */
+  artifactVersion: string;
+  gate: string;
+}
+```
+
+Luật đếm khi có contract, để Codex chốt:
+
+| Trường hợp | Tính vào mẫu học |
+|---|---|
+| `batch` | **Không** (vẫn ghi nhận vận hành) |
+| `client-portal` | Có |
+| `individual` + `opened` + role `client`/`client-proxy` | Có |
+| `individual` role khác | Không |
+| `changes-requested` không có lý do | **Không** |
+| Cùng artifact + version + gate | Chỉ quyết định **cuối cùng**, một lần |
+
+Chủ sở hữu: `types/content.ts` và `reviewQueueService.ts` thuộc Codex. Claude nhận phần luật đếm và test khi contract đã có.
+
+---
+
 ## Hai sửa đổi đã làm
 
-Theo mục 3 plan vòng 2.
+Theo mục 3 plan vòng 2, phạm vi thu về **một file**: `supervisorCalibrationService.ts`.
 
 ### Supervisor: một ngưỡng → ba tầng
 
@@ -163,15 +238,26 @@ Theo mục 3 plan vòng 2.
 
 Giữ nguyên: **chỉ hạ, không bao giờ nâng**, và đủ mẫu mà đáng tin thì vẫn không hạ — ngưỡng không phải giấy phép.
 
-### Client Memory: thêm ngưỡng
+### Gộp mẫu theo cảnh báo
 
-Trước đây **không có ngưỡng nào** — bài duyệt đầu tiên đã vào prompt bài thứ hai.
+Bản trước `recordSupervisorDecision` luôn `push` bản ghi mới với id ngẫu nhiên. Hệ quả:
 
-`MIN_MEMORY_DECISIONS = 10`. Dưới ngưỡng, `buildMemoryPromptContext` trả rỗng nhưng trí nhớ vẫn thu thập và vẫn hiện cho người dùng xem. Tách `hasMemory` (có gì để xem) khỏi `isMemoryActionable` (đủ căn cứ để dùng) — gộp hai câu hỏi đó chính là lỗi của bản đầu.
+- Bật → tắt → bật lại một cảnh báo = **ba mẫu**
+- `queued → resolved` của cùng cảnh báo = **hai** phiếu `accepted`
 
-**Một lỗi test bắt được:** `memorySampleCount` bản đầu đếm `rejected.length`, mà danh sách đó bị cắt còn `MAX_REJECTIONS = 4`. Mười lần bị từ chối chỉ tính thành bốn. Đã đổi sang `rejectedCount`.
+Người duyệt lưỡng lự vài lần là tự tay bơm mẫu, và loại đó đạt ngưỡng 30 bằng nhiễu — làm hỏng đúng thứ ngưỡng vừa dựng lên.
 
-12 test mới cho hai ngưỡng. **592 test / 42 file xanh**, `tsc` sạch.
+`CalibrationRecord` thêm `issueId` (lấy từ `AISupervisorIssue.id` vốn đã có). Ghi lần sau **thay tại chỗ**, giữ nguyên vị trí để thứ tự thời gian không nhảy. Bản ghi cũ chưa có `issueId` vẫn đọc được, chỉ không tham gia dedupe.
+
+Đã kiểm chỗ gọi: `aiSupervisorService:466` truyền cả đối tượng `issue` nên `id` đi xuyên suốt — dedupe chạy thật, không phải chỉ đúng trong test.
+
+### Câu mô tả không nói quá
+
+`describeCalibration` cũ nói **"Đã hạ xuống mức nhắc"** ở cả tầng advisory, trong khi `suggestedSeverity` chưa được áp. Người duyệt đọc xong tưởng cảnh báo đã nhẹ đi, thực tế nó vẫn chặn như cũ.
+
+Nay ở tầng advisory: *"…% bị bỏ qua trên N lượt. **Chưa hạ mức** — cần thêm M lượt nữa."*
+
+13 test mới cho ba tầng, dedupe và câu mô tả.
 
 ---
 

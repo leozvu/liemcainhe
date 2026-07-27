@@ -1,15 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_EXAMPLES,
-  MIN_MEMORY_DECISIONS,
   MAX_REJECTIONS,
   buildClientMemory,
   buildMemoryPromptContext,
   describeMemory,
   findEngagementRate,
   hasMemory,
-  isMemoryActionable,
-  memorySampleCount,
 } from '../services/content/clientMemoryService';
 import { PublishLedgerEntry, fingerprintPost } from '../services/content/publishLedgerService';
 import { CHANNEL_LIMITS, toPostText } from '../services/content/publishService';
@@ -42,18 +39,6 @@ const article = (over: Partial<SavedArticle> = {}): SavedArticle => ({
 const approved = (id: string, over: Partial<SavedArticle> = {}) =>
   article({ id, title: `Bài ${id}`, review: { decision: 'approved' }, ...over });
 
-/**
- * Đệm cho đủ ngưỡng tác động.
- *
- * `buildMemoryPromptContext` trả rỗng khi chưa đủ `MIN_MEMORY_DECISIONS` quyết
- * định. Các test kiểm nội dung khối ngữ cảnh phải vượt ngưỡng trước, nếu không
- * chúng chỉ đang kiểm chuỗi rỗng.
- */
-const padded = (...items: SavedArticle[]): SavedArticle[] => [
-  ...items,
-  ...Array.from({ length: MIN_MEMORY_DECISIONS }, (_, index) => approved(`pad${index}`)),
-];
-
 describe('gom trí nhớ theo khách', () => {
   it('chỉ lấy bài của đúng khách', () => {
     const memory = buildClientMemory(
@@ -70,13 +55,12 @@ describe('gom trí nhớ theo khách', () => {
   });
 
   it('bỏ qua bài chưa duyệt và bài đang chờ', () => {
-    const memory = buildClientMemory(padded(
+    const memory = buildClientMemory([
       approved('a'),
       article({ id: 'b' }),
       article({ id: 'c', review: { decision: 'pending' } }),
-    ));
-    // `padded` thêm MIN_MEMORY_DECISIONS bài đã duyệt; chỉ 'a' là của test này.
-    expect(memory.approvedCount).toBe(1 + MIN_MEMORY_DECISIONS);
+    ]);
+    expect(memory.approvedCount).toBe(1);
   });
 
   it('đếm đủ nhưng chỉ đưa vài mẫu vào prompt', () => {
@@ -87,10 +71,10 @@ describe('gom trí nhớ theo khách', () => {
   });
 
   it('bài bị yêu cầu sửa chỉ tính khi có ghi lý do', () => {
-    const memory = buildClientMemory(padded(
+    const memory = buildClientMemory([
       article({ id: 'a', review: { decision: 'changes-requested', note: 'Sapo quá dài' } }),
       article({ id: 'b', review: { decision: 'changes-requested' } }),
-    ));
+    ]);
     expect(memory.rejectedCount).toBe(2);
     expect(memory.rejected).toHaveLength(1);
     expect(memory.rejected[0].reason).toBe('Sapo quá dài');
@@ -169,7 +153,7 @@ describe('khối ngữ cảnh đưa vào prompt', () => {
   });
 
   it('nêu mẫu đã duyệt kèm góc tiếp cận và giọng', () => {
-    const text = buildMemoryPromptContext(buildClientMemory(padded(approved('a'))));
+    const text = buildMemoryPromptContext(buildClientMemory([approved('a')]));
     expect(text).toContain('TRÍ NHỚ VỀ KHÁCH HÀNG NÀY');
     expect(text).toContain('Bài a');
     expect(text).toContain('Góc tiếp cận');
@@ -177,19 +161,19 @@ describe('khối ngữ cảnh đưa vào prompt', () => {
   });
 
   it('nêu lý do từng bị yêu cầu sửa như điều cấm', () => {
-    const memory = buildClientMemory(padded(
+    const memory = buildClientMemory([
       article({ id: 'r', review: { decision: 'changes-requested', note: 'Đừng dùng từ bùng nổ' } }),
-    ));
+    ]);
     const text = buildMemoryPromptContext(memory);
     expect(text).toContain('tuyệt đối tránh lặp lại');
     expect(text).toContain('Đừng dùng từ bùng nổ');
   });
 
   it('phần đã duyệt đứng trước phần bị từ chối', () => {
-    const memory = buildClientMemory(padded(
+    const memory = buildClientMemory([
       approved('a'),
       article({ id: 'r', review: { decision: 'changes-requested', note: 'Lý do X' } }),
-    ));
+    ]);
     const text = buildMemoryPromptContext(memory);
     expect(text.indexOf('Đã duyệt')).toBeLessThan(text.indexOf('tuyệt đối tránh'));
   });
@@ -204,7 +188,7 @@ describe('nối vào prompt viết bài', () => {
 
   it('trí nhớ đi vào system prompt, sau Brand Kit', async () => {
     const chat = vi.fn().mockResolvedValue(JSON.stringify(draftJson));
-    const memory = buildClientMemory(padded(approved('a')));
+    const memory = buildClientMemory([approved('a')]);
 
     await generateArticle(createDefaultBrief('Chủ đề'), { chat: chat as never, memory });
 
@@ -233,55 +217,12 @@ describe('nối vào prompt viết bài', () => {
 
 describe('mô tả một dòng', () => {
   it('nêu số bài đã học và số lần bị yêu cầu sửa', () => {
-    const memory = buildClientMemory(padded(
+    const memory = buildClientMemory([
       approved('a'),
       article({ id: 'r', review: { decision: 'changes-requested', note: 'x' } }),
-    ));
+    ]);
     const text = describeMemory(memory);
     expect(text).toContain('1 bài đã duyệt');
     expect(text).toContain('1 lần bị yêu cầu sửa');
-  });
-});
-
-/**
- * Ngưỡng tác động, chốt trong plan vòng 2 với Codex.
- *
- * Bản đầu không có ngưỡng nào: bài được duyệt **đầu tiên** đã đi thẳng vào
- * prompt của bài thứ hai. Một quyết định thì chưa phải khuôn mẫu — có thể là
- * duyệt vội hoặc duyệt vì deadline. Học từ nó rồi nhân bản vào mọi bài sau là
- * tự củng cố một mẫu ngẫu nhiên.
- */
-describe('ngưỡng trước khi trí nhớ được tác động', () => {
-  const nApproved = (n: number) => Array.from({ length: n }, (_, i) => approved(`x${i}`));
-
-  it('một quyết định thì KHÔNG vào prompt', () => {
-    const memory = buildClientMemory([approved('a')]);
-    expect(hasMemory(memory)).toBe(true);
-    expect(isMemoryActionable(memory)).toBe(false);
-    expect(buildMemoryPromptContext(memory)).toBe('');
-  });
-
-  it('9 quyết định vẫn chưa đủ — ranh giới phải chặt', () => {
-    const memory = buildClientMemory(nApproved(MIN_MEMORY_DECISIONS - 1));
-    expect(buildMemoryPromptContext(memory)).toBe('');
-  });
-
-  it('đúng ngưỡng thì bắt đầu tác động', () => {
-    const memory = buildClientMemory(nApproved(MIN_MEMORY_DECISIONS));
-    expect(isMemoryActionable(memory)).toBe(true);
-    expect(buildMemoryPromptContext(memory)).toContain('TRÍ NHỚ VỀ KHÁCH HÀNG NÀY');
-  });
-
-  it('bài bị từ chối cũng tính vào mẫu, không chỉ bài được duyệt', () => {
-    const rejected = Array.from({ length: MIN_MEMORY_DECISIONS }, (_, i) =>
-      article({ id: `r${i}`, review: { decision: 'changes-requested', note: `Lý do ${i}` } }),
-    );
-    expect(memorySampleCount(buildClientMemory(rejected))).toBe(MIN_MEMORY_DECISIONS);
-    expect(buildMemoryPromptContext(buildClientMemory(rejected))).not.toBe('');
-  });
-
-  it('dưới ngưỡng vẫn hiện được cho người dùng xem — chỉ là chưa điều khiển gì', () => {
-    const memory = buildClientMemory([approved('a')]);
-    expect(describeMemory(memory)).not.toContain('Chưa có bài nào');
   });
 });

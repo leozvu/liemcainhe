@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CalibrationRecord,
   MIN_CALIBRATION_SAMPLE,
+  SAMPLE_AUTO_ADJUST,
   NOISY_OVERRIDE_RATE,
   calibrateIssues,
   computeCalibration,
@@ -252,5 +253,95 @@ describe('ngưỡng dữ liệu ba tầng', () => {
     const trusted = computeCalibration(many('hands', 27, 3));
     const [result] = calibrateIssues([issue({ kind: 'hands', severity: 'critical' })], trusted);
     expect(result.severity).toBe('critical');
+  });
+});
+
+/**
+ * Một cảnh báo góp đúng một mẫu.
+ *
+ * Bản trước mỗi lần đổi trạng thái lại thêm một bản ghi mới. Bật rồi tắt rồi
+ * bật lại một cảnh báo thành ba mẫu, và `queued → resolved` của cùng một cảnh
+ * báo thành hai phiếu `accepted`. Người duyệt lưỡng lự vài lần là tự tay bơm
+ * mẫu, và loại đó đạt ngưỡng 30 bằng nhiễu.
+ */
+describe('gộp mẫu theo cảnh báo', () => {
+  const store = () => {
+    const rows: CalibrationRecord[] = [];
+    return {
+      rows,
+      read: () => [...rows],
+      write: (next: CalibrationRecord[]) => {
+        rows.length = 0;
+        rows.push(...next);
+      },
+    };
+  };
+
+  it('đổi ý trên cùng một cảnh báo thì thay chỗ, không cộng thêm', () => {
+    const s = store();
+    const one = issue({ id: 'i1', kind: 'hands' });
+
+    recordSupervisorDecision(one, 'ignored', { read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(one, 'queued', { read: s.read, write: s.write, now: () => 2 });
+    recordSupervisorDecision(one, 'ignored', { read: s.read, write: s.write, now: () => 3 });
+
+    expect(s.rows).toHaveLength(1);
+  });
+
+  it('quyết định cuối cùng thắng', () => {
+    const s = store();
+    const one = issue({ id: 'i1', kind: 'hands' });
+
+    recordSupervisorDecision(one, 'ignored', { read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(one, 'queued', { read: s.read, write: s.write, now: () => 2 });
+
+    expect(s.rows[0].outcome).toBe('accepted');
+    expect(s.rows[0].timestamp).toBe(2);
+  });
+
+  it('queued rồi resolved của cùng cảnh báo chỉ là MỘT phiếu chấp nhận', () => {
+    const s = store();
+    const one = issue({ id: 'i1', kind: 'hands' });
+
+    recordSupervisorDecision(one, 'queued', { read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(one, 'resolved', { read: s.read, write: s.write, now: () => 2 });
+
+    expect(s.rows).toHaveLength(1);
+    expect(computeCalibration(s.rows)[0].total).toBe(1);
+  });
+
+  it('hai cảnh báo khác nhau vẫn là hai mẫu', () => {
+    const s = store();
+    recordSupervisorDecision(issue({ id: 'i1', kind: 'hands' }), 'ignored', { read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(issue({ id: 'i2', kind: 'hands' }), 'ignored', { read: s.read, write: s.write, now: () => 2 });
+
+    expect(s.rows).toHaveLength(2);
+  });
+
+  it('giữ nguyên vị trí cũ khi thay, để thứ tự thời gian không nhảy', () => {
+    const s = store();
+    recordSupervisorDecision(issue({ id: 'i1' }), 'ignored', { read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(issue({ id: 'i2' }), 'ignored', { read: s.read, write: s.write, now: () => 2 });
+    recordSupervisorDecision(issue({ id: 'i1' }), 'queued', { read: s.read, write: s.write, now: () => 3 });
+
+    expect(s.rows.map((row) => row.issueId)).toEqual(['i1', 'i2']);
+  });
+});
+
+describe('câu mô tả không được nói quá', () => {
+  it('tầng advisory: nói rõ CHƯA hạ và còn thiếu bao nhiêu lượt', () => {
+    const [stats] = computeCalibration(many('hands', 2, 8));
+    const text = describeCalibration(stats);
+
+    expect(stats.suggestedSeverity).toBeUndefined();
+    expect(text).not.toContain('Đã hạ');
+    expect(text).toContain('Chưa hạ mức');
+    expect(text).toContain(`${SAMPLE_AUTO_ADJUST - stats.total} lượt`);
+  });
+
+  it('đủ 30 mẫu và thật sự đã hạ thì mới được nói "Đã hạ"', () => {
+    const [stats] = computeCalibration(many('hands', 6, 24));
+    expect(stats.suggestedSeverity).toBe('info');
+    expect(describeCalibration(stats)).toContain('Đã hạ xuống mức nhắc');
   });
 });

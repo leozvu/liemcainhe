@@ -22,6 +22,17 @@ export type CalibrationOutcome = 'accepted' | 'overridden';
 
 export interface CalibrationRecord {
   id: string;
+  /**
+   * Khoá ổn định của cảnh báo sinh ra mẫu này.
+   *
+   * Bản trước không có trường này nên mỗi lần đổi trạng thái lại thêm một bản
+   * ghi mới: bật rồi tắt rồi bật lại một cảnh báo thành **ba mẫu**, và chuyển
+   * `queued → resolved` của cùng một cảnh báo thành **hai** phiếu `accepted`.
+   * Một cảnh báo phải góp đúng một mẫu, tính theo quyết định cuối cùng.
+   *
+   * Bản ghi cũ chưa có `issueId` vẫn đọc được; chúng không tham gia dedupe.
+   */
+  issueId?: string;
   kind: AISupervisorIssueKind;
   source: AISupervisorIssueSource;
   /** Mức nghiêm trọng lúc cảnh báo được đưa ra, trước khi hiệu chỉnh. */
@@ -121,9 +132,15 @@ export interface RecordDecisionOptions {
   write?: (records: CalibrationRecord[]) => void;
 }
 
-/** Ghi lại quyết định của người duyệt với một cảnh báo. */
+/**
+ * Ghi lại quyết định của người duyệt với một cảnh báo.
+ *
+ * **Một cảnh báo góp đúng một mẫu.** Đổi ý thì bản ghi cũ bị thay chứ không
+ * cộng thêm — nếu không, người duyệt lưỡng lự vài lần trên cùng một cảnh báo
+ * sẽ tự tay bơm mẫu, và loại cảnh báo đó đạt ngưỡng 30 bằng nhiễu.
+ */
 export const recordSupervisorDecision = (
-  issue: Pick<AISupervisorIssue, 'kind' | 'source' | 'severity' | 'confidence'>,
+  issue: Pick<AISupervisorIssue, 'id' | 'kind' | 'source' | 'severity' | 'confidence'>,
   status: AISupervisorIssueStatus,
   options: RecordDecisionOptions = {},
 ): CalibrationRecord | null => {
@@ -133,6 +150,7 @@ export const recordSupervisorDecision = (
   const now = (options.now ?? Date.now)();
   const record: CalibrationRecord = {
     id: `cal_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    issueId: issue.id,
     kind: issue.kind,
     source: issue.source,
     severity: issue.severity,
@@ -144,7 +162,22 @@ export const recordSupervisorDecision = (
 
   const read = options.read ?? readCalibrationRecords;
   const write = options.write ?? writeCalibrationRecords;
-  write([...read(), record]);
+
+  // Thay tại chỗ nếu cảnh báo này đã có mẫu. Giữ nguyên vị trí cũ để thứ tự
+  // theo thời gian không nhảy khi người duyệt đổi ý.
+  const existing = read();
+  const index = record.issueId
+    ? existing.findIndex((row) => row.issueId === record.issueId)
+    : -1;
+
+  if (index >= 0) {
+    const next = [...existing];
+    next[index] = record;
+    write(next);
+  } else {
+    write([...existing, record]);
+  }
+
   return record;
 };
 
@@ -273,6 +306,18 @@ export const describeCalibration = (item: KindCalibration): string => {
 
   const percent = Math.round((item.overrideRate ?? 0) * 100);
   if (item.trust === 'noisy') {
+    /**
+     * Chỉ nói "đã hạ" khi thật sự đã hạ.
+     *
+     * Ở tầng advisory (10–29 mẫu) hệ thống nhận ra loại này hay báo sai nhưng
+     * `suggestedSeverity` chưa được áp. Câu cũ nói "Đã hạ xuống mức nhắc" ở cả
+     * hai tầng — người duyệt đọc xong tưởng cảnh báo đã nhẹ đi, trong khi nó
+     * vẫn đang chặn như cũ.
+     */
+    if (!item.suggestedSeverity) {
+      const remaining = SAMPLE_AUTO_ADJUST - item.total;
+      return `${percent}% bị bỏ qua trên ${item.total} lượt. Chưa hạ mức — cần thêm ${remaining} lượt nữa.`;
+    }
     return `${percent}% bị bỏ qua trên ${item.total} lượt. Đã hạ xuống mức nhắc.`;
   }
   if (item.trust === 'trusted') {
