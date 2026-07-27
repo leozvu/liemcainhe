@@ -61,7 +61,17 @@ Một bộ hỏng không làm dừng các bộ còn lại.
 
 Đồng bộ nay được khởi động một lần ở App root và có hai entry point nhìn thấy
 được: trạng thái trên thanh đầu Dashboard và trạng thái trong sidebar dự án.
-Bấm vào trạng thái sẽ chạy full pull để phục hồi chủ động.
+Bấm vào trạng thái mở **Trung tâm đồng bộ workspace**. Tại đây team thấy được:
+
+- số bản ghi sống, thay đổi đang chờ và bia mộ trên thiết bị;
+- số bản ghi sống và bia mộ trên D1 theo từng collection;
+- kết quả kéo/đẩy/xóa và lỗi riêng của từng collection;
+- năm phiên gần nhất, cùng báo cáo chẩn đoán có thể sao chép mà không chứa API key;
+- checklist A/B để kiểm chứng tạo, sửa và xóa trên hai thiết bị.
+
+Nút **Kiểm tra và đồng bộ toàn bộ** chạy full pull rồi đọc lại local và endpoint
+`/api/cloud/workspace/health`. Health endpoint chỉ trả số lượng và mốc mới nhất,
+không tải payload khách hàng và không gọi bất kỳ model AI nào.
 
 App tự chạy:
 
@@ -104,7 +114,7 @@ Bản ghi còn treo chưa có `finishedAt`, lúc đó `startedAt` là mốc mớ
 npx vitest run tests/workspaceSync.test.ts
 ```
 
-32 test. Đáng chú ý:
+Các test đáng chú ý:
 
 - Trùng mốc khác nội dung → **đúng một bên** giữ bản của mình, không cả hai cùng nhường
 - Sửa sau khi xoá thì bản sửa thắng; xoá sau khi sửa thì bản xoá thắng
@@ -113,6 +123,8 @@ npx vitest run tests/workspaceSync.test.ts
 - Đẩy hỏng cũng không nhích mốc
 - Sổ cái lấy đúng `fingerprint` và đúng `finishedAt ?? startedAt`
 - Cả sáu bộ đều có hình dạng khai báo sẵn — thêm bộ mới mà quên khai là test đỏ
+- Health endpoint trả đủ sáu bộ, kể cả kho cloud đang rỗng, và chặn người chưa đăng nhập
+- Coordinator giữ tối đa 12 phiên chẩn đoán, không để lịch sử phình bộ nhớ
 
 Các test bao phủ merge, bia mộ local, incremental sync, lỗi từng nhóm, offline,
 full recovery và gộp nhiều yêu cầu cùng lúc. CI chạy `tsc`, toàn bộ Vitest,
@@ -120,7 +132,8 @@ build Sites và kiểm tra whitespace trước khi merge.
 
 ## Còn lại
 
-- Chưa có màn chi tiết số bản ghi đã kéo/đẩy theo từng collection; trạng thái hiện chỉ tóm tắt và báo số nhóm lỗi.
 - Chưa xử lý bản ghi quá 1 MB (worker trả 413) — cần cắt hoặc đẩy media ra R2 trước.
 - Chưa có compaction bia mộ lâu năm; giữ lại hiện an toàn hơn xóa sớm và làm dữ liệu sống lại.
-- Cần một bài kiểm tra thực địa: tạo campaign trên máy A, mở máy B, sửa/xóa rồi xác nhận hai phía hội tụ.
+- Cần hoàn tất checklist thực địa ngay trong Trung tâm đồng bộ: tạo trên máy A,
+  sửa/xóa ở máy B rồi xác nhận hai phía hội tụ. Chỉ sau bằng chứng này mới nâng
+  năng lực đồng bộ từ cấp 4 lên cấp 5.

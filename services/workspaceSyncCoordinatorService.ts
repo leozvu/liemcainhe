@@ -2,11 +2,14 @@ import {
   WORKSPACE_DATA_CHANGED_EVENT,
 } from './storageService';
 import {
+  changedSince,
   cloudTransport,
   describeSyncOutcomes,
+  getSyncMark,
   indexedDbSyncStore,
   SyncOutcome,
   syncAllCollections,
+  WORKSPACE_COLLECTIONS,
   WorkspaceCollection,
 } from './workspaceSyncService';
 
@@ -20,6 +23,18 @@ export type WorkspaceSyncRuntimePhase =
   | 'local-only'
   | 'error';
 
+export type WorkspaceSyncMode = 'full' | 'incremental';
+
+export interface WorkspaceSyncAttempt {
+  id: string;
+  mode: WorkspaceSyncMode;
+  startedAt: number;
+  finishedAt: number;
+  phase: Exclude<WorkspaceSyncRuntimePhase, 'idle' | 'syncing'>;
+  summary: string;
+  outcomes: SyncOutcome[];
+}
+
 export interface WorkspaceSyncRuntimeState {
   phase: WorkspaceSyncRuntimePhase;
   summary: string;
@@ -29,6 +44,32 @@ export interface WorkspaceSyncRuntimeState {
   pulled: number;
   pushed: number;
   deleted: number;
+  currentMode?: WorkspaceSyncMode;
+  lastOutcomes: SyncOutcome[];
+  history: WorkspaceSyncAttempt[];
+}
+
+export interface WorkspaceCollectionInspection {
+  collection: WorkspaceCollection;
+  active: number;
+  tombstones: number;
+  pending: number;
+  newestAt?: number;
+  syncMark: number;
+  error?: string;
+}
+
+export interface WorkspaceCloudCollectionHealth {
+  collection: WorkspaceCollection;
+  active: number;
+  tombstones: number;
+  newestAt?: number;
+}
+
+export interface WorkspaceCloudHealth {
+  ok: true;
+  serverTime: number;
+  collections: WorkspaceCloudCollectionHealth[];
 }
 
 export interface WorkspaceSyncController {
@@ -52,6 +93,8 @@ const INITIAL_STATE: WorkspaceSyncRuntimeState = {
   pulled: 0,
   pushed: 0,
   deleted: 0,
+  lastOutcomes: [],
+  history: [],
 };
 
 export const createWorkspaceSyncController = (
@@ -61,6 +104,7 @@ export const createWorkspaceSyncController = (
   let active: Promise<WorkspaceSyncRuntimeState> | undefined;
   let rerunRequested = false;
   let fullRequested = false;
+  let attemptSequence = 0;
   const listeners = new Set<(next: WorkspaceSyncRuntimeState) => void>();
   const now = dependencies.now ?? Date.now;
 
@@ -74,26 +118,60 @@ export const createWorkspaceSyncController = (
 
   const runOnce = async (full: boolean): Promise<void> => {
     const attemptedAt = now();
-    if (!dependencies.hosted()) {
-      publish({
+    const mode: WorkspaceSyncMode = full ? 'full' : 'incremental';
+    const complete = (
+      phase: WorkspaceSyncAttempt['phase'],
+      summary: string,
+      outcomes: SyncOutcome[] = [],
+      overrides: Partial<WorkspaceSyncRuntimeState> = {},
+    ): WorkspaceSyncRuntimeState => {
+      const finishedAt = now();
+      const attempt: WorkspaceSyncAttempt = {
+        id: `workspace-sync-${attemptedAt}-${attemptSequence += 1}`,
+        mode,
+        startedAt: attemptedAt,
+        finishedAt,
+        phase,
+        summary,
+        outcomes,
+      };
+      return publish({
         ...state,
-        phase: 'local-only',
-        summary: 'Bản local đang an toàn. Cloud hoạt động trên bản production.',
+        phase,
+        summary,
         lastAttemptAt: attemptedAt,
+        currentMode: undefined,
+        lastOutcomes: outcomes,
+        history: [attempt, ...state.history].slice(0, 12),
+        ...overrides,
+      });
+    };
+
+    if (!dependencies.hosted()) {
+      complete('local-only', 'Bản local đang an toàn. Cloud hoạt động trên bản production.', [], {
+        pendingCollections: 0,
+        pulled: 0,
+        pushed: 0,
+        deleted: 0,
       });
       return;
     }
     if (!dependencies.online()) {
-      publish({
-        ...state,
-        phase: 'offline',
-        summary: 'Đang mất mạng. Thay đổi được giữ trên máy và sẽ tự thử lại.',
-        lastAttemptAt: attemptedAt,
+      complete('offline', 'Đang mất mạng. Thay đổi được giữ trên máy và sẽ tự thử lại.', [], {
+        pulled: 0,
+        pushed: 0,
+        deleted: 0,
       });
       return;
     }
 
-    publish({ ...state, phase: 'syncing', summary: 'Đang hợp nhất dữ liệu workspace…', lastAttemptAt: attemptedAt });
+    publish({
+      ...state,
+      phase: 'syncing',
+      summary: full ? 'Đang kiểm tra toàn bộ workspace…' : 'Đang hợp nhất dữ liệu workspace…',
+      lastAttemptAt: attemptedAt,
+      currentMode: mode,
+    });
     try {
       const outcomes = await dependencies.sync(full);
       const failed = outcomes.filter((outcome) => outcome.error);
@@ -101,24 +179,27 @@ export const createWorkspaceSyncController = (
       const pushed = outcomes.reduce((total, outcome) => total + outcome.pushed, 0);
       const deleted = outcomes.reduce((total, outcome) => total + outcome.deleted, 0);
       if (pulled || deleted) dependencies.onApplied?.(outcomes);
-      publish({
-        phase: failed.length ? 'error' : 'synced',
-        summary: describeSyncOutcomes(outcomes),
+      const phase = failed.length ? 'error' : 'synced';
+      const summary = describeSyncOutcomes(outcomes);
+      complete(phase, summary, outcomes, {
         lastSyncedAt: failed.length === outcomes.length ? state.lastSyncedAt : now(),
-        lastAttemptAt: attemptedAt,
         pendingCollections: failed.length,
         pulled,
         pushed,
         deleted,
       });
     } catch (error) {
-      publish({
-        ...state,
-        phase: 'error',
-        summary: `${error instanceof Error ? error.message : 'Không đồng bộ được.'} Dữ liệu vẫn an toàn trên máy này.`,
-        lastAttemptAt: attemptedAt,
+      complete(
+        'error',
+        `${error instanceof Error ? error.message : 'Không đồng bộ được.'} Dữ liệu vẫn an toàn trên máy này.`,
+        [],
+        {
         pendingCollections: 1,
-      });
+          pulled: 0,
+          pushed: 0,
+          deleted: 0,
+        },
+      );
     }
   };
 
@@ -181,6 +262,57 @@ export const subscribeWorkspaceSync = (listener: (state: WorkspaceSyncRuntimeSta
   runtimeController.subscribe(listener);
 export const requestWorkspaceSync = (options: { full?: boolean } = {}): Promise<WorkspaceSyncRuntimeState> =>
   runtimeController.run(options);
+
+export const isWorkspaceCloudHosted = (): boolean => hosted();
+
+/** Đếm dữ liệu local mà không sửa bất kỳ bản ghi nào. */
+export const inspectLocalWorkspace = async (): Promise<WorkspaceCollectionInspection[]> =>
+  Promise.all(WORKSPACE_COLLECTIONS.map(async (collection) => {
+    const syncMark = getSyncMark(collection);
+    try {
+      const records = await indexedDbSyncStore.readAll(collection);
+      const active = records.filter((record) => !record.deletedAt).length;
+      const tombstones = records.length - active;
+      const newestAt = records.reduce(
+        (latest, record) => Math.max(latest, record.updatedAt, record.deletedAt ?? 0),
+        0,
+      ) || undefined;
+      return {
+        collection,
+        active,
+        tombstones,
+        pending: changedSince(records, syncMark).length,
+        newestAt,
+        syncMark,
+      };
+    } catch (error) {
+      return {
+        collection,
+        active: 0,
+        tombstones: 0,
+        pending: 0,
+        syncMark,
+        error: error instanceof Error ? error.message : 'Không đọc được kho local.',
+      };
+    }
+  }));
+
+/** Kiểm tra D1 và trả số lượng từng kho, không tải payload hay phát sinh phí AI. */
+export const fetchWorkspaceCloudHealth = async (
+  fetchImpl: typeof fetch = fetch,
+): Promise<WorkspaceCloudHealth> => {
+  const response = await fetchImpl('/api/cloud/workspace/health', {
+    headers: { Accept: 'application/json' },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error || `Không kiểm tra được cloud (HTTP ${response.status}).`);
+  }
+  if (!data?.ok || !Array.isArray(data.collections)) {
+    throw new Error('Cloud trả dữ liệu chẩn đoán không hợp lệ.');
+  }
+  return data as WorkspaceCloudHealth;
+};
 
 /**
  * Bật đồng bộ nền đúng một lần ở App root.

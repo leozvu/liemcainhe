@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createWorkspaceSyncController,
+  fetchWorkspaceCloudHealth,
   WorkspaceSyncRuntimeState,
 } from '../services/workspaceSyncCoordinatorService';
 import { SyncOutcome } from '../services/workspaceSyncService';
@@ -58,6 +59,9 @@ describe('điều phối đồng bộ workspace', () => {
     const state = await controller.run({ full: true });
     expect(full).toBe(true);
     expect(state).toMatchObject({ phase: 'synced', pulled: 2, pushed: 1, deleted: 1, lastSyncedAt: 123 });
+    expect(state.lastOutcomes).toHaveLength(1);
+    expect(state.history).toHaveLength(1);
+    expect(state.history[0]).toMatchObject({ mode: 'full', phase: 'synced', startedAt: 123, finishedAt: 123 });
     expect(states.some((item) => item.phase === 'syncing')).toBe(true);
     expect(applied).toHaveLength(1);
   });
@@ -91,5 +95,37 @@ describe('điều phối đồng bộ workspace', () => {
     releaseFirst?.();
     await Promise.all([first, queued]);
     expect(requestedModes).toEqual([false, true]);
+    expect(controller.getState().history.map((item) => item.mode)).toEqual(['full', 'incremental']);
+  });
+
+  it('giữ tối đa 12 phiên gần nhất để chẩn đoán nhưng không phình bộ nhớ', async () => {
+    let now = 0;
+    const controller = createWorkspaceSyncController({
+      hosted: () => true,
+      online: () => true,
+      now: () => now += 1,
+      sync: async () => [outcome()],
+    });
+    for (let index = 0; index < 15; index += 1) await controller.run();
+    expect(controller.getState().history).toHaveLength(12);
+    expect(controller.getState().history[0].finishedAt).toBeGreaterThan(controller.getState().history[11].finishedAt);
+  });
+
+  it('đọc health cloud đúng contract và báo lỗi rõ khi endpoint hỏng', async () => {
+    const healthyFetch = async () => new Response(JSON.stringify({
+      ok: true,
+      serverTime: 123,
+      collections: [{ collection: 'agencyClients', active: 2, tombstones: 1, newestAt: 100 }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    await expect(fetchWorkspaceCloudHealth(healthyFetch as typeof fetch)).resolves.toMatchObject({
+      ok: true,
+      serverTime: 123,
+    });
+
+    const brokenFetch = async () => new Response(JSON.stringify({ error: 'D1 đang bận' }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    });
+    await expect(fetchWorkspaceCloudHealth(brokenFetch as typeof fetch)).rejects.toThrow('D1 đang bận');
   });
 });

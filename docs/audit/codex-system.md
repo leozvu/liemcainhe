@@ -104,18 +104,19 @@ bàn giao tốt nhất hiện có và phải được chạy khô trước khi t
 
 | Trường | Bằng chứng |
 |---|---|
-| Entry point | Trạng thái đồng bộ ở Dashboard và sidebar; Campaign 0 có nút **Đồng bộ ngay** |
-| Existing code | `workspaceSyncService.ts`, IndexedDB adapters, cloud transport, `/api/cloud/workspace` |
+| Entry point | Trạng thái ở Dashboard/sidebar mở Trung tâm đồng bộ; Campaign 0 dùng chung coordinator |
+| Existing code | `workspaceSyncService.ts`, `workspaceSyncCoordinatorService.ts`, `WorkspaceSyncCenter.tsx`, IndexedDB adapters, `/api/cloud/workspace`, `/api/cloud/workspace/health` |
 | Integration | App root chạy `syncAllCollections` khi mở, online/focus, sau local write và theo heartbeat; Campaign 0 dùng chung coordinator |
 | Persistence | D1 migration và worker route đã có |
 | Real test | Endpoint và Campaign 0 đã chạy production; test hai thiết bị với sửa/xóa thật còn chờ Golden Run |
-| Measurement | UI hiển thị syncing/synced/offline/local-only/error và số collection còn lỗi; controller giữ pulled/pushed/deleted |
-| Blocking gap | Chưa có field test hai thiết bị và compaction bia mộ lâu năm |
+| Measurement | UI hiển thị trạng thái, local/cloud count, pending, tombstone, kết quả từng collection và 12 phiên gần nhất; báo cáo sao chép không chứa API key |
+| Blocking gap | Công cụ field test đã có nhưng chưa ghi bằng chứng hai thiết bị; chưa có compaction bia mộ lâu năm |
 | Decision | Giữ local-first + autosync; Campaign 0 phải kiểm tạo ở máy A, sửa/xóa ở máy B trước khi gọi là cấp 5 |
 
 Mục này từng là ví dụ điển hình của tính năng có code nhưng không có caller.
-Coordinator và hai trạng thái UI nay là entry point thật; bước còn lại phải là
-bằng chứng thực địa hai thiết bị, không phải thêm một lớp service nữa.
+Coordinator, health endpoint và Trung tâm đồng bộ nay là entry point kiểm chứng
+được. Bước còn lại là bằng chứng thực địa hai thiết bị, không phải thêm một lớp
+service nữa.
 
 ---
 
@@ -303,8 +304,9 @@ trả tiền hai lần.
    `providerTaskId`.
 2. **Execution envelope:** mọi lời gọi billable có idempotency, provider task,
    usage event và trạng thái `unknown` khi mất kết nối.
-3. ~~**Workspace sync entry point:**~~ đã có local-first autosync, trạng thái,
-   full recovery và bia mộ local; còn bước kiểm thực địa hai thiết bị.
+3. ~~**Workspace sync entry point và chẩn đoán:**~~ đã có local-first autosync,
+   full recovery, bia mộ local, health endpoint và bảng đối chiếu từng kho; còn
+   bước kiểm thực địa hai thiết bị.
 4. **Telemetry dry-run:** provider giả, zero-credit asset, review link và export;
    xác nhận mọi event trước một lời gọi thật.
 5. **CI:** chặn merge khi typecheck/test/build hỏng.
