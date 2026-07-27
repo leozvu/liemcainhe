@@ -345,3 +345,73 @@ describe('câu mô tả không được nói quá', () => {
     expect(describeCalibration(stats)).toContain('Đã hạ xuống mức nhắc');
   });
 });
+
+/**
+ * Dedupe phải tách theo dự án.
+ *
+ * Kho hiệu chỉnh nằm trong `localStorage` dùng chung cho cả workspace, còn id
+ * cảnh báo dựng từ shot và loại lỗi — hai dự án khác nhau hoàn toàn có thể sinh
+ * ra cùng một `issueId`. Khoá bằng mình `issueId` thì dự án sau ghi đè mẫu của
+ * dự án trước, và cả hai cùng mất dữ liệu mà không ai biết.
+ */
+describe('gộp mẫu tách theo dự án', () => {
+  const store = () => {
+    const rows: CalibrationRecord[] = [];
+    return {
+      rows,
+      read: () => [...rows],
+      write: (next: CalibrationRecord[]) => {
+        rows.length = 0;
+        rows.push(...next);
+      },
+    };
+  };
+
+  it('cùng dự án + cùng cảnh báo → một mẫu, quyết định cuối thắng', () => {
+    const s = store();
+    const one = issue({ id: 'shot1:hands', kind: 'hands' });
+
+    recordSupervisorDecision(one, 'ignored', { projectId: 'p1', read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(one, 'queued', { projectId: 'p1', read: s.read, write: s.write, now: () => 2 });
+
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0].outcome).toBe('accepted');
+    expect(s.rows[0].timestamp).toBe(2);
+  });
+
+  it('cùng cảnh báo, KHÁC dự án → hai mẫu riêng, không ghi đè nhau', () => {
+    const s = store();
+    const one = issue({ id: 'shot1:hands', kind: 'hands' });
+
+    recordSupervisorDecision(one, 'ignored', { projectId: 'p1', read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(one, 'queued', { projectId: 'p2', read: s.read, write: s.write, now: () => 2 });
+
+    expect(s.rows).toHaveLength(2);
+    expect(s.rows.map((row) => row.projectId)).toEqual(['p1', 'p2']);
+    expect(computeCalibration(s.rows)[0].total).toBe(2);
+  });
+
+  it('bản ghi không có projectId là một không gian riêng, không đụng dự án nào', () => {
+    const s = store();
+    const one = issue({ id: 'shot1:hands', kind: 'hands' });
+
+    recordSupervisorDecision(one, 'ignored', { read: s.read, write: s.write, now: () => 1 });
+    recordSupervisorDecision(one, 'ignored', { projectId: 'p1', read: s.read, write: s.write, now: () => 2 });
+    recordSupervisorDecision(one, 'queued', { read: s.read, write: s.write, now: () => 3 });
+
+    expect(s.rows).toHaveLength(2);
+    expect(s.rows.find((row) => !row.projectId)?.outcome).toBe('accepted');
+    expect(s.rows.find((row) => row.projectId === 'p1')?.outcome).toBe('overridden');
+  });
+
+  it('bản ghi cũ chưa có issueId vẫn đọc được và không bị dedupe nuốt', () => {
+    const s = store();
+    s.write([record('hands', 'overridden', 0)]);
+
+    recordSupervisorDecision(issue({ id: 'i1', kind: 'hands' }), 'ignored', {
+      projectId: 'p1', read: s.read, write: s.write, now: () => 5,
+    });
+
+    expect(s.rows).toHaveLength(2);
+  });
+});

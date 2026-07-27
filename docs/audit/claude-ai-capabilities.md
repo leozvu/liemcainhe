@@ -2,7 +2,9 @@
 
 Phạm vi của Claude theo phân vai vòng 2. Codex ghi phần hệ thống ở `codex-system.md`; file gộp `PRODUCT_MASTER_PLAN.md` do **một mình Codex** viết.
 
-Nhánh: `claude/sprint-0a-audit`. Ngoài `docs/`, chỉ đụng `supervisorCalibrationService.ts` và `clientMemoryService.ts` (mục 3 của plan vòng 2).
+Nhánh: `claude/sprint-0a-audit`. Ngoài `docs/`, chỉ đụng **một** file mã: `supervisorCalibrationService.ts` và test của nó.
+
+Phần Client Memory từng nằm trong PR này đã **rút ra** — contract lúc đó chưa mang được metadata chất lượng quyết định. Chi tiết ở mục "Rút khỏi PR" bên dưới.
 
 ## Thang 5 cấp
 
@@ -20,8 +22,8 @@ Nhánh: `claude/sprint-0a-audit`. Ngoài `docs/`, chỉ đụng `supervisorCalib
 |---|---|---|
 | Prompt Preflight | **4** | Giữ |
 | Editing Intelligence | **4** | Giữ |
-| Client Memory | **4** | Sửa (đã sửa ngưỡng) |
-| Supervisor + Calibration | **3–4** | Sửa (đã sửa ngưỡng) |
+| Client Memory | **4** | **Rút khỏi PR** — chờ data contract chất lượng ở sprint sau |
+| Supervisor + Calibration | **3–4** | Sửa (xong) |
 | Director Agent + Briefing | **3** | Nối lại |
 | **Consistency Engine** | **2** | **Nối lại — gấp** |
 
@@ -94,8 +96,8 @@ Sáu công cụ của Agent đều là công cụ **sinh**. Cổng ngân sách c
 | Persistence | Suy ra từ `articleLibrary` (IndexedDB), nay có đồng bộ D1 |
 | Real API test | Chưa |
 | Measurement | Đọc engagement thật từ sổ cái ✓ |
-| Blocking gap | **Không có ngưỡng** (đã sửa). Giả thuyết trung tâm — ví dụ đã duyệt làm model viết nhất quán hơn — **chưa được chứng minh**. |
-| Decision | Sửa |
+| Blocking gap | **Không có ngưỡng, và chưa sửa được trong PR này.** Bài duyệt đầu tiên đi thẳng vào prompt bài thứ hai. Đặt ngưỡng đếm thuần trên dữ liệu chưa phân loại thì duyệt hàng loạt 20 mục một cú bấm là đạt mốc ngay — cần metadata chất lượng trước. Ngoài ra, giả thuyết trung tâm — ví dụ đã duyệt làm model viết nhất quán hơn — **chưa được chứng minh**. |
+| Decision | **Rút khỏi PR này**, chờ data contract chất lượng ở sprint sau |
 
 ---
 
@@ -248,6 +250,8 @@ Bản trước `recordSupervisorDecision` luôn `push` bản ghi mới với id 
 Người duyệt lưỡng lự vài lần là tự tay bơm mẫu, và loại đó đạt ngưỡng 30 bằng nhiễu — làm hỏng đúng thứ ngưỡng vừa dựng lên.
 
 `CalibrationRecord` thêm `issueId` (lấy từ `AISupervisorIssue.id` vốn đã có). Ghi lần sau **thay tại chỗ**, giữ nguyên vị trí để thứ tự thời gian không nhảy. Bản ghi cũ chưa có `issueId` vẫn đọc được, chỉ không tham gia dedupe.
+
+**Khoá là `projectId` + `issueId`, không phải mình `issueId`.** Kho hiệu chỉnh nằm trong `localStorage` dùng chung cho cả workspace, còn id cảnh báo dựng từ shot và loại lỗi — hai dự án khác nhau hoàn toàn có thể sinh ra cùng một `issueId`. Khoá bằng mình `issueId` thì dự án sau ghi đè mẫu của dự án trước, và cả hai cùng mất dữ liệu mà không ai biết. Bản ghi không có `projectId` tạo thành một không gian riêng.
 
 Đã kiểm chỗ gọi: `aiSupervisorService:466` truyền cả đối tượng `issue` nên `id` đi xuyên suốt — dedupe chạy thật, không phải chỉ đúng trong test.
 

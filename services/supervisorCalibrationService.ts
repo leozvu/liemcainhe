@@ -163,11 +163,23 @@ export const recordSupervisorDecision = (
   const read = options.read ?? readCalibrationRecords;
   const write = options.write ?? writeCalibrationRecords;
 
-  // Thay tại chỗ nếu cảnh báo này đã có mẫu. Giữ nguyên vị trí cũ để thứ tự
-  // theo thời gian không nhảy khi người duyệt đổi ý.
+  /**
+   * Thay tại chỗ nếu cảnh báo này đã có mẫu.
+   *
+   * Khoá là **`projectId` + `issueId`**, không phải mình `issueId`. Kho hiệu
+   * chỉnh nằm trong `localStorage` dùng chung cho cả workspace, còn id cảnh báo
+   * dựng từ shot và loại lỗi — nên hai dự án khác nhau hoàn toàn có thể sinh ra
+   * cùng một `issueId`. Khoá bằng mình `issueId` thì dự án sau ghi đè mẫu của
+   * dự án trước, và cả hai cùng mất dữ liệu mà không ai biết.
+   *
+   * Giữ nguyên vị trí cũ để thứ tự theo thời gian không nhảy khi người duyệt
+   * đổi ý.
+   */
   const existing = read();
   const index = record.issueId
-    ? existing.findIndex((row) => row.issueId === record.issueId)
+    ? existing.findIndex(
+        (row) => row.issueId === record.issueId && row.projectId === record.projectId,
+      )
     : -1;
 
   if (index >= 0) {
