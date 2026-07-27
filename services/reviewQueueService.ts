@@ -1,5 +1,11 @@
 import { ProjectState } from '../types';
-import { ReviewDecision, SavedArticle } from '../types/content';
+import {
+  QualityReviewRecord,
+  ReviewDecision,
+  ReviewMode,
+  ReviewerRole,
+  SavedArticle,
+} from '../types/content';
 import { AGENCY_REVIEW_ROLES, getAgencyReviewSummary } from './agencyReviewService';
 import { ArticleStore, listArticles, saveArticle } from './content/articleLibraryService';
 import { getAllProjectsMetadata } from './storageService';
@@ -289,6 +295,25 @@ export interface BatchDecisionResult {
   error?: string;
 }
 
+export const CONTENT_INTERNAL_REVIEW_GATE = 'content-internal';
+
+/**
+ * Vân tay nội dung dùng làm `artifactVersion` của quyết định duyệt.
+ *
+ * Không dùng `updatedAt`: ghi quyết định cũng cập nhật bản ghi nhưng không đổi
+ * nội dung. Vân tay theo draft giúp nhiều lần đổi ý trên cùng bản vẫn về đúng
+ * một version, còn sửa dù chỉ một chữ sẽ tạo version khác.
+ */
+export const fingerprintReviewArtifact = (article: Pick<SavedArticle, 'draft'>): string => {
+  const source = JSON.stringify(article.draft);
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `draft_${(hash >>> 0).toString(36)}`;
+};
+
 /**
  * Ghi quyết định cho nhiều bài một lượt.
  *
@@ -340,6 +365,10 @@ export const decideBatch = async (
         note: options.note,
         now: options.now,
         store: options.store,
+        mode: 'batch',
+        role: 'account',
+        opened: false,
+        gate: CONTENT_INTERNAL_REVIEW_GATE,
       });
       results.push({ itemId: item.id, title: item.title, ok: true });
     } catch (error) {
@@ -422,6 +451,10 @@ export const decideArticle = async (
   options: {
     reviewer?: string;
     note?: string;
+    mode?: ReviewMode;
+    role?: ReviewerRole;
+    opened?: boolean;
+    gate?: string;
     now?: () => number;
     /** Cho phép thay lớp lưu trữ khi kiểm thử. */
     store?: ArticleStore;
@@ -432,9 +465,24 @@ export const decideArticle = async (
   }
 
   const now = (options.now ?? Date.now)();
+  const mode = options.mode ?? 'individual';
+  const review: QualityReviewRecord = {
+    schemaVersion: 2,
+    decision,
+    reviewer: options.reviewer,
+    note: options.note,
+    decidedAt: now,
+    mode,
+    role: options.role ?? 'account',
+    // Một quyết định đơn lẻ ở Bàn duyệt được coi là đã kiểm riêng vì toàn bộ
+    // tín hiệu và nội dung cần quyết đã hiện trên chính hàng đó.
+    opened: mode === 'batch' ? false : (options.opened ?? true),
+    artifactVersion: fingerprintReviewArtifact(article),
+    gate: options.gate ?? CONTENT_INTERNAL_REVIEW_GATE,
+  };
   const updated: SavedArticle = {
     ...article,
-    review: { decision, reviewer: options.reviewer, note: options.note, decidedAt: now },
+    review,
   };
 
   await saveArticle(updated.draft, updated.brief, {

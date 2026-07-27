@@ -179,6 +179,11 @@ describe('ghi quyết định hàng loạt', () => {
     expect(results.every((row) => row.ok)).toBe(true);
     const saved = await store.readAll();
     expect(saved.every((row) => row.review?.decision === 'approved')).toBe(true);
+    expect(saved.every((row) => row.review?.schemaVersion === 2)).toBe(true);
+    expect(saved.every((row) => row.review?.mode === 'batch')).toBe(true);
+    expect(saved.every((row) => row.review?.role === 'account')).toBe(true);
+    expect(saved.every((row) => row.review?.opened === false)).toBe(true);
+    expect(saved.every((row) => row.review?.gate === 'content-internal')).toBe(true);
   });
 
   it('một bài hỏng không làm dừng các bài còn lại', async () => {

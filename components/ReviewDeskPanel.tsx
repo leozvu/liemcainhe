@@ -145,7 +145,13 @@ const ReviewDeskPanel: React.FC<{ isActive: boolean }> = ({ isActive }) => {
     try {
       const article = (await listArticles()).find((row) => row.id === item.sourceId);
       if (!article) throw new Error('Không tìm thấy bài trong thư viện.');
-      await decideArticle(article, decision, { note: withNote });
+      await decideArticle(article, decision, {
+        note: withNote,
+        mode: 'individual',
+        role: 'account',
+        opened: true,
+        gate: 'content-internal',
+      });
       setNoteFor(null);
       setNote('');
       await refresh();
