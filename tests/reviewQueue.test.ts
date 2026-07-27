@@ -3,6 +3,7 @@ import {
   buildReviewQueue,
   countQueue,
   decideArticle,
+  fingerprintReviewArtifact,
   filterQueue,
 } from '../services/reviewQueueService';
 import { ArticleStore, saveArticle } from '../services/content/articleLibraryService';
@@ -169,6 +170,41 @@ describe('ghi quyết định', () => {
     expect(updated.review?.decidedAt).toBe(500);
     expect(store.rows.get('a1')?.review?.decision).toBe('approved');
     expect(store.rows.get('a1')?.review?.reviewer).toBe('Leo');
+    expect(updated.review).toMatchObject({
+      schemaVersion: 2,
+      mode: 'individual',
+      role: 'account',
+      opened: true,
+      gate: 'content-internal',
+    });
+    expect(updated.review?.artifactVersion).toBe(fingerprintReviewArtifact(updated));
+  });
+
+  it('ghi đúng nguồn quyết định khách hàng đại diện, không suy đoán lại ở Client Memory', async () => {
+    const updated = await decideArticle(article({ compliance: dat }), 'approved', {
+      store: memoryStore(),
+      mode: 'client-portal',
+      role: 'client-proxy',
+      opened: true,
+      gate: 'content-client',
+    });
+
+    expect(updated.review).toMatchObject({
+      schemaVersion: 2,
+      mode: 'client-portal',
+      role: 'client-proxy',
+      opened: true,
+      gate: 'content-client',
+    });
+  });
+
+  it('vân tay review ổn định khi nội dung giữ nguyên và đổi khi draft đổi', () => {
+    const original = article();
+    const sameContent = article({ updatedAt: 999 });
+    const changed = article({ draft: { ...draft, title: 'Một phiên bản nội dung khác' } });
+
+    expect(fingerprintReviewArtifact(original)).toBe(fingerprintReviewArtifact(sameContent));
+    expect(fingerprintReviewArtifact(original)).not.toBe(fingerprintReviewArtifact(changed));
   });
 
   it('KHÔNG duyệt được bài vi phạm Brand Kit', async () => {

@@ -261,12 +261,55 @@ export interface SavedArticle {
 
 export type ReviewDecision = 'pending' | 'approved' | 'changes-requested';
 
-export interface ReviewRecord {
+export type ReviewMode = 'individual' | 'batch' | 'client-portal';
+
+export type ReviewerRole = 'director' | 'editor' | 'account' | 'client' | 'client-proxy';
+
+interface ReviewRecordBase {
   decision: ReviewDecision;
   reviewer?: string;
   note?: string;
   decidedAt?: number;
 }
+
+/**
+ * Bản ghi cũ đã nằm trong IndexedDB trước khi có contract dữ liệu chất lượng.
+ *
+ * Giữ nhánh này để đọc dữ liệu cũ mà không bịa metadata. Client Memory phải
+ * coi đây là dữ liệu vận hành, không phải mẫu học.
+ */
+export interface LegacyReviewRecord extends ReviewRecordBase {
+  schemaVersion?: 1;
+  mode?: never;
+  role?: never;
+  opened?: never;
+  artifactVersion?: never;
+  gate?: never;
+}
+
+/**
+ * Quyết định duyệt có đủ nguồn gốc để đánh giá chất lượng.
+ *
+ * `artifactVersion + gate` cho phép gộp nhiều lần đổi ý trên cùng một bản nội
+ * dung; id của artifact nằm ở `SavedArticle.id`. Chỉ code ở entry point được
+ * tạo bản ghi V2 — không suy đoán metadata cho dữ liệu cũ.
+ */
+export interface QualityReviewRecord extends ReviewRecordBase {
+  schemaVersion: 2;
+  mode: ReviewMode;
+  role: ReviewerRole;
+  /** Người duyệt đã kiểm riêng mục này. Duyệt hàng loạt luôn là false. */
+  opened: boolean;
+  /** Vân tay ổn định của nội dung tại thời điểm quyết định. */
+  artifactVersion: string;
+  /** Cổng duyệt, ví dụ `content-internal` hoặc `content-client`. */
+  gate: string;
+}
+
+export type ReviewRecord = LegacyReviewRecord | QualityReviewRecord;
+
+export const isQualityReviewRecord = (review?: ReviewRecord): review is QualityReviewRecord =>
+  review?.schemaVersion === 2;
 
 /** Kênh đăng bài. */
 export type PublishChannelId = 'facebook-page' | 'threads' | 'zalo-oa';
