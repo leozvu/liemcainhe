@@ -11,6 +11,7 @@ import {
   FlaskConical,
   Gauge,
   Loader2,
+  MonitorCheck,
   Play,
   RefreshCw,
   ShieldCheck,
@@ -21,6 +22,7 @@ import {
 import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import {
   attachCampaignZeroTelemetry,
+  attachCampaignZeroWorkspaceProof,
   buildCampaignZeroSnapshot,
   CampaignZeroGateGroup,
   CampaignZeroRun,
@@ -36,6 +38,7 @@ import {
 } from '../services/campaignZeroService';
 import { getUsageRecords, runUsageTelemetryDryRun } from '../services/usageService';
 import { requestWorkspaceSync, WorkspaceSyncRuntimePhase } from '../services/workspaceSyncCoordinatorService';
+import { loadLatestVerifiedWorkspaceFieldTest } from '../services/workspaceFieldTestService';
 
 interface Props {
   campaign: AgencyCampaign;
@@ -76,6 +79,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
   const [balanceBefore, setBalanceBefore] = useState('');
   const [balanceAfter, setBalanceAfter] = useState('');
   const [isDryRunning, setIsDryRunning] = useState(false);
+  const [isProofLoading, setIsProofLoading] = useState(false);
   const [usageRevision, setUsageRevision] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
   const [error, setError] = useState('');
@@ -202,6 +206,21 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     }
   };
 
+  const importWorkspaceProof = async () => {
+    if (!run) return;
+    setIsProofLoading(true);
+    setError('');
+    try {
+      const proof = await loadLatestVerifiedWorkspaceFieldTest();
+      if (!proof) throw new Error('Chưa có bằng chứng đã chốt. Hãy hoàn tất bài kiểm tra trong Trung tâm đồng bộ trước.');
+      await persist(attachCampaignZeroWorkspaceProof(run, proof));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Không nạp được bằng chứng hai thiết bị.');
+    } finally {
+      setIsProofLoading(false);
+    }
+  };
+
   const progressTone = snapshot.progress === 100
     ? 'text-emerald-200'
     : snapshot.progress >= 50 ? 'text-cyan-100' : 'text-amber-200';
@@ -298,7 +317,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
             <section className="eg-card p-5">
-              <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">13 cổng bằng chứng</h4></div>
+              <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">{snapshot.totalGates} cổng bằng chứng</h4></div>
               <div className="mt-4 space-y-5">
                 {(Object.keys(GROUP_LABELS) as CampaignZeroGateGroup[]).map((group) => (
                   <div key={group}>
@@ -317,6 +336,15 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
             </section>
 
             <div className="space-y-4">
+              <section className="eg-card p-5">
+                <div className="flex items-center gap-2"><MonitorCheck className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Bằng chứng hai thiết bị</h4></div>
+                <p className="mt-2 text-xs leading-5 text-zinc-600">Nạp phiên A ↔ B đã chốt từ cloud. Bằng chứng hết hạn sau 7 ngày và không tiêu credit AI.</p>
+                {run.workspaceSyncProof && <div className="mt-3 rounded-xl border border-emerald-200/15 bg-emerald-200/[.04] p-3 text-[10px] leading-5 text-emerald-100/80">Mã {run.workspaceSyncProof.code} · {run.workspaceSyncProof.deviceA.label} ↔ {run.workspaceSyncProof.deviceB?.label}</div>}
+                <button type="button" onClick={() => void importWorkspaceProof()} disabled={isProofLoading || syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">
+                  {isProofLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MonitorCheck className="h-4 w-4" />} {run.workspaceSyncProof ? 'Nạp lại bằng chứng mới nhất' : 'Nạp bằng chứng từ cloud'}
+                </button>
+              </section>
+
               <section className="eg-card p-5">
                 <div className="flex items-center gap-2"><CloudCog className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Kiểm tra trước khi tốn credit</h4></div>
                 <p className="mt-2 text-xs leading-5 text-zinc-600">Ghi một event giả, đọc lại local và đợi cloud trả 2xx. Không gọi model hoặc provider media.</p>

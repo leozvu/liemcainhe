@@ -8,6 +8,7 @@ import {
   Database,
   HardDrive,
   History,
+  Laptop,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -26,6 +27,17 @@ import {
   WorkspaceSyncRuntimePhase,
 } from '../services/workspaceSyncCoordinatorService';
 import { SyncOutcome, WorkspaceCollection } from '../services/workspaceSyncService';
+import {
+  acknowledgeWorkspaceFieldTest,
+  createWorkspaceFieldTest,
+  getWorkspaceDeviceIdentity,
+  getWorkspaceFieldTest,
+  loadActiveWorkspaceFieldTest,
+  loadLatestVerifiedWorkspaceFieldTest,
+  normalizeWorkspaceFieldTestCode,
+  verifyWorkspaceFieldTest,
+  WorkspaceFieldTestSession,
+} from '../services/workspaceFieldTestService';
 
 interface Props {
   isOpen: boolean;
@@ -70,6 +82,13 @@ const WorkspaceSyncCenter: React.FC<Props> = ({ isOpen, onClose }) => {
   const [cloudError, setCloudError] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [deviceId, setDeviceId] = useState('');
+  const [deviceLabel, setDeviceLabel] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [fieldTest, setFieldTest] = useState<WorkspaceFieldTestSession>();
+  const [fieldBusy, setFieldBusy] = useState(false);
+  const [fieldError, setFieldError] = useState('');
+  const [fieldNotice, setFieldNotice] = useState('');
 
   useEffect(() => subscribeWorkspaceSync(setRuntime), []);
 
@@ -102,6 +121,18 @@ const WorkspaceSyncCenter: React.FC<Props> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (!isOpen) return;
     void loadDiagnostics(false);
+    const device = getWorkspaceDeviceIdentity();
+    setDeviceId(device.id);
+    setDeviceLabel(device.label);
+    setFieldError('');
+    void (async () => {
+      try {
+        const active = await loadActiveWorkspaceFieldTest();
+        setFieldTest(active || await loadLatestVerifiedWorkspaceFieldTest());
+      } catch (error) {
+        setFieldError(error instanceof Error ? error.message : 'Không tải được bằng chứng hai thiết bị.');
+      }
+    })();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
@@ -142,6 +173,45 @@ const WorkspaceSyncCenter: React.FC<Props> = ({ isOpen, onClose }) => {
       setCopied(false);
       setCloudError('Trình duyệt không cho sao chép. Hãy chạy lại kiểm tra rồi chụp màn hình bảng này.');
     }
+  };
+
+  const runFieldAction = async (operation: () => Promise<WorkspaceFieldTestSession>, notice: string) => {
+    setFieldBusy(true);
+    setFieldError('');
+    setFieldNotice('');
+    try {
+      const session = await operation();
+      setFieldTest(session);
+      setJoinCode(session.code);
+      setFieldNotice(notice);
+      const device = getWorkspaceDeviceIdentity(deviceLabel);
+      setDeviceId(device.id);
+      setDeviceLabel(device.label);
+    } catch (error) {
+      setFieldError(error instanceof Error ? error.message : 'Không hoàn tất được bài kiểm tra.');
+    } finally {
+      setFieldBusy(false);
+    }
+  };
+
+  const createFieldTest = () => runFieldAction(
+    () => createWorkspaceFieldTest(deviceLabel),
+    'Đã tạo mã. Mở app trên thiết bị B và nhập mã này.',
+  );
+
+  const joinFieldTest = () => runFieldAction(
+    () => acknowledgeWorkspaceFieldTest(joinCode, deviceLabel),
+    'Thiết bị B đã được cloud ghi nhận. Quay lại thiết bị A để chốt bằng chứng.',
+  );
+
+  const refreshFieldTest = () => {
+    if (!fieldTest?.code) return;
+    void runFieldAction(() => getWorkspaceFieldTest(fieldTest.code), 'Đã đọc trạng thái mới nhất từ cloud.');
+  };
+
+  const verifyFieldTest = () => {
+    if (!fieldTest?.code) return;
+    void runFieldAction(() => verifyWorkspaceFieldTest(fieldTest.code, deviceLabel), 'Bằng chứng hai thiết bị đã được chốt và sẵn sàng cho Campaign 0.');
   };
 
   if (!isOpen) return null;
@@ -214,16 +284,51 @@ const WorkspaceSyncCenter: React.FC<Props> = ({ isOpen, onClose }) => {
 
           <div className="mt-6 grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
             <section className="rounded-2xl border border-white/[.08] bg-white/[.025] p-5">
-              <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-200" /><div><div className="eg-kicker">Field test không tốn credit</div><h3 className="mt-1 text-sm font-semibold text-white">Kiểm chứng bằng hai thiết bị</h3></div></div>
-              <ol className="mt-5 space-y-3">
-                {[
-                  'Thiết bị A: tạo một khách hàng thử và chờ trạng thái “Workspace đã lưu”.',
-                  'Thiết bị B: mở app, bấm kiểm tra toàn bộ và xác nhận khách hàng vừa tạo xuất hiện.',
-                  'Thiết bị B: đổi tên khách hàng, sau đó thiết bị A kiểm tra lại và thấy tên mới.',
-                  'Thiết bị A: xóa khách hàng thử; thiết bị B kiểm tra lại và xác nhận dữ liệu không sống lại.',
-                ].map((step, index) => <li key={step} className="flex gap-3 text-[11px] leading-5 text-zinc-400"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyan-200/20 bg-cyan-200/[.05] font-mono text-[10px] text-cyan-100">{index + 1}</span><span className="pt-1">{step}</span></li>)}
-              </ol>
-              <div className="mt-5 rounded-xl border border-amber-300/15 bg-amber-300/[.04] p-4 text-[10px] leading-5 text-amber-100/75">Hai thiết bị phải đăng nhập cùng tài khoản workspace. Không dùng dữ liệu khách hàng thật cho lần kiểm tra đầu tiên.</div>
+              <div className="flex items-start gap-3"><CheckCircle2 className={`mt-0.5 h-5 w-5 ${fieldTest?.status === 'verified' ? 'text-emerald-200' : 'text-cyan-200'}`} /><div><div className="eg-kicker">Field test không tốn credit</div><h3 className="mt-1 text-sm font-semibold text-white">Bằng chứng hai thiết bị</h3></div></div>
+              <p className="mt-3 text-[11px] leading-5 text-zinc-500">Cloud chỉ chấp nhận khi một thiết bị tạo mã, thiết bị khác xác nhận và thiết bị đầu tiên chốt. Không gửi nội dung khách hàng hay gọi model AI.</p>
+
+              <label className="mt-4 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Tên thiết bị này
+                <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} maxLength={80} disabled={fieldBusy} className="eg-input mt-2 min-h-11 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" placeholder="Ví dụ: Laptop Account" />
+              </label>
+
+              {fieldTest && (
+                <div className={`mt-4 rounded-xl border p-4 ${fieldTest.status === 'verified' ? 'border-emerald-300/20 bg-emerald-300/[.05]' : 'border-cyan-200/15 bg-cyan-200/[.035]'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div><span className="block text-[9px] uppercase tracking-wider text-zinc-600">Mã kiểm tra</span><strong className="mt-1 block font-mono text-2xl tracking-[.18em] text-white">{fieldTest.code}</strong></div>
+                    <span className={`rounded-full border px-3 py-1 text-[9px] font-semibold uppercase tracking-wider ${fieldTest.status === 'verified' ? 'border-emerald-300/20 text-emerald-200' : fieldTest.status === 'acknowledged' ? 'border-cyan-200/20 text-cyan-100' : 'border-amber-300/20 text-amber-200'}`}>{fieldTest.status === 'verified' ? 'Đã chốt' : fieldTest.status === 'acknowledged' ? 'B đã xác nhận' : 'Chờ thiết bị B'}</span>
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border border-white/[.06] bg-black/15 p-3"><span className="text-[9px] uppercase tracking-wider text-zinc-700">Thiết bị A</span><p className="mt-1 text-[11px] text-zinc-300">{fieldTest.deviceA.label}</p></div>
+                    <div className="rounded-lg border border-white/[.06] bg-black/15 p-3"><span className="text-[9px] uppercase tracking-wider text-zinc-700">Thiết bị B</span><p className="mt-1 text-[11px] text-zinc-300">{fieldTest.deviceB?.label || 'Chưa xác nhận'}</p></div>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <button type="button" onClick={refreshFieldTest} disabled={fieldBusy} className="eg-button-secondary inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">{fieldBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Đọc lại từ cloud</button>
+                    {fieldTest.status === 'acknowledged' && fieldTest.deviceA.id === deviceId && <button type="button" onClick={verifyFieldTest} disabled={fieldBusy} className="eg-button-primary inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-4 text-xs font-bold disabled:opacity-50"><ShieldCheck className="h-4 w-4" /> Chốt bằng chứng</button>}
+                  </div>
+                </div>
+              )}
+
+              {!fieldTest && <button type="button" onClick={createFieldTest} disabled={fieldBusy || !deviceLabel.trim()} className="eg-button-primary mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-bold disabled:opacity-50">{fieldBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Laptop className="h-4 w-4" />} Tạo mã trên thiết bị A</button>}
+
+              <div className="mt-4 border-t border-white/[.06] pt-4">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Nhập mã trên thiết bị B
+                  <input value={joinCode} onChange={(event) => setJoinCode(normalizeWorkspaceFieldTestCode(event.target.value))} maxLength={8} disabled={fieldBusy} className="eg-input mt-2 min-h-11 px-3 font-mono text-base uppercase tracking-[.18em] disabled:opacity-50" placeholder="ABCD2345" />
+                </label>
+                <button type="button" onClick={joinFieldTest} disabled={fieldBusy || joinCode.length !== 8 || !deviceLabel.trim()} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><Cloud className="h-4 w-4" /> Xác nhận bằng thiết bị này</button>
+              </div>
+
+              <div aria-live="polite" className={`mt-3 min-h-5 text-[10px] leading-5 ${fieldError ? 'text-rose-200' : 'text-emerald-200/80'}`}>{fieldError || fieldNotice}</div>
+
+              <details className="mt-3 rounded-xl border border-white/[.06] bg-black/10 p-3">
+                <summary className="cursor-pointer text-[10px] font-semibold text-zinc-400">Kiểm tra thêm tạo, sửa và xóa dữ liệu thật</summary>
+                <ol className="mt-3 space-y-2">
+                  {[
+                    'A tạo khách hàng thử; B đồng bộ và thấy bản ghi.',
+                    'B đổi tên; A đồng bộ và thấy tên mới.',
+                    'A xóa; B đồng bộ và xác nhận bản ghi không sống lại.',
+                  ].map((step, index) => <li key={step} className="flex gap-2 text-[10px] leading-5 text-zinc-500"><span className="font-mono text-cyan-100">{index + 1}.</span><span>{step}</span></li>)}
+                </ol>
+              </details>
             </section>
 
             <section className="rounded-2xl border border-white/[.08] bg-white/[.025] p-5">

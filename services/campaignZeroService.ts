@@ -10,6 +10,7 @@ import {
   syncCollection,
   SyncTransport,
 } from './workspaceSyncService';
+import type { WorkspaceFieldTestEvidence } from './workspaceFieldTestService';
 
 export type CampaignZeroStatus = 'running' | 'completed';
 export type CampaignZeroStage = 'brief' | 'pre-production' | 'production' | 'review' | 'editing' | 'delivery' | 'operations';
@@ -27,6 +28,7 @@ export interface CampaignZeroRun {
   status: CampaignZeroStatus;
   clientProxyName?: string;
   telemetry?: TelemetryDryRunReport;
+  workspaceSyncProof?: WorkspaceFieldTestEvidence;
   providerBalanceBeforeUsd?: number;
   providerBalanceAfterUsd?: number;
   workSessions: CampaignZeroWorkSession[];
@@ -66,6 +68,14 @@ const STORE_NAME = 'campaignZeroRuns';
 const createId = (prefix: string, at: number): string => `${prefix}_${at.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const finiteAmount = (value?: number): number | undefined => Number.isFinite(value) ? Math.max(0, Number(value)) : undefined;
 
+const normalizeWorkspaceSyncProof = (value?: Partial<WorkspaceFieldTestEvidence>): WorkspaceFieldTestEvidence | undefined => {
+  if (!value || value.version !== 1 || value.status !== 'verified' || !value.id || !value.code
+    || !value.deviceA?.id || !value.deviceA?.label || !value.deviceB?.id || !value.deviceB?.label
+    || !Number(value.createdAt) || !Number(value.acknowledgedAt) || !Number(value.verifiedAt)
+    || !Number(value.updatedAt) || !Number(value.expiresAt)) return undefined;
+  return value as WorkspaceFieldTestEvidence;
+};
+
 const normalizeRun = (value: Partial<CampaignZeroRun>): CampaignZeroRun | undefined => {
   if (!value.campaignId || !Number(value.startedAt)) return undefined;
   const sessions = (Array.isArray(value.workSessions) ? value.workSessions : [])
@@ -82,6 +92,7 @@ const normalizeRun = (value: Partial<CampaignZeroRun>): CampaignZeroRun | undefi
     status: value.status === 'completed' ? 'completed' : 'running',
     clientProxyName: value.clientProxyName?.trim().slice(0, 120) || undefined,
     telemetry: value.telemetry?.status === 'passed' ? value.telemetry : undefined,
+    workspaceSyncProof: normalizeWorkspaceSyncProof(value.workspaceSyncProof),
     providerBalanceBeforeUsd: finiteAmount(value.providerBalanceBeforeUsd),
     providerBalanceAfterUsd: finiteAmount(value.providerBalanceAfterUsd),
     workSessions: sessions,
@@ -200,6 +211,16 @@ export const attachCampaignZeroTelemetry = (
   at = Date.now(),
 ): CampaignZeroRun => ({ ...run, telemetry, status: 'running', completedAt: undefined, updatedAt: at });
 
+export const attachCampaignZeroWorkspaceProof = (
+  run: CampaignZeroRun,
+  proof: WorkspaceFieldTestEvidence,
+  at = Date.now(),
+): CampaignZeroRun => {
+  const normalized = normalizeWorkspaceSyncProof(proof);
+  if (!normalized || normalized.expiresAt <= at) throw new Error('Bằng chứng hai thiết bị chưa hợp lệ hoặc đã hết hạn.');
+  return { ...run, workspaceSyncProof: normalized, status: 'running', completedAt: undefined, updatedAt: at };
+};
+
 export const setCampaignZeroProviderBalances = (
   run: CampaignZeroRun,
   beforeUsd: number,
@@ -285,12 +306,18 @@ export const buildCampaignZeroSnapshot = (input: {
   const brief = getCampaignBriefReadiness(campaign, client);
   const brand = getBrandKitReadiness(client.brandKit);
   const telemetryCloudReady = run?.telemetry?.cloud === 'synced';
+  const workspaceSyncReady = Boolean(
+    run?.workspaceSyncProof?.status === 'verified'
+    && run.workspaceSyncProof.verifiedAt
+    && run.workspaceSyncProof.expiresAt > now,
+  );
   const gates: CampaignZeroGate[] = [
     { id: 'brief', group: 'foundation', label: 'Brief sẵn sàng từ 80%', detail: `Hiện tại ${brief.score}% · còn thiếu ${brief.missing.length} mục`, complete: brief.score >= 80 },
     { id: 'brand-kit', group: 'foundation', label: 'Brand Kit sẵn sàng từ 80%', detail: `Hiện tại ${brand.score}% · còn thiếu ${brand.missing.length} mục`, complete: brand.score >= 80 },
     { id: 'project', group: 'foundation', label: 'Đã tạo project từ deliverable', detail: `${campaignProjects.length} project liên kết hợp lệ`, complete: campaignProjects.length > 0 },
     { id: 'client-proxy', group: 'instrumentation', label: 'Đã chỉ định người đóng vai khách', detail: run?.clientProxyName || 'Phải là người không tham gia sinh nội dung nếu có thể', complete: Boolean(run?.clientProxyName) },
     { id: 'telemetry', group: 'instrumentation', label: 'Telemetry cloud chạy khô thành công', detail: telemetryCloudReady ? 'Local và cloud đều xác nhận · chi phí 0 USD' : run?.telemetry ? 'Đã lưu local nhưng cloud chưa xác nhận' : 'Chưa chạy kiểm tra 0đ', complete: telemetryCloudReady },
+    { id: 'workspace-sync', group: 'instrumentation', label: 'Đồng bộ hai thiết bị đã được chứng minh', detail: workspaceSyncReady ? `Mã ${run?.workspaceSyncProof?.code} · ${run?.workspaceSyncProof?.deviceA.label} ↔ ${run?.workspaceSyncProof?.deviceB?.label}` : run?.workspaceSyncProof ? 'Bằng chứng đã hết hạn; hãy chạy lại tại Trung tâm đồng bộ' : 'Tạo mã trên thiết bị A, xác nhận bằng thiết bị B rồi chốt', complete: workspaceSyncReady },
     { id: 'human-time', group: 'instrumentation', label: 'Đã ghi thời gian nhân sự', detail: `${Math.round(completedWorkMs / 60000)} phút đã đóng phiên`, complete: completedWorkMs > 0 },
     { id: 'chat', group: 'production', label: 'Có một lượt chat rẻ thành công', detail: 'Dùng để kiểm prompt, routing và usage trước media', complete: successfulKinds.has('chat') },
     { id: 'image', group: 'production', label: 'Có ít nhất một ảnh draft thành công', detail: 'Chỉ nâng model sau khi draft được duyệt', complete: successfulKinds.has('image') },

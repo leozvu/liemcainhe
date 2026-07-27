@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import {
   attachCampaignZeroTelemetry,
+  attachCampaignZeroWorkspaceProof,
   buildCampaignZeroSnapshot,
   completeCampaignZeroRun,
   createCampaignZeroRun,
@@ -15,6 +16,7 @@ import { createAgencyCampaign, createAgencyClient, createCampaignDeliverable } f
 import { createNewProjectState } from '../services/storageService';
 import { TelemetryDryRunReport, UsageRecord } from '../services/usageService';
 import { LocalStore, SyncTransport } from '../services/workspaceSyncService';
+import { WorkspaceFieldTestEvidence } from '../services/workspaceFieldTestService';
 
 const createReadyClient = (): AgencyClient => {
   const client = createAgencyClient({ name: 'Egoric Agency', brandName: 'Egoric', industry: 'Creative Agency' });
@@ -108,6 +110,20 @@ const telemetry: TelemetryDryRunReport = {
   units: 0,
 };
 
+const workspaceProof: WorkspaceFieldTestEvidence = {
+  version: 1,
+  id: 'ABCD2345',
+  code: 'ABCD2345',
+  status: 'verified',
+  deviceA: { id: 'device_a_123', label: 'Laptop Account' },
+  deviceB: { id: 'device_b_456', label: 'Máy dựng' },
+  createdAt: 100,
+  acknowledgedAt: 200,
+  verifiedAt: 300,
+  updatedAt: 300,
+  expiresAt: 10_000,
+};
+
 describe('Campaign 0 Golden Run', () => {
   it('bắt đầu run ở trạng thái running và không tự tạo API usage', () => {
     expect(createCampaignZeroRun('campaign_0', 100)).toEqual({
@@ -140,7 +156,7 @@ describe('Campaign 0 Golden Run', () => {
     expect(snapshot.gates.find((gate) => gate.id === 'telemetry')?.complete).toBe(false);
   });
 
-  it('tổng hợp đủ 13 cổng, chi phí và chênh lệch provider', () => {
+  it('tổng hợp đủ 14 cổng, chi phí và chênh lệch provider', () => {
     const client = createReadyClient();
     let campaign = createReadyCampaign(client.id);
     const project = createApprovedProject(campaign);
@@ -152,19 +168,33 @@ describe('Campaign 0 Golden Run', () => {
     let run = createCampaignZeroRun(campaign.id, 100);
     run = setCampaignZeroClientProxy(run, 'Nguyễn Minh Anh', 150);
     run = attachCampaignZeroTelemetry(run, telemetry, 200);
+    run = attachCampaignZeroWorkspaceProof(run, workspaceProof, 250);
     run = startCampaignZeroWorkSession(run, 'production', 300);
     run = stopCampaignZeroWorkSession(run, 60_300);
     run = setCampaignZeroProviderBalances(run, 20, 13.5, 700);
     const snapshot = buildCampaignZeroSnapshot({ campaign, client, projects: [project], run, usageRecords: usage(project.id), now: 800 });
 
-    expect(snapshot.totalGates).toBe(13);
-    expect(snapshot.completedGates).toBe(13);
+    expect(snapshot.totalGates).toBe(14);
+    expect(snapshot.completedGates).toBe(14);
     expect(snapshot.progress).toBe(100);
     expect(snapshot.nextGate).toBeUndefined();
     expect(snapshot.estimatedCostUsd).toBe(6);
     expect(snapshot.actualProviderSpendUsd).toBe(6.5);
     expect(snapshot.costVarianceUsd).toBe(0.5);
     expect(snapshot.workMinutes).toBe(1);
+  });
+
+  it('chỉ hoàn tất cổng đồng bộ với bằng chứng đã chốt và còn hạn', () => {
+    const client = createReadyClient();
+    const campaign = createReadyCampaign(client.id);
+    const withoutProof = buildCampaignZeroSnapshot({ campaign, client, projects: [], run: createCampaignZeroRun(campaign.id, 100), now: 400 });
+    expect(withoutProof.gates.find((gate) => gate.id === 'workspace-sync')?.complete).toBe(false);
+
+    const run = attachCampaignZeroWorkspaceProof(createCampaignZeroRun(campaign.id, 100), workspaceProof, 350);
+    const verified = buildCampaignZeroSnapshot({ campaign, client, projects: [], run, now: 400 });
+    const expired = buildCampaignZeroSnapshot({ campaign, client, projects: [], run, now: 10_001 });
+    expect(verified.gates.find((gate) => gate.id === 'workspace-sync')?.complete).toBe(true);
+    expect(expired.gates.find((gate) => gate.id === 'workspace-sync')?.complete).toBe(false);
   });
 
   it('không cho đóng run khi còn thiếu bằng chứng', () => {
@@ -179,8 +209,8 @@ describe('Campaign 0 Golden Run', () => {
     const run = createCampaignZeroRun('campaign_0', 100);
     const completed = completeCampaignZeroRun(run, {
       gates: [],
-      completedGates: 13,
-      totalGates: 13,
+      completedGates: 14,
+      totalGates: 14,
       progress: 100,
       projectCount: 1,
       requestCount: 3,
