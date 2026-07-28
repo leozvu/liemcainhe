@@ -19,6 +19,12 @@ D1. Sau khi provider trả 2xx, adapter lập tức ghi trạng thái accepted; 
 có task ID thì ghi ID trước khi polling. Output phải được commit vào project và
 IndexedDB trước khi job chuyển sang `completed`.
 
+Mỗi lần chạy còn ghi execution trail riêng: preflight, submitted, provider
+accepted, provider task, output committed và trạng thái cuối. Campaign 0 ghép
+trail này với job và usage để phát hiện output thiếu giá vốn, usage thiếu job,
+failure sau khi provider nhận và job interrupted cần đối chiếu. Click trùng bị
+chặn cũng được đếm thành `deduplicated` mà không tạo provider request mới.
+
 Với voice:
 
 - FPT lưu `request_id` làm provider task ID;

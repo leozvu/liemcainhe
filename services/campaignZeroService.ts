@@ -1,7 +1,14 @@
 import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import { getBrandKitReadiness } from './brandKitService';
 import { getCampaignBriefReadiness } from './campaignService';
-import { TelemetryDryRunReport, UsageRecord } from './usageService';
+import { runUsageTelemetryDryRun, TelemetryDryRunReport, UsageRecord } from './usageService';
+import {
+  BillableLifecycleDryRunReport,
+  BillableLifecycleEvent,
+  BillableReconciliationReport,
+  buildBillableReconciliation,
+  runBillableLifecycleDryRun,
+} from './billableTelemetryService';
 import { readWorkspaceStore, writeWorkspaceStore } from './storageService';
 import {
   cloudTransport,
@@ -27,7 +34,7 @@ export interface CampaignZeroRun {
   campaignId: string;
   status: CampaignZeroStatus;
   clientProxyName?: string;
-  telemetry?: TelemetryDryRunReport;
+  telemetry?: CampaignZeroTelemetryReport;
   workspaceSyncProof?: WorkspaceFieldTestEvidence;
   providerBalanceBeforeUsd?: number;
   providerBalanceAfterUsd?: number;
@@ -61,6 +68,25 @@ export interface CampaignZeroSnapshot {
   costVarianceUsd?: number;
   workMinutes: number;
   activeSession?: CampaignZeroWorkSession;
+  billable: BillableReconciliationReport;
+}
+
+export interface CampaignZeroTelemetryReport extends TelemetryDryRunReport {
+  lifecycle?: BillableLifecycleDryRunReport;
+}
+
+export interface CampaignZeroPaidPreflightCheck {
+  id: 'telemetry' | 'project' | 'balance' | 'budget' | 'voice-provider' | 'unresolved-jobs';
+  label: string;
+  detail: string;
+  complete: boolean;
+}
+
+export interface CampaignZeroPaidPreflight {
+  ready: boolean;
+  checks: CampaignZeroPaidPreflightCheck[];
+  blockers: CampaignZeroPaidPreflightCheck[];
+  maxTestCharacters: 200;
 }
 
 const STORAGE_KEY = 'egoric_campaign_zero_runs_v1';
@@ -74,6 +100,16 @@ const normalizeWorkspaceSyncProof = (value?: Partial<WorkspaceFieldTestEvidence>
     || !Number(value.createdAt) || !Number(value.acknowledgedAt) || !Number(value.verifiedAt)
     || !Number(value.updatedAt) || !Number(value.expiresAt)) return undefined;
   return value as WorkspaceFieldTestEvidence;
+};
+
+const normalizeTelemetry = (value?: Partial<CampaignZeroTelemetryReport>): CampaignZeroTelemetryReport | undefined => {
+  if (!value || value.status !== 'passed' || !Number(value.checkedAt) || !value.recordId) return undefined;
+  const lifecycle = value.lifecycle?.status === 'passed'
+    && Array.isArray(value.lifecycle.recordIds)
+    && Array.isArray(value.lifecycle.phases)
+    ? value.lifecycle
+    : undefined;
+  return { ...value, lifecycle } as CampaignZeroTelemetryReport;
 };
 
 const normalizeRun = (value: Partial<CampaignZeroRun>): CampaignZeroRun | undefined => {
@@ -91,7 +127,7 @@ const normalizeRun = (value: Partial<CampaignZeroRun>): CampaignZeroRun | undefi
     campaignId: value.campaignId,
     status: value.status === 'completed' ? 'completed' : 'running',
     clientProxyName: value.clientProxyName?.trim().slice(0, 120) || undefined,
-    telemetry: value.telemetry?.status === 'passed' ? value.telemetry : undefined,
+    telemetry: normalizeTelemetry(value.telemetry),
     workspaceSyncProof: normalizeWorkspaceSyncProof(value.workspaceSyncProof),
     providerBalanceBeforeUsd: finiteAmount(value.providerBalanceBeforeUsd),
     providerBalanceAfterUsd: finiteAmount(value.providerBalanceAfterUsd),
@@ -207,9 +243,20 @@ export const setCampaignZeroClientProxy = (run: CampaignZeroRun, name: string, a
 
 export const attachCampaignZeroTelemetry = (
   run: CampaignZeroRun,
-  telemetry: TelemetryDryRunReport,
+  telemetry: CampaignZeroTelemetryReport,
   at = Date.now(),
 ): CampaignZeroRun => ({ ...run, telemetry, status: 'running', completedAt: undefined, updatedAt: at });
+
+/** Chạy song song hai đường telemetry 0đ: usage và lifecycle attempt. */
+export const runCampaignZeroTelemetryDryRun = async (
+  projectId: string,
+): Promise<CampaignZeroTelemetryReport> => {
+  const [usage, lifecycle] = await Promise.all([
+    runUsageTelemetryDryRun({ projectId }),
+    runBillableLifecycleDryRun({ projectId }),
+  ]);
+  return { ...usage, lifecycle };
+};
 
 export const attachCampaignZeroWorkspaceProof = (
   run: CampaignZeroRun,
@@ -235,6 +282,23 @@ export const setCampaignZeroProviderBalances = (
     ...run,
     providerBalanceBeforeUsd: before,
     providerBalanceAfterUsd: after,
+    status: 'running',
+    completedAt: undefined,
+    updatedAt: at,
+  };
+};
+
+export const setCampaignZeroProviderBalanceBefore = (
+  run: CampaignZeroRun,
+  beforeUsd: number,
+  at = Date.now(),
+): CampaignZeroRun => {
+  const before = finiteAmount(beforeUsd);
+  if (before === undefined) throw new Error('Số dư provider trước test phải là số không âm.');
+  return {
+    ...run,
+    providerBalanceBeforeUsd: before,
+    providerBalanceAfterUsd: undefined,
     status: 'running',
     completedAt: undefined,
     updatedAt: at,
@@ -282,6 +346,7 @@ export const buildCampaignZeroSnapshot = (input: {
   projects: ProjectState[];
   run?: CampaignZeroRun;
   usageRecords?: UsageRecord[];
+  lifecycleEvents?: BillableLifecycleEvent[];
   now?: number;
 }): CampaignZeroSnapshot => {
   const { campaign, client, run } = input;
@@ -306,6 +371,7 @@ export const buildCampaignZeroSnapshot = (input: {
   const brief = getCampaignBriefReadiness(campaign, client);
   const brand = getBrandKitReadiness(client.brandKit);
   const telemetryCloudReady = run?.telemetry?.cloud === 'synced';
+  const lifecycleCloudReady = run?.telemetry?.lifecycle?.cloud === 'synced';
   const workspaceSyncReady = Boolean(
     run?.workspaceSyncProof?.status === 'verified'
     && run.workspaceSyncProof.verifiedAt
@@ -316,7 +382,7 @@ export const buildCampaignZeroSnapshot = (input: {
     { id: 'brand-kit', group: 'foundation', label: 'Brand Kit sẵn sàng từ 80%', detail: `Hiện tại ${brand.score}% · còn thiếu ${brand.missing.length} mục`, complete: brand.score >= 80 },
     { id: 'project', group: 'foundation', label: 'Đã tạo project từ deliverable', detail: `${campaignProjects.length} project liên kết hợp lệ`, complete: campaignProjects.length > 0 },
     { id: 'client-proxy', group: 'instrumentation', label: 'Đã chỉ định người đóng vai khách', detail: run?.clientProxyName || 'Phải là người không tham gia sinh nội dung nếu có thể', complete: Boolean(run?.clientProxyName) },
-    { id: 'telemetry', group: 'instrumentation', label: 'Telemetry cloud chạy khô thành công', detail: telemetryCloudReady ? 'Local và cloud đều xác nhận · chi phí 0 USD' : run?.telemetry ? 'Đã lưu local nhưng cloud chưa xác nhận' : 'Chưa chạy kiểm tra 0đ', complete: telemetryCloudReady },
+    { id: 'telemetry', group: 'instrumentation', label: 'Usage + lifecycle chạy khô thành công', detail: telemetryCloudReady && lifecycleCloudReady ? 'Usage và 6 pha lifecycle đã được cloud xác nhận · chi phí 0 USD' : run?.telemetry ? 'Usage đã chạy; lifecycle attempt chưa được cloud xác nhận đầy đủ' : 'Chưa chạy kiểm tra 0đ', complete: telemetryCloudReady && lifecycleCloudReady },
     { id: 'workspace-sync', group: 'instrumentation', label: 'Đồng bộ hai thiết bị đã được chứng minh', detail: workspaceSyncReady ? `Mã ${run?.workspaceSyncProof?.code} · ${run?.workspaceSyncProof?.deviceA.label} ↔ ${run?.workspaceSyncProof?.deviceB?.label}` : run?.workspaceSyncProof ? 'Bằng chứng đã hết hạn; hãy chạy lại tại Trung tâm đồng bộ' : 'Tạo mã trên thiết bị A, xác nhận bằng thiết bị B rồi chốt', complete: workspaceSyncReady },
     { id: 'human-time', group: 'instrumentation', label: 'Đã ghi thời gian nhân sự', detail: `${Math.round(completedWorkMs / 60000)} phút đã đóng phiên`, complete: completedWorkMs > 0 },
     { id: 'chat', group: 'production', label: 'Có một lượt chat rẻ thành công', detail: 'Dùng để kiểm prompt, routing và usage trước media', complete: successfulKinds.has('chat') },
@@ -327,6 +393,11 @@ export const buildCampaignZeroSnapshot = (input: {
     { id: 'delivery', group: 'delivery', label: 'Toàn bộ deliverable đã bàn giao', detail: 'Master đã duyệt và trạng thái đầu ra là Đã bàn giao', complete: campaign.deliverables.length > 0 && campaign.deliverables.every((item) => item.status === 'delivered') },
     { id: 'reconciliation', group: 'delivery', label: 'Đã đối soát số dư provider', detail: actualProviderSpendUsd === undefined ? 'Nhập số dư trước và sau Golden Run' : `Chi tiêu thực tế ${actualProviderSpendUsd.toFixed(4)} USD`, complete: actualProviderSpendUsd !== undefined },
   ];
+  const billable = buildBillableReconciliation({
+    projects: campaignProjects,
+    usageRecords: usage,
+    lifecycleEvents: input.lifecycleEvents || [],
+  });
   const completedGates = gates.filter((gate) => gate.complete).length;
   return {
     gates,
@@ -342,6 +413,59 @@ export const buildCampaignZeroSnapshot = (input: {
     costVarianceUsd: actualProviderSpendUsd === undefined ? undefined : Number((actualProviderSpendUsd - estimatedCostUsd).toFixed(6)),
     workMinutes: Math.round(displayWorkMs / 60000),
     activeSession,
+    billable,
+  };
+};
+
+export const buildCampaignZeroPaidPreflight = (input: {
+  campaign: AgencyCampaign;
+  run?: CampaignZeroRun;
+  snapshot: CampaignZeroSnapshot;
+  hasConfiguredVoiceProvider: boolean;
+}): CampaignZeroPaidPreflight => {
+  const checks: CampaignZeroPaidPreflightCheck[] = [
+    {
+      id: 'telemetry',
+      label: 'Dry-run usage và lifecycle đã lên cloud',
+      detail: 'Phải đủ 6 pha giả lập và tổng chi phí 0 USD.',
+      complete: input.run?.telemetry?.cloud === 'synced' && input.run.telemetry.lifecycle?.cloud === 'synced',
+    },
+    {
+      id: 'project',
+      label: 'Có project Campaign 0 hợp lệ',
+      detail: `${input.snapshot.projectCount} project đang liên kết.`,
+      complete: input.snapshot.projectCount > 0,
+    },
+    {
+      id: 'balance',
+      label: 'Đã chốt số dư provider trước test',
+      detail: input.run?.providerBalanceBeforeUsd === undefined ? 'Nhập số dư trước khi mở request thật.' : `${input.run.providerBalanceBeforeUsd.toFixed(4)} USD`,
+      complete: input.run?.providerBalanceBeforeUsd !== undefined,
+    },
+    {
+      id: 'budget',
+      label: 'Chiến dịch có ngân sách đã duyệt',
+      detail: `${input.campaign.budget.toLocaleString('vi-VN')} ${input.campaign.currency}`,
+      complete: input.campaign.budget > 0,
+    },
+    {
+      id: 'voice-provider',
+      label: 'Có provider voice trả phí đã cấu hình',
+      detail: input.hasConfiguredVoiceProvider ? 'Khóa voice đã sẵn sàng trên thiết bị này.' : 'Cần cấu hình FPT.AI, Viettel AI hoặc ElevenLabs.',
+      complete: input.hasConfiguredVoiceProvider,
+    },
+    {
+      id: 'unresolved-jobs',
+      label: 'Không còn tác vụ trả phí mất dấu',
+      detail: input.snapshot.billable.riskCount ? `${input.snapshot.billable.riskCount} điểm cần đối chiếu trước khi gọi mới.` : 'Không có job interrupted hoặc khoảng trống telemetry.',
+      complete: input.snapshot.billable.riskCount === 0,
+    },
+  ];
+  return {
+    ready: checks.every((check) => check.complete),
+    checks,
+    blockers: checks.filter((check) => !check.complete),
+    maxTestCharacters: 200,
   };
 };
 

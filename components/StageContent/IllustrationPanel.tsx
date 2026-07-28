@@ -79,6 +79,7 @@ const IllustrationPanel: React.FC<Props> = ({ draft, brief, brandKit, project, u
     onChange(marked);
 
     const done = await renderIllustration(target, {
+      usageResourceId: `content-illustration:${target.id}`,
       execution: createProjectMediaExecutionContext({
         project,
         updateProject,

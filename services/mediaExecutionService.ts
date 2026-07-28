@@ -4,6 +4,7 @@ import { claimDurableJob, syncDurableJobs } from './durableJobService';
 import { applyTransition, decideSubmit, deriveIdempotencyKey } from './jobStateMachine';
 import { createProductionJob, upsertProductionJob } from './workflowService';
 import { loadProjectFromDB, saveProjectToDB } from './storageService';
+import { BillableLifecyclePhase, recordBillableLifecycleEvent } from './billableTelemetryService';
 
 const inFlight = new Map<string, Promise<unknown>>();
 const latestJobsByProject = new Map<string, Map<string, ProductionJob>>();
@@ -97,6 +98,24 @@ const notify = (context: MediaExecutionContext, job: ProductionJob): void => {
   context.onJobChange?.(job);
 };
 
+const recordLifecycle = (
+  context: MediaExecutionContext,
+  job: ProductionJob,
+  phase: BillableLifecyclePhase,
+  error?: unknown,
+): void => {
+  recordBillableLifecycleEvent({
+    projectId: context.projectId,
+    jobId: job.id,
+    kind: job.kind,
+    resourceId: job.resourceId,
+    idempotencyKey: job.idempotencyKey,
+    providerTaskId: job.providerTaskId,
+    phase,
+    error: error ? errorMessage(error) : undefined,
+  });
+};
+
 const persist = async (context: MediaExecutionContext, job: ProductionJob): Promise<void> => {
   try {
     await syncDurableJobs(context.projectId, [job]);
@@ -136,7 +155,13 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
   // Hai click trong cùng event loop nhận chung Promise, không tạo job hay gọi
   // provider lần hai. Map hoạt động cả khi caller chưa truyền project context.
   const active = inFlight.get(inFlightKey) as Promise<T> | undefined;
-  if (active) return active;
+  if (active) {
+    if (input.context) {
+      const duplicate = decideSubmit(knownJobs(input.context), idempotencyKey).existing;
+      if (duplicate) recordLifecycle(input.context, duplicate, 'deduplicated');
+    }
+    return active;
+  }
 
   const run = async (): Promise<T> => {
     const context = input.context;
@@ -149,6 +174,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
 
     const localDecision = decideSubmit(knownJobs(context), idempotencyKey);
     if (!localDecision.proceed) {
+      if (localDecision.existing) recordLifecycle(context, localDecision.existing, 'deduplicated');
       throw new DuplicateBillableExecutionError(localDecision.reason || 'Tác vụ này đã tồn tại.', localDecision.existing);
     }
 
@@ -162,6 +188,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       detail: 'Đang khóa quyền gửi để tránh trừ credit hai lần.',
     });
     notify(context, current);
+    recordLifecycle(context, current, 'preflight-passed');
 
     let claim;
     try {
@@ -172,6 +199,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
         detail: 'Không khóa được tác vụ nên đã dừng trước khi gọi provider. Chưa sử dụng credit.',
       });
       notify(context, current);
+      recordLifecycle(context, current, 'preflight-blocked', error);
       throw error;
     }
     if (!claim.claimed) {
@@ -180,6 +208,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       });
       notify(context, current);
       if (claim.existing) notify(context, claim.existing);
+      recordLifecycle(context, claim.existing || current, 'deduplicated');
       throw new DuplicateBillableExecutionError(
         'Một tab hoặc thiết bị khác đã gửi đúng tác vụ này. Không gửi lại để tránh trừ credit hai lần.',
         claim.existing,
@@ -192,6 +221,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
     });
     notify(context, current);
     await persist(context, current);
+    recordLifecycle(context, current, 'submitted');
 
     let providerAccepted = false;
     const onProviderAccepted = async () => {
@@ -202,6 +232,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       });
       notify(context, current);
       await persist(context, current);
+      recordLifecycle(context, current, 'provider-accepted');
     };
 
     const onProviderTaskId = async (taskId: string) => {
@@ -213,6 +244,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       });
       notify(context, current);
       await persist(context, current);
+      recordLifecycle(context, current, 'provider-task');
     };
 
     try {
@@ -222,6 +254,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       await onProviderAccepted();
       if (context.commitResult) {
         await context.commitResult(result);
+        recordLifecycle(context, current, 'output-committed');
       }
       current = applyTransition(current, 'completed', {
         progress: 100,
@@ -231,6 +264,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       });
       notify(context, current);
       await persist(context, current);
+      recordLifecycle(context, current, 'completed');
       return result;
     } catch (error) {
       const ambiguous = isAmbiguousBillableError(error, current.providerTaskId, providerAccepted);
@@ -244,6 +278,7 @@ export const executeBillableMedia = async <T>(input: ExecuteBillableMediaInput<T
       });
       notify(context, current);
       await persist(context, current);
+      recordLifecycle(context, current, ambiguous ? 'interrupted' : 'failed', error);
       throw error;
     }
   };
