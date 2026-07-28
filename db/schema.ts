@@ -98,3 +98,32 @@ export const workspaceItemsSchema = {
   indexes: [['owner_email', 'collection', 'updated_at']],
   columns: ['owner_email', 'collection', 'item_id', 'payload_json', 'updated_at', 'deleted_at'],
 } as const;
+
+export const distributionPackagesSchema = {
+  table: 'egoric_distribution_packages',
+  primaryKey: ['id'],
+  indexes: [['owner_email', 'project_id', 'updated_at']],
+  uniqueIndexes: [['owner_email', 'project_id', 'idempotency_key']],
+} as const;
+
+export const distributionConnectionsSchema = {
+  table: 'egoric_distribution_connections',
+  primaryKey: ['id'],
+  indexes: [['owner_email', 'updated_at']],
+  uniqueIndexes: [['owner_email', 'platform', 'external_account_id']],
+  secretColumns: ['secret_json'],
+} as const;
+
+export const distributionOauthStatesSchema = {
+  table: 'egoric_distribution_oauth_states',
+  primaryKey: ['state_hash'],
+  indexes: [['expires_at']],
+} as const;
+
+export const distributionJobsSchema = {
+  table: 'egoric_distribution_jobs',
+  primaryKey: ['id'],
+  indexes: [['owner_email', 'project_id', 'updated_at']],
+  uniqueIndexes: [['owner_email', 'project_id', 'idempotency_key']],
+  secretColumns: ['private_json'],
+} as const;

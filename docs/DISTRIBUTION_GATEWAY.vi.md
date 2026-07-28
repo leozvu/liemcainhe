@@ -52,8 +52,12 @@ Nếu một master không đúng tỷ lệ, UI khóa adapter thay vì ngầm cro
 - Tab **Phân phối** trong Trung tâm sản xuất hiển thị gate, artifact, fingerprint, adapter tương thích và release ledger.
 - Team có thể tải manifest JSON để bàn giao/upload thủ công trong lúc chờ OAuth nền tảng.
 
+## Lớp upload kế tiếp
+
+Sprint 1G đã thêm [Publishing Queue và OAuth nền tảng](DISTRIBUTION_PUBLISHING.vi.md): YouTube dùng resumable upload, TikTok dùng creator inbox, token nằm ở server và job `indeterminate` bắt buộc đối soát trước khi tiếp tục.
+
 ## Chưa tuyên bố hoàn tất
 
-Sprint này không giả lập đăng bài và không gọi API TikTok/YouTube/Meta. Adapter upload thật, OAuth, resumable upload, polling trạng thái, quota và xử lý kết quả `indeterminate` là lớp tiếp theo. Khi thêm, adapter bắt buộc nhận `DistributionPackage`; không được nhận trực tiếp `ProjectState` hoặc URL tự do.
+Meta Reels vẫn chờ App Review và Page/Instagram permissions. YouTube/TikTok chỉ hiện nút kết nối khi Sites runtime có OAuth credential thật; không có credential mẫu hoặc token phía client. Adapter bắt buộc nhận `DistributionPackage`; không được nhận trực tiếp `ProjectState` hoặc URL tự do.
 
 Chi phí AI của Distribution Gateway: **0 USD**. Phần phát sinh chỉ là D1 metadata và băng thông R2 khi con người hoặc adapter đọc master.

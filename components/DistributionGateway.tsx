@@ -30,6 +30,7 @@ import {
   serializeDistributionManifest,
 } from '../services/distributionGatewayService';
 import { useAlert } from './GlobalAlert';
+import DistributionPublishingQueue from './DistributionPublishingQueue';
 
 interface Props {
   project: ProjectState;
@@ -269,6 +270,12 @@ const DistributionGateway: React.FC<Props> = ({ project, onOpenReview }) => {
           </div>
         </div>
       </section>
+
+      <DistributionPublishingQueue
+        projectId={project.id}
+        packages={packages}
+        onPackageUpdate={(item) => setPackages((current) => [item, ...current.filter((candidate) => candidate.id !== item.id)])}
+      />
     </div>
   );
 };
