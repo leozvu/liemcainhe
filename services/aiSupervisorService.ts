@@ -803,6 +803,15 @@ export const getAISupervisorGate = (project: ProjectState): AISupervisorGate => 
   };
 };
 
+/** Dùng tại mọi entry point tạo đầu ra gửi khách, không chỉ để đổi trạng thái UI. */
+export const assertAISupervisorCanRelease = (project: ProjectState): AISupervisorGate => {
+  const gate = getAISupervisorGate(project);
+  if (!gate.canRelease) {
+    throw new Error(`AI Supervisor đang khóa đầu ra: ${gate.reasons.join(' · ')}.`);
+  }
+  return gate;
+};
+
 export const getAISupervisorSummary = (project: ProjectState) => {
   const state = normalizeAISupervisorState(project.aiSupervisor);
   const activeIssues = state.reports.flatMap((report) => report.issues).filter((issue) => !['resolved', 'ignored'].includes(issue.status));

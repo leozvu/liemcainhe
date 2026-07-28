@@ -3,6 +3,7 @@ import { ProjectState } from '../types';
 import { createNewProjectState } from '../services/storageService';
 import { createDefaultBrandKit } from '../services/brandKitService';
 import {
+  assertAISupervisorCanRelease,
   createDefaultAISupervisorState,
   cancelSupervisorRepair,
   executeSupervisorRepair,
@@ -238,8 +239,10 @@ describe('AI Supervisor', () => {
   it('release gate chặn báo cáo cũ và Vision bắt buộc, nhưng cho qua dự án sạch', () => {
     const initial = cleanFixture();
     expect(getAISupervisorGate(initial).status).toBe('blocked');
+    expect(() => assertAISupervisorCanRelease(initial)).toThrow('đang khóa đầu ra');
     let audited = runLocalSupervisorAudit(initial);
     expect(getAISupervisorGate(audited).status).toBe('ready');
+    expect(assertAISupervisorCanRelease(audited).canRelease).toBe(true);
     audited = updateAISupervisorPolicy(audited, { ...audited.aiSupervisor!.policy, requireVisionForRelease: true });
     expect(getAISupervisorGate(audited).reasons.join(' ')).toContain('chưa qua AI Vision');
     const report = audited.aiSupervisor!.reports[0];
