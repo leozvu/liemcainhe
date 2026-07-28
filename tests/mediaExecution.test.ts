@@ -8,6 +8,19 @@ import {
   submitPaidTaskSafely,
 } from '../services/mediaExecutionService';
 import { createNewProjectState } from '../services/storageService';
+import { getBillableLifecycleEvents } from '../services/billableTelemetryService';
+
+const createStorage = () => {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) || null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+    clear: () => values.clear(),
+    key: (index: number) => [...values.keys()][index] || null,
+    get length() { return values.size; },
+  } as Storage;
+};
 
 const createContext = () => {
   const jobs: ProductionJob[] = [];
@@ -29,23 +42,29 @@ const createContext = () => {
 
 describe('execution envelope cho media trả phí', () => {
   it('hai click đồng thời dùng chung một Promise và chỉ gọi provider một lần', async () => {
-    const { context } = createContext();
-    let release!: (value: string) => void;
-    const provider = vi.fn(() => new Promise<string>((resolve) => { release = resolve; }));
-    const input = {
-      context,
-      mediaType: 'video' as const,
-      inputSignature: 'same-input',
-      operation: provider,
-    };
+    vi.stubGlobal('localStorage', createStorage());
+    try {
+      const { context } = createContext();
+      let release!: (value: string) => void;
+      const provider = vi.fn(() => new Promise<string>((resolve) => { release = resolve; }));
+      const input = {
+        context,
+        mediaType: 'video' as const,
+        inputSignature: 'same-input',
+        operation: provider,
+      };
 
-    const first = executeBillableMedia(input);
-    const second = executeBillableMedia(input);
-    await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
-    release('video-result');
+      const first = executeBillableMedia(input);
+      const second = executeBillableMedia(input);
+      await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce());
+      release('video-result');
 
-    await expect(Promise.all([first, second])).resolves.toEqual(['video-result', 'video-result']);
-    expect(provider).toHaveBeenCalledOnce();
+      await expect(Promise.all([first, second])).resolves.toEqual(['video-result', 'video-result']);
+      expect(provider).toHaveBeenCalledOnce();
+      expect(getBillableLifecycleEvents().filter((event) => event.phase === 'deduplicated')).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('lưu provider task id ngay rồi mới đánh dấu hoàn thành', async () => {
@@ -66,6 +85,40 @@ describe('execution envelope cho media trả phí', () => {
       providerTaskId: 'kie_task_123',
       progress: 100,
     });
+  });
+
+  it('ghi execution trail từ preflight đến completed cho đối soát Campaign 0', async () => {
+    vi.stubGlobal('localStorage', createStorage());
+    try {
+      const { context } = createContext();
+      context.projectId = 'project_media_lifecycle';
+      context.commitResult = async () => undefined;
+      await executeBillableMedia({
+        context,
+        mediaType: 'video',
+        inputSignature: 'lifecycle-trail',
+        operation: async ({ onProviderAccepted, onProviderTaskId }) => {
+          await onProviderAccepted();
+          await onProviderTaskId('provider_lifecycle_1');
+          return 'saved-output';
+        },
+      });
+
+      const phases = getBillableLifecycleEvents()
+        .filter((event) => event.projectId === context.projectId)
+        .sort((left, right) => (left.sequence || 0) - (right.sequence || 0))
+        .map((event) => event.phase);
+      expect(phases).toEqual([
+        'preflight-passed',
+        'submitted',
+        'provider-accepted',
+        'provider-task',
+        'output-committed',
+        'completed',
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('chỉ completed sau khi callback ghi output đã chạy xong', async () => {

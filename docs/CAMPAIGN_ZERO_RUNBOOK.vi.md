@@ -22,7 +22,8 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 ### Đo lường
 
 - Chỉ định một người đóng vai khách hàng. Ưu tiên người không tham gia sinh nội dung.
-- Telemetry dry-run được cloud xác nhận, chi phí 0 USD.
+- Telemetry dry-run được cloud xác nhận ở cả hai đường: usage và 6 pha lifecycle
+  attempt, chi phí 0 USD.
 - Bằng chứng hai thiết bị đã được thiết bị A tạo, thiết bị B xác nhận và thiết bị A chốt trong 7 ngày gần nhất.
 - Có ít nhất một phiên thời gian nhân sự đã kết thúc.
 
@@ -45,9 +46,37 @@ Campaign 0 là lần chạy xuyên suốt đầu tiên của Egoric Film Studio 
 ## Quy tắc chi phí
 
 - Luôn chạy dry-run 0đ trước media.
+- Dry-run hợp lệ phải có đủ: preflight, submitted, provider accepted, provider
+  task, output committed và completed. Đây đều là event giả, không tạo tác vụ
+  tại provider.
 - Chỉ chạy chat rẻ trước, sau đó ảnh draft, cuối cùng mới đến video ngắn.
+- Request trả phí đầu tiên bị khóa cho đến khi: dry-run cloud xanh, có project,
+  ngân sách chiến dịch lớn hơn 0, khóa voice đã cấu hình, số dư provider trước
+  test đã được chốt và không còn job mất dấu.
+- Khi cổng mở, team tự sang **Lồng tiếng** và tạo đúng một câu tối đa 200 ký tự.
+  Campaign 0 tuyệt đối không tự gọi provider.
 - Dashboard hiển thị chi phí telemetry là ước tính. Số dư provider trước/sau là bằng chứng đối soát.
 - Nếu chi phí thực tế lớn hơn telemetry, ghi nhận chênh lệch rồi điều tra billable attempt; không sửa số liệu cho khớp bằng tay.
+
+## Đối chiếu execution trail
+
+Khối **Đối chiếu execution trail** ghép ba nguồn theo project và tài nguyên:
+
+- job bền vững trong workflow;
+- usage/cost record;
+- lifecycle từ preflight đến kết quả cuối.
+
+Phải xử lý hết các cảnh báo trước request mới:
+
+- `Interrupted`: provider có thể đã nhận; dùng task ID để kiểm tra, không tự chạy lại.
+- `Provider đã nhận rồi mới thất bại`: khoản này có thể vẫn bị tính tiền dù usage
+  đang ghi 0 USD.
+- `Job hoàn tất nhưng thiếu usage`: Dashboard đang thấp hơn giá vốn thực.
+- `Usage không có job`: đã có chi phí nhưng thiếu execution trail để điều tra và
+  chống gửi trùng.
+
+Sau request voice thật, nhập số dư provider sau test rồi lưu đối soát. Chênh lệch
+giữa số dư và telemetry là bằng chứng cần điều tra, không phải số để sửa tay.
 
 ## Dữ liệu và đồng bộ
 

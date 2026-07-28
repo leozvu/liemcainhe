@@ -179,28 +179,32 @@ KIE đã có chính sách không tự fallback để tránh trả tiền model t
 
 ---
 
-## 8. Usage và Cost telemetry — cấp 3
+## 8. Usage và Cost telemetry — cấp 4
 
 | Trường | Bằng chứng |
 |---|---|
 | Entry point | Trung tâm vận hành và Dashboard chi phí/lợi nhuận |
 | Existing code | `usageService.ts`, `agencyEconomicsService.ts`, D1 usage endpoint |
-| Integration | Adapter, voice, cloud và export có ghi usage |
-| Persistence | localStorage tối đa 500; hosted usage lên D1 |
+| Integration | Adapter, voice, cloud và export ghi usage; execution envelope ghi lifecycle và Campaign 0 ghép ba nguồn |
+| Persistence | usage local tối đa 500 + D1; lifecycle local tối đa 2.000 + system event cloud |
 | Real test | Chưa đối chiếu hóa đơn provider |
-| Measurement | Units, estimated USD, duration, status, provider/model/resource |
-| Blocking gap | Failed call luôn ghi cost 0; direct media path không ghi; rate là ước lượng tĩnh |
-| Decision | Dry-run telemetry rồi đối chiếu số dư trước/sau một request thật |
+| Measurement | Units, estimated USD, duration, status, provider/model/resource, lifecycle, dedupe và điểm mù reconciliation |
+| Blocking gap | Failed call vẫn ghi cost 0 cho đến khi đối chiếu số dư; rate là ước lượng tĩnh; chưa có invoice/provider webhook |
+| Decision | Đã có dry-run 0đ và paid preflight; chạy một voice request ≤200 ký tự rồi đối chiếu số dư |
 
-`recordUsage` chỉ tính cost khi `status === success`. Nhiều provider vẫn tính
-tiền khi tác vụ thất bại sau lúc được nhận. Vì vậy Dashboard hiện là **ước tính
-lạc quan**, chưa phải giá vốn kế toán.
+`recordUsage` vẫn chỉ tính cost khi `status === success`. Nhiều provider tính
+tiền khi tác vụ thất bại sau lúc được nhận, nên Dashboard vẫn là **ước tính**.
+Khác với audit ban đầu, app nay chỉ rõ các failure đã qua `provider-accepted`
+và buộc đối chiếu thay vì âm thầm coi chi phí bằng 0.
 
-Thiếu ba event tối thiểu cho Campaign 0:
+Ba event tối thiểu cho Campaign 0 đã có entry point:
 
-- Preflight: pass/block/override và lý do.
-- Human work session: bắt đầu/kết thúc theo stage.
-- Billable attempt: submitted/accepted/provider-task/completed/failed/unknown.
+- Preflight: pass/block/deduplicated và lý do trong execution trail.
+- Human work session: bắt đầu/kết thúc theo stage trong Campaign 0.
+- Billable attempt: submitted/accepted/provider-task/output-committed/completed/failed/interrupted.
+
+Cấp 5 chỉ được mở sau một provider request thật được đối chiếu với số dư trước,
+số dư sau, usage, job và lifecycle trên production.
 
 ---
 
@@ -305,8 +309,9 @@ trả tiền hai lần.
 3. ~~**Workspace sync entry point, chẩn đoán và proof gate:**~~ đã có local-first
    autosync, full recovery, bia mộ local, health endpoint, protocol A/B và cổng
    Campaign 0; còn bước team chạy thực địa trên hai thiết bị vật lý.
-4. **Telemetry dry-run:** provider giả, zero-credit asset, review link và export;
-   xác nhận mọi event trước một lời gọi thật.
+4. ~~**Telemetry dry-run:**~~ usage + lifecycle giả đã được cloud xác nhận, có
+   paid preflight và bảng reconciliation; còn một voice request thật ≤200 ký tự
+   do team chủ động chạy sau khi cổng xanh.
 5. ~~**CI:**~~ chặn merge khi whitespace/typecheck/test/build hỏng.
 6. ~~**Review metadata:**~~ phân biệt individual/batch/client-portal và vai trò
    reviewer trước khi mở quyền học tự động.

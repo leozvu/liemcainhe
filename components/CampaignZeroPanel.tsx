@@ -23,6 +23,7 @@ import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import {
   attachCampaignZeroTelemetry,
   attachCampaignZeroWorkspaceProof,
+  buildCampaignZeroPaidPreflight,
   buildCampaignZeroSnapshot,
   CampaignZeroGateGroup,
   CampaignZeroRun,
@@ -30,15 +31,19 @@ import {
   completeCampaignZeroRun,
   createCampaignZeroRun,
   loadCampaignZeroRun,
+  runCampaignZeroTelemetryDryRun,
   saveCampaignZeroRun,
   setCampaignZeroClientProxy,
+  setCampaignZeroProviderBalanceBefore,
   setCampaignZeroProviderBalances,
   startCampaignZeroWorkSession,
   stopCampaignZeroWorkSession,
 } from '../services/campaignZeroService';
-import { getUsageRecords, runUsageTelemetryDryRun } from '../services/usageService';
+import { getUsageRecords } from '../services/usageService';
+import { getBillableLifecycleEvents } from '../services/billableTelemetryService';
 import { requestWorkspaceSync, WorkspaceSyncRuntimePhase } from '../services/workspaceSyncCoordinatorService';
 import { loadLatestVerifiedWorkspaceFieldTest } from '../services/workspaceFieldTestService';
+import { isVoiceProviderConfigured } from '../services/voiceRegistry';
 
 interface Props {
   campaign: AgencyCampaign;
@@ -96,8 +101,8 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
         setRun(local);
         setExpanded(Boolean(local));
         setProxyName(local?.clientProxyName || '');
-        setBalanceBefore(local?.providerBalanceBeforeUsd?.toString() || '');
-        setBalanceAfter(local?.providerBalanceAfterUsd?.toString() || '');
+        setBalanceBefore(local?.providerBalanceBeforeUsd !== undefined ? String(local.providerBalanceBeforeUsd) : '');
+        setBalanceAfter(local?.providerBalanceAfterUsd !== undefined ? String(local.providerBalanceAfterUsd) : '');
         setCloudPhase('syncing');
         const report = await requestWorkspaceSync({ full: true });
         const merged = await loadCampaignZeroRun(campaign.id);
@@ -105,8 +110,8 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
         setRun(merged);
         setExpanded(Boolean(merged));
         setProxyName(merged?.clientProxyName || '');
-        setBalanceBefore(merged?.providerBalanceBeforeUsd?.toString() || '');
-        setBalanceAfter(merged?.providerBalanceAfterUsd?.toString() || '');
+        setBalanceBefore(merged?.providerBalanceBeforeUsd !== undefined ? String(merged.providerBalanceBeforeUsd) : '');
+        setBalanceAfter(merged?.providerBalanceAfterUsd !== undefined ? String(merged.providerBalanceAfterUsd) : '');
         setCloudPhase(toPanelCloudPhase(report.phase));
         if (report.phase === 'error') setError(`Không đồng bộ được Campaign 0: ${report.summary}`);
       } catch (nextError) {
@@ -122,7 +127,11 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
   useEffect(() => {
     const refresh = () => setUsageRevision((value) => value + 1);
     window.addEventListener('egoric-usage-updated', refresh);
-    return () => window.removeEventListener('egoric-usage-updated', refresh);
+    window.addEventListener('egoric-billable-lifecycle-updated', refresh);
+    return () => {
+      window.removeEventListener('egoric-usage-updated', refresh);
+      window.removeEventListener('egoric-billable-lifecycle-updated', refresh);
+    };
   }, []);
 
   const hasActiveSession = Boolean(run?.workSessions.some((session) => !session.endedAt));
@@ -133,14 +142,23 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
   }, [hasActiveSession]);
 
   const usageRecords = useMemo(() => getUsageRecords(), [usageRevision, run?.updatedAt]);
+  const lifecycleEvents = useMemo(() => getBillableLifecycleEvents(), [usageRevision, run?.updatedAt]);
   const snapshot = useMemo(() => buildCampaignZeroSnapshot({
     campaign,
     client,
     projects,
     run,
     usageRecords,
+    lifecycleEvents,
     now: clock,
-  }), [campaign, client, clock, projects, run, usageRecords]);
+  }), [campaign, client, clock, lifecycleEvents, projects, run, usageRecords]);
+  const hasConfiguredVoiceProvider = (['fpt', 'viettel', 'elevenlabs'] as const).some(isVoiceProviderConfigured);
+  const paidPreflight = useMemo(() => buildCampaignZeroPaidPreflight({
+    campaign,
+    run,
+    snapshot,
+    hasConfiguredVoiceProvider,
+  }), [campaign, hasConfiguredVoiceProvider, run, snapshot]);
 
   const persist = async (next: CampaignZeroRun) => {
     setCloudPhase('syncing');
@@ -182,8 +200,8 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
       const merged = await loadCampaignZeroRun(campaign.id);
       setRun(merged);
       setProxyName(merged?.clientProxyName || '');
-      setBalanceBefore(merged?.providerBalanceBeforeUsd?.toString() || '');
-      setBalanceAfter(merged?.providerBalanceAfterUsd?.toString() || '');
+      setBalanceBefore(merged?.providerBalanceBeforeUsd !== undefined ? String(merged.providerBalanceBeforeUsd) : '');
+      setBalanceAfter(merged?.providerBalanceAfterUsd !== undefined ? String(merged.providerBalanceAfterUsd) : '');
       setCloudPhase(toPanelCloudPhase(report.phase));
       if (report.phase === 'error') setError(`Không đồng bộ được Campaign 0: ${report.summary}`);
     } catch (nextError) {
@@ -197,7 +215,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     setIsDryRunning(true);
     setError('');
     try {
-      const report = await runUsageTelemetryDryRun({ projectId: campaign.id });
+      const report = await runCampaignZeroTelemetryDryRun(campaign.id);
       await persist(attachCampaignZeroTelemetry(run, report));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Telemetry chạy khô thất bại. Hãy thử lại trên bản production.');
@@ -312,7 +330,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
             <div className="eg-card p-4"><CircleDollarSign className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">API ước tính</span><strong className="mt-1 block font-mono text-sm text-white">{usd(snapshot.estimatedCostUsd)}</strong><span className="mt-1 block text-[9px] text-zinc-600">{snapshot.requestCount} request · {snapshot.failureCount} lỗi</span></div>
             <div className="eg-card p-4"><ShieldCheck className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Provider thực tế</span><strong className="mt-1 block font-mono text-sm text-white">{usd(snapshot.actualProviderSpendUsd)}</strong><span className="mt-1 block text-[9px] text-zinc-600">Lệch {usd(snapshot.costVarianceUsd)}</span></div>
             <div className="eg-card p-4"><TimerReset className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Thời gian team</span><strong className="mt-1 block font-mono text-sm text-white">{snapshot.workMinutes} phút</strong><span className="mt-1 block text-[9px] text-zinc-600">{run.workSessions.filter((session) => session.endedAt).length} phiên đã đóng</span></div>
-            <div className="eg-card p-4"><CloudCog className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Telemetry</span><strong className={`mt-1 block text-sm ${run.telemetry?.cloud === 'synced' ? 'text-emerald-200' : 'text-amber-200'}`}>{run.telemetry?.cloud === 'synced' ? 'Cloud đã xác nhận' : 'Chưa xác nhận'}</strong><span className="mt-1 block text-[9px] text-zinc-600">Dry-run luôn 0 USD</span></div>
+            <div className="eg-card p-4"><CloudCog className="h-4 w-4 text-cyan-100/60" /><span className="mt-3 block text-[9px] uppercase tracking-wider text-zinc-600">Telemetry</span><strong className={`mt-1 block text-sm ${run.telemetry?.cloud === 'synced' && run.telemetry.lifecycle?.cloud === 'synced' ? 'text-emerald-200' : 'text-amber-200'}`}>{run.telemetry?.cloud === 'synced' && run.telemetry.lifecycle?.cloud === 'synced' ? '2/2 đường đã xác nhận' : 'Chưa đủ bằng chứng'}</strong><span className="mt-1 block text-[9px] text-zinc-600">Usage + lifecycle · 0 USD</span></div>
           </div>
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
@@ -347,10 +365,20 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
 
               <section className="eg-card p-5">
                 <div className="flex items-center gap-2"><CloudCog className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Kiểm tra trước khi tốn credit</h4></div>
-                <p className="mt-2 text-xs leading-5 text-zinc-600">Ghi một event giả, đọc lại local và đợi cloud trả 2xx. Không gọi model hoặc provider media.</p>
+                <p className="mt-2 text-xs leading-5 text-zinc-600">Ghi usage 0đ và một attempt giả đủ 6 pha, đọc lại local rồi đợi cloud xác nhận. Không gọi model hoặc provider media.</p>
                 <button type="button" onClick={() => void runDryTelemetry()} disabled={isDryRunning || syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50">
                   {isDryRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudCog className="h-4 w-4" />} {isDryRunning ? 'Đang kiểm tra…' : 'Chạy dry-run 0đ'}
                 </button>
+                <div className={`mt-4 rounded-xl border p-3 ${paidPreflight.ready ? 'border-emerald-200/20 bg-emerald-200/[.045]' : 'border-amber-200/15 bg-amber-200/[.035]'}`}>
+                  <div className="flex items-center gap-2">
+                    {paidPreflight.ready ? <CheckCircle2 className="h-4 w-4 text-emerald-200" /> : <ShieldCheck className="h-4 w-4 text-amber-200" />}
+                    <strong className={`text-[10px] ${paidPreflight.ready ? 'text-emerald-100' : 'text-amber-100'}`}>{paidPreflight.ready ? 'Đã mở cổng paid smoke test' : `Đang khóa request thật · còn ${paidPreflight.blockers.length} điều kiện`}</strong>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {paidPreflight.checks.map((check) => <div key={check.id} className="flex items-start gap-2 text-[9px] leading-4"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${check.complete ? 'bg-emerald-200' : 'bg-zinc-700'}`} /><span className={check.complete ? 'text-zinc-400' : 'text-zinc-600'}>{check.label}</span></div>)}
+                  </div>
+                  {paidPreflight.ready && <p className="mt-3 text-[9px] leading-4 text-emerald-100/70">Sang Lồng tiếng và tạo đúng 1 câu tối đa {paidPreflight.maxTestCharacters} ký tự. App không tự bấm gọi provider.</p>}
+                </div>
               </section>
 
               <section className="eg-card p-5">
@@ -379,7 +407,8 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Trước (USD)<input type="number" min="0" step="0.0001" value={balanceBefore} onChange={(event) => setBalanceBefore(event.target.value)} disabled={syncBusy || completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Sau (USD)<input type="number" min="0" step="0.0001" value={balanceAfter} onChange={(event) => setBalanceAfter(event.target.value)} disabled={syncBusy || completed} className="eg-input mt-2 px-3 text-sm font-normal normal-case tracking-normal disabled:opacity-50" /></label>
                 </div>
-                <button type="button" onClick={() => void mutate((current) => setCampaignZeroProviderBalances(current, balanceBefore.trim() ? Number(balanceBefore) : Number.NaN, balanceAfter.trim() ? Number(balanceAfter) : Number.NaN))} disabled={syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><CircleDollarSign className="h-4 w-4" /> Lưu đối soát</button>
+                <button type="button" onClick={() => void mutate((current) => setCampaignZeroProviderBalanceBefore(current, balanceBefore.trim() ? Number(balanceBefore) : Number.NaN))} disabled={syncBusy || completed} className="eg-button-secondary mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><ShieldCheck className="h-4 w-4" /> Chốt số dư trước test</button>
+                <button type="button" onClick={() => void mutate((current) => setCampaignZeroProviderBalances(current, balanceBefore.trim() ? Number(balanceBefore) : Number.NaN, balanceAfter.trim() ? Number(balanceAfter) : Number.NaN))} disabled={syncBusy || completed} className="eg-button-secondary mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-50"><CircleDollarSign className="h-4 w-4" /> Lưu đối soát sau test</button>
               </section>
 
               <button
@@ -392,6 +421,26 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
               </button>
             </div>
           </div>
+
+          <section className="eg-card mt-5 p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div><div className="flex items-center gap-2"><Activity className="h-4 w-4 text-cyan-100/60" /><h4 className="text-xs font-semibold text-white">Đối chiếu execution trail</h4></div><p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-600">Ghép job, usage và lifecycle theo project/tài nguyên để tìm khoản có thể đã bị provider tính tiền nhưng Dashboard chưa ghi nhận đúng.</p></div>
+              <span className={`inline-flex min-h-8 items-center rounded-full border px-3 text-[9px] font-semibold uppercase tracking-wider ${snapshot.billable.riskCount ? 'border-rose-200/20 bg-rose-200/[.05] text-rose-100' : 'border-emerald-200/20 bg-emerald-200/[.05] text-emerald-100'}`}>{snapshot.billable.riskCount ? `${snapshot.billable.riskCount} điểm cần xử lý` : 'Không có điểm mù'}</span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+              {[
+                ['Attempt', snapshot.billable.attempts],
+                ['Submitted', snapshot.billable.submitted],
+                ['Provider nhận', snapshot.billable.providerAccepted],
+                ['Hoàn tất', snapshot.billable.completed],
+                ['Khớp usage', snapshot.billable.matched],
+                ['Interrupted', snapshot.billable.interrupted],
+                ['Đã chặn trùng', snapshot.billable.deduplicated],
+                ['Rủi ro', snapshot.billable.riskCount],
+              ].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-white/[.06] bg-black/15 p-3"><span className="block text-[8px] uppercase tracking-wider text-zinc-700">{label}</span><strong className="mt-1 block font-mono text-sm text-zinc-200">{value}</strong></div>)}
+            </div>
+            {snapshot.billable.issues.length > 0 && <div className="mt-4 space-y-2">{snapshot.billable.issues.slice(0, 8).map((issue) => <div key={issue.id} className="flex items-start gap-3 rounded-xl border border-rose-200/10 bg-rose-200/[.025] p-3"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-200" /><div><p className="text-[10px] font-semibold text-rose-100">{issue.label}</p><p className="mt-1 text-[9px] leading-4 text-zinc-600">{issue.detail}</p>{issue.providerTaskId && <span className="mt-1 block font-mono text-[8px] text-zinc-700">Task {issue.providerTaskId}</span>}</div></div>)}</div>}
+          </section>
         </div>
       )}
     </section>

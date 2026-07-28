@@ -3,10 +3,13 @@ import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import {
   attachCampaignZeroTelemetry,
   attachCampaignZeroWorkspaceProof,
+  buildCampaignZeroPaidPreflight,
   buildCampaignZeroSnapshot,
+  CampaignZeroTelemetryReport,
   completeCampaignZeroRun,
   createCampaignZeroRun,
   setCampaignZeroClientProxy,
+  setCampaignZeroProviderBalanceBefore,
   setCampaignZeroProviderBalances,
   startCampaignZeroWorkSession,
   stopCampaignZeroWorkSession,
@@ -14,7 +17,7 @@ import {
 } from '../services/campaignZeroService';
 import { createAgencyCampaign, createAgencyClient, createCampaignDeliverable } from '../services/campaignService';
 import { createNewProjectState } from '../services/storageService';
-import { TelemetryDryRunReport, UsageRecord } from '../services/usageService';
+import { UsageRecord } from '../services/usageService';
 import { LocalStore, SyncTransport } from '../services/workspaceSyncService';
 import { WorkspaceFieldTestEvidence } from '../services/workspaceFieldTestService';
 
@@ -100,7 +103,7 @@ const usage = (projectId: string): UsageRecord[] => (['chat', 'image', 'video'] 
   status: 'success',
 }));
 
-const telemetry: TelemetryDryRunReport = {
+const telemetry: CampaignZeroTelemetryReport = {
   status: 'passed',
   recordId: 'usage_dry_0',
   checkedAt: 500,
@@ -108,6 +111,33 @@ const telemetry: TelemetryDryRunReport = {
   cloud: 'synced',
   estimatedCostUsd: 0,
   units: 0,
+  lifecycle: {
+    status: 'passed',
+    checkedAt: 500,
+    recordIds: ['l1', 'l2', 'l3', 'l4', 'l5', 'l6'],
+    phases: ['preflight-passed', 'submitted', 'provider-accepted', 'provider-task', 'output-committed', 'completed'],
+    localPersisted: true,
+    cloud: 'synced',
+    estimatedCostUsd: 0,
+    units: 0,
+  },
+};
+
+const emptyBillable = {
+  attempts: 0,
+  submitted: 0,
+  providerAccepted: 0,
+  completed: 0,
+  matched: 0,
+  interrupted: 0,
+  failed: 0,
+  deduplicated: 0,
+  completedWithoutUsage: 0,
+  usageWithoutJob: 0,
+  acceptedFailures: 0,
+  riskCount: 0,
+  estimatedCostUsd: 0,
+  issues: [],
 };
 
 const workspaceProof: WorkspaceFieldTestEvidence = {
@@ -148,11 +178,28 @@ describe('Campaign 0 Golden Run', () => {
     expect(() => setCampaignZeroProviderBalances(run, 10, 12)).toThrow(/không thể lớn hơn/);
   });
 
+  it('cho chốt riêng số dư trước để mở preflight nhưng xóa số dư sau cũ', () => {
+    const reconciled = setCampaignZeroProviderBalances(createCampaignZeroRun('campaign_0', 100), 10, 9, 150);
+    expect(setCampaignZeroProviderBalanceBefore(reconciled, 8, 200)).toMatchObject({
+      providerBalanceBeforeUsd: 8,
+      providerBalanceAfterUsd: undefined,
+    });
+  });
+
   it('chỉ chấp nhận telemetry đã được cloud xác nhận', () => {
     const client = createReadyClient();
     const campaign = createReadyCampaign(client.id);
     const localOnly = attachCampaignZeroTelemetry(createCampaignZeroRun(campaign.id, 100), { ...telemetry, cloud: 'local-only' }, 200);
     const snapshot = buildCampaignZeroSnapshot({ campaign, client, projects: [], run: localOnly, usageRecords: [], now: 300 });
+    expect(snapshot.gates.find((gate) => gate.id === 'telemetry')?.complete).toBe(false);
+  });
+
+  it('không mở cổng khi usage cloud xanh nhưng thiếu lifecycle dry-run', () => {
+    const client = createReadyClient();
+    const campaign = createReadyCampaign(client.id);
+    const legacyTelemetry = { ...telemetry, lifecycle: undefined };
+    const run = attachCampaignZeroTelemetry(createCampaignZeroRun(campaign.id, 100), legacyTelemetry, 200);
+    const snapshot = buildCampaignZeroSnapshot({ campaign, client, projects: [], run, usageRecords: [], now: 300 });
     expect(snapshot.gates.find((gate) => gate.id === 'telemetry')?.complete).toBe(false);
   });
 
@@ -217,8 +264,35 @@ describe('Campaign 0 Golden Run', () => {
       failureCount: 0,
       estimatedCostUsd: 1,
       workMinutes: 10,
+      billable: emptyBillable,
     }, 500);
     expect(completed).toMatchObject({ status: 'completed', completedAt: 500, updatedAt: 500 });
+  });
+
+  it('paid smoke test chỉ mở khi đủ telemetry, balance, budget, provider và không có job mất dấu', () => {
+    const client = createReadyClient();
+    const campaign = createReadyCampaign(client.id);
+    const run = setCampaignZeroProviderBalanceBefore(
+      attachCampaignZeroTelemetry(createCampaignZeroRun(campaign.id, 100), telemetry, 150),
+      10,
+      200,
+    );
+    const snapshot = {
+      ...buildCampaignZeroSnapshot({ campaign, client, projects: [], run, now: 300 }),
+      projectCount: 1,
+      billable: emptyBillable,
+    };
+    const ready = buildCampaignZeroPaidPreflight({ campaign, run, snapshot, hasConfiguredVoiceProvider: true });
+    expect(ready.ready).toBe(true);
+
+    const blocked = buildCampaignZeroPaidPreflight({
+      campaign,
+      run,
+      snapshot: { ...snapshot, billable: { ...emptyBillable, riskCount: 1 } },
+      hasConfiguredVoiceProvider: true,
+    });
+    expect(blocked.ready).toBe(false);
+    expect(blocked.blockers.map((check) => check.id)).toContain('unresolved-jobs');
   });
 
   it('không gọi cloud khi app đang chạy local', async () => {
