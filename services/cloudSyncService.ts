@@ -29,6 +29,12 @@ const extensionForDataUrl = (dataUrl: string, fallback: string) => {
 const MULTIPART_THRESHOLD = 8 * 1024 * 1024;
 const PART_SIZE = 8 * 1024 * 1024;
 
+export interface CloudMediaUploadResult {
+  url: string;
+  checksum: string;
+  bytes: number;
+}
+
 export const createBlobChecksum = async (blob: Blob): Promise<string> => {
   const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
   return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, '0')).join('');
@@ -50,6 +56,85 @@ const fetchWithRetry = async (input: RequestInfo | URL, init: RequestInit, attem
   throw lastError instanceof Error ? lastError : new Error('Không thể tải media');
 };
 
+/**
+ * Lưu một artifact đã có trong bộ nhớ lên R2 bằng cùng contract multipart với
+ * media nguồn. Auto Editor gọi thẳng hàm này ngay khi FFmpeg trả MP4, tránh
+ * tạo Blob URL 30 giây rồi hy vọng người dùng kịp bấm đồng bộ.
+ */
+export const uploadProjectMediaBlob = async (
+  projectId: string,
+  path: string,
+  blob: Blob,
+  onProgress?: (progress: number) => void,
+): Promise<CloudMediaUploadResult> => {
+  if (!projectId.trim()) throw new Error('Dự án chưa có mã để lưu master.');
+  if (!path.trim()) throw new Error('Đường dẫn master không hợp lệ.');
+  if (!blob.size) throw new Error('Tệp master rỗng, không thể lưu cloud.');
+  const contentType = blob.type || 'application/octet-stream';
+  const checksum = await createBlobChecksum(blob);
+  onProgress?.(4);
+  const initResponse = await fetch('/api/cloud/media/uploads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectId,
+      path,
+      contentType,
+      size: blob.size,
+      checksum,
+      multipart: blob.size > MULTIPART_THRESHOLD,
+    }),
+  });
+  if (!initResponse.ok) {
+    const payload = await initResponse.json().catch(() => ({}));
+    throw new Error(payload.error || `Không thể chuẩn bị upload media (${initResponse.status})`);
+  }
+  const session = await initResponse.json();
+  if (session.skipped) {
+    onProgress?.(100);
+    return { url: session.url as string, checksum, bytes: blob.size };
+  }
+
+  if (!session.uploadId) {
+    const response = await fetchWithRetry(`/api/cloud/media?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType, 'x-egoric-checksum': checksum, 'x-egoric-size': String(blob.size) },
+      body: blob,
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Không thể tải media lên cloud (${response.status})`);
+    }
+    onProgress?.(100);
+    return { url: (await response.json()).url as string, checksum, bytes: blob.size };
+  }
+
+  const parts: Array<{ partNumber: number; etag: string }> = [];
+  const totalParts = Math.ceil(blob.size / PART_SIZE);
+  try {
+    for (let offset = 0, partNumber = 1; offset < blob.size; offset += PART_SIZE, partNumber += 1) {
+      const response = await fetchWithRetry(
+        `/api/cloud/media/uploads/${encodeURIComponent(session.uploadId)}/parts/${partNumber}?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`,
+        { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: blob.slice(offset, Math.min(blob.size, offset + PART_SIZE)) },
+      );
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Upload phần ${partNumber} thất bại`);
+      parts.push(await response.json());
+      onProgress?.(Math.min(94, 8 + Math.round((partNumber / Math.max(1, totalParts)) * 84)));
+    }
+    const complete = await fetch(`/api/cloud/media/uploads/${encodeURIComponent(session.uploadId)}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, path, contentType, size: blob.size, checksum, parts }),
+    });
+    if (!complete.ok) throw new Error((await complete.json().catch(() => ({}))).error || 'Không thể hoàn tất upload media');
+    onProgress?.(100);
+    return { url: (await complete.json()).url as string, checksum, bytes: blob.size };
+  } catch (error) {
+    void fetch(`/api/cloud/media/uploads/${encodeURIComponent(session.uploadId)}/complete?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+    throw error;
+  }
+};
+
 const uploadMediaSource = async (projectId: string, task: MediaTask): Promise<string> => {
   if (task.sourceUrl.startsWith('https://')) {
     const response = await fetch('/api/cloud/media/import', {
@@ -63,62 +148,7 @@ const uploadMediaSource = async (projectId: string, task: MediaTask): Promise<st
   }
   const sourceResponse = await fetch(task.sourceUrl);
   if (!sourceResponse.ok) throw new Error(`Không thể tải media nguồn (${sourceResponse.status})`);
-  const blob = await sourceResponse.blob();
-  const contentType = blob.type || 'application/octet-stream';
-  const checksum = await createBlobChecksum(blob);
-  const initResponse = await fetch('/api/cloud/media/uploads', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      projectId,
-      path: task.path,
-      contentType,
-      size: blob.size,
-      checksum,
-      multipart: blob.size > MULTIPART_THRESHOLD,
-    }),
-  });
-  if (!initResponse.ok) {
-    const payload = await initResponse.json().catch(() => ({}));
-    throw new Error(payload.error || `Không thể chuẩn bị upload media (${initResponse.status})`);
-  }
-  const session = await initResponse.json();
-  if (session.skipped) return session.url as string;
-
-  if (!session.uploadId) {
-    const response = await fetchWithRetry(`/api/cloud/media?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(task.path)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType, 'x-egoric-checksum': checksum, 'x-egoric-size': String(blob.size) },
-      body: blob,
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error || `Không thể tải media lên cloud (${response.status})`);
-    }
-    return (await response.json()).url as string;
-  }
-
-  const parts: Array<{ partNumber: number; etag: string }> = [];
-  try {
-    for (let offset = 0, partNumber = 1; offset < blob.size; offset += PART_SIZE, partNumber += 1) {
-      const response = await fetchWithRetry(
-        `/api/cloud/media/uploads/${encodeURIComponent(session.uploadId)}/parts/${partNumber}?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(task.path)}`,
-        { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: blob.slice(offset, Math.min(blob.size, offset + PART_SIZE)) },
-      );
-      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Upload phần ${partNumber} thất bại`);
-      parts.push(await response.json());
-    }
-    const complete = await fetch(`/api/cloud/media/uploads/${encodeURIComponent(session.uploadId)}/complete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, path: task.path, contentType, size: blob.size, checksum, parts }),
-    });
-    if (!complete.ok) throw new Error((await complete.json().catch(() => ({}))).error || 'Không thể hoàn tất upload media');
-    return (await complete.json()).url as string;
-  } catch (error) {
-    void fetch(`/api/cloud/media/uploads/${encodeURIComponent(session.uploadId)}/complete?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(task.path)}`, { method: 'DELETE' });
-    throw error;
-  }
+  return (await uploadProjectMediaBlob(projectId, task.path, await sourceResponse.blob())).url;
 };
 
 export const collectCloudMediaPaths = (projectId: string, value: unknown): string[] => {
@@ -198,6 +228,19 @@ const collectMediaTasks = (project: ProjectState): { clone: ProjectState; tasks:
 
   add(clone.autoEditor?.settings.musicUrl, `editor/music.${extensionForDataUrl(clone.autoEditor?.settings.musicUrl || '', 'mp3')}`, (url) => {
     if (clone.autoEditor) clone.autoEditor.settings.musicUrl = url;
+  });
+
+  clone.autoEditor?.outputs.forEach((output, outputIndex) => {
+    add(output.videoUrl, `editor/masters/${safeSegment(output.id)}.mp4`, (url) => {
+      if (!clone.autoEditor) return;
+      clone.autoEditor.outputs[outputIndex] = {
+        ...clone.autoEditor.outputs[outputIndex],
+        videoUrl: url,
+        storage: 'cloud',
+        archivedAt: Date.now(),
+        archiveError: undefined,
+      };
+    });
   });
 
   // Checkpoints remain a lightweight local safety net. Cloud stores the current

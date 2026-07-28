@@ -790,6 +790,7 @@ export type AutoEditorCaptionStyle = 'clean' | 'bold' | 'boxed';
 export type AutoEditorLogoPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type AutoEditorColorPreset = 'natural' | 'cinematic' | 'warm' | 'cool' | 'contrast';
 export type AutoEditorOutputStatus = 'planned' | 'rendering' | 'ready' | 'failed';
+export type AutoEditorOutputStorage = 'downloaded' | 'cloud';
 export type AutoEditorReframeFocus = 'center' | 'left' | 'right' | 'top';
 
 export interface AutoEditorTimelineClip {
@@ -854,6 +855,14 @@ export interface AutoEditorOutput {
   status: AutoEditorOutputStatus;
   fileName: string;
   estimatedRenderMinutes: number;
+  /** Master bền vững trên R2. Bản local chỉ tải xuống thiết bị và không bịa URL. */
+  videoUrl?: string;
+  bytes?: number;
+  checksum?: string;
+  storage?: AutoEditorOutputStorage;
+  renderedAt?: number;
+  archivedAt?: number;
+  archiveError?: string;
   error?: string;
   createdAt: number;
   updatedAt: number;

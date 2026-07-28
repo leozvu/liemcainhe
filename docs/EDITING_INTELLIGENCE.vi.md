@@ -85,6 +85,8 @@ Workbench **Smart Reframe** nằm trong cột chính, trước Timeline:
 
 Đường **Render MP4** là entry point tạo master gửi khách nên bắt buộc qua `assertAISupervisorCanRelease`, giống khu vực Xuất bản. Auto Editor hiển thị trạng thái gate và lý do khóa trước khi người dùng bấm.
 
+Sau render, artifact được bàn giao cho [Master Library](MASTER_LIBRARY.vi.md). Bản Sites vừa tải MP4 về máy vừa lưu đúng artifact đó lên R2 bằng checksum SHA-256; giao diện không coi một lần tải về là bản master cloud.
+
 ## Kiểm chứng
 
 ```bash

@@ -139,7 +139,7 @@ Auto Editor hiện cắt máy móc: cắt thẳng hoặc mờ chồng theo thứ
 
 **Ước lượng:** 4–6 tuần, và nên làm sau khi có Cloud Auto Editor vì render nặng.
 
-> Đã làm — xem [EDITING_INTELLIGENCE.vi.md](EDITING_INTELLIGENCE.vi.md). Làm được sớm hơn dự kiến vì hoá ra không cần Cloud Auto Editor: toàn bộ là logic thuần, không gọi model, không render gì. Còn lại: `suggestReframe` chưa nối vào bước render nhiều tỷ lệ.
+> Đã làm — xem [EDITING_INTELLIGENCE.vi.md](EDITING_INTELLIGENCE.vi.md). Smart Reframe đã nối vào FFmpeg theo từng shot+tỷ lệ. Master render trên bản Sites nay được lưu bền vững vào [Master Library](MASTER_LIBRARY.vi.md), tạo đầu vào ổn định cho vòng duyệt và phân phối.
 
 ---
 
