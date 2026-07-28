@@ -1,29 +1,31 @@
 import React from 'react';
 import { ExternalLink, KeyRound, Layers3 } from 'lucide-react';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface ApiKeyPageProps {
   onNext: () => void;
   onSkip: () => void;
 }
 
-const providers = [
-  {
-    name: 'ShopAIKey · cổng nội bộ',
-    description: 'Một khóa tạm thời cho hội thoại, ảnh, video và giọng nói của team Egoric.',
-    href: 'https://shopaikey.com/en',
-    icon: Layers3,
-  },
-];
+const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => {
+  const { t } = useLocale();
+  const providers = [
+    {
+      name: t('onboarding.providerName'),
+      description: t('onboarding.providerDescription'),
+      href: 'https://shopaikey.com/en',
+      icon: Layers3,
+    },
+  ];
 
-const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => (
-  <div className="flex flex-col items-center text-center">
+  return <div className="flex flex-col items-center text-center">
     <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10">
       <KeyRound className="h-8 w-8 text-cyan-300" aria-hidden="true" />
     </div>
 
-    <h2 className="text-2xl font-bold text-white">Kết nối cổng AI nội bộ</h2>
+    <h2 className="text-2xl font-bold text-white">{t('onboarding.apiTitle')}</h2>
     <p className="mb-5 mt-2 max-w-md text-sm leading-relaxed text-zinc-500">
-      Bản vận hành nội bộ hiện chỉ bật ShopAIKey. Không đưa brief mật, dữ liệu cá nhân hoặc tài sản chưa công bố qua cổng trung gian này.
+      {t('onboarding.apiDescription')}
     </p>
 
     <div className="grid w-full gap-2 text-left">
@@ -50,16 +52,16 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => (
       onClick={onNext}
       className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-cyan-300 px-8 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-100/50"
     >
-      Tiếp tục
+      {t('onboarding.continue')}
     </button>
     <button
       type="button"
       onClick={onSkip}
       className="mt-3 min-h-11 px-4 text-xs text-zinc-600 transition-colors hover:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/20"
     >
-      Bỏ qua và vào ứng dụng
+      {t('onboarding.skip')}
     </button>
-  </div>
-);
+  </div>;
+};
 
 export default ApiKeyPage;

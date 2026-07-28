@@ -16,6 +16,7 @@ import { createProductionDemoProject } from './services/demoProjectService';
 import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobService';
 import { syncLinkedCampaignFromProject } from './services/productionControlService';
 import { startWorkspaceAutoSync } from './services/workspaceSyncCoordinatorService';
+import { useLocale } from './contexts/LocaleContext';
 
 const StageContent = React.lazy(() => import('./components/StageContent'));
 const StageScript = React.lazy(() => import('./components/StageScript'));
@@ -29,14 +30,18 @@ const OperationsHub = React.lazy(() => import('./components/OperationsHub'));
 const CreativeDirectorPanel = React.lazy(() => import('./components/CreativeDirectorPanel'));
 const ClientReviewPortal = React.lazy(() => import('./components/ClientReviewPortal'));
 
-const WorkspaceLoader = () => (
-  <div className="flex h-full items-center justify-center text-xs text-zinc-600">
-    <span className="mr-3 h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/20 border-t-cyan-200" />
-    Đang mở không gian làm việc…
-  </div>
-);
+const WorkspaceLoader = () => {
+  const { t } = useLocale();
+  return (
+    <div className="flex h-full items-center justify-center text-xs text-zinc-600">
+      <span className="mr-3 h-4 w-4 animate-spin rounded-full border-2 border-cyan-200/20 border-t-cyan-200" />
+      {t('app.loadingWorkspace')}
+    </div>
+  );
+};
 
 function App() {
+  const { t } = useLocale();
   const [project, setProject] = useState<ProjectState | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [showSaveStatus, setShowSaveStatus] = useState(false);
@@ -293,7 +298,7 @@ function App() {
       case 'prompts':
         return <StagePrompts project={project} updateProject={updateProject} />;
       default:
-        return <div className="text-white">Giai đoạn không xác định</div>;
+        return <div className="text-white">{t('app.unknownStage')}</div>;
     }
   };
 
@@ -368,7 +373,7 @@ function App() {
           type="button"
           onClick={openProductionCenter}
           className="eg-mobile-production-button"
-          aria-label="Mở Trung tâm sản xuất"
+          aria-label={t('app.openProductionCenter')}
         >
           <Gauge className="h-4 w-4" />
           <span>{readiness.overallPercent}%</span>
@@ -379,10 +384,10 @@ function App() {
           type="button"
           onClick={() => setShowCreativeDirector(true)}
           className="eg-mobile-director-button"
-          aria-label="Mở Đạo diễn AI"
+          aria-label={t('app.openAiDirector')}
         >
           <Sparkles className="h-4 w-4" />
-          <span>Đạo diễn AI</span>
+          <span>{t('app.aiDirector')}</span>
         </button>
         
         {showSaveStatus && (
@@ -390,12 +395,12 @@ function App() {
              {saveStatus === 'saving' ? (
                <>
                  <Save className="w-3 h-3 animate-pulse" />
-                 Đang lưu...
+                 {t('app.saving')}
                </>
              ) : (
                <>
                  <CheckCircle className="w-3 h-3 text-emerald-400" />
-                 Đã lưu
+                 {t('app.saved')}
                </>
              )}
           </div>

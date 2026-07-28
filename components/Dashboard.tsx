@@ -41,6 +41,9 @@ import { useAlert } from './GlobalAlert';
 import { CloudProjectMetadata, deleteCloudProject, listCloudProjects, loadCloudProject } from '../services/cloudSyncService';
 import CampaignHub from './CampaignHub';
 import WorkspaceSyncStatus from './WorkspaceSyncStatus';
+import LanguageSwitcher from './LanguageSwitcher';
+import { useLocale } from '../contexts/LocaleContext';
+import { TranslationKey } from '../services/i18n';
 
 interface Props {
   onOpenProject: (project: ProjectState) => void;
@@ -52,17 +55,17 @@ interface Props {
   onShowOperations?: () => void;
 }
 
-const STAGE_META: Record<ProjectState['stage'], { label: string; step: number }> = {
-  content: { label: 'Xưởng nội dung', step: 1 },
-  script: { label: 'Kịch bản', step: 1 },
-  assets: { label: 'Tài nguyên', step: 2 },
-  voice: { label: 'Giọng thoại', step: 3 },
-  director: { label: 'Xưởng dựng', step: 4 },
-  export: { label: 'Xuất bản', step: 5 },
-  prompts: { label: 'Kho sáng tạo', step: 4 },
+const STAGE_META: Record<ProjectState['stage'], { labelKey: TranslationKey; step: number }> = {
+  content: { labelKey: 'stage.content', step: 1 },
+  script: { labelKey: 'stage.script', step: 1 },
+  assets: { labelKey: 'stage.assets', step: 2 },
+  voice: { labelKey: 'stage.voice', step: 3 },
+  director: { labelKey: 'stage.director', step: 4 },
+  export: { labelKey: 'stage.export', step: 5 },
+  prompts: { labelKey: 'stage.prompts', step: 4 },
 };
 
-const formatDate = (timestamp: number) => new Intl.DateTimeFormat('vi-VN', {
+const formatDate = (timestamp: number, localeTag: string) => new Intl.DateTimeFormat(localeTag, {
   day: '2-digit', month: 'short', year: 'numeric',
 }).format(timestamp);
 
@@ -75,6 +78,7 @@ const getProjectPreview = (project: ProjectState) => {
 
 const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, onOpenProjectWithProductionControl, onOpenProjectWithClientReview, onShowOnboarding, onShowModelConfig, onShowOperations }) => {
   const { showAlert } = useAlert();
+  const { t, localeTag } = useLocale();
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -222,26 +226,27 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
             </div>
             <div className="hidden min-w-0 sm:block">
               <div className="truncate text-sm font-semibold text-white">Egoric Film Studio</div>
-            <div className="mt-0.5 hidden font-mono text-[9px] uppercase tracking-[.2em] text-zinc-600 sm:block">Không gian sản xuất · Việt Nam</div>
+            <div className="mt-0.5 hidden font-mono text-[9px] uppercase tracking-[.2em] text-zinc-600 sm:block">{t('dashboard.tagline')}</div>
             </div>
           </div>
-          <div className="order-3 flex w-full items-center rounded-xl border border-white/[.08] bg-black/20 p-1 md:order-none md:w-auto" aria-label="Không gian điều hành">
-            <button type="button" onClick={() => setDashboardView('campaigns')} aria-pressed={dashboardView === 'campaigns'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'campaigns' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderKanban className="h-3.5 w-3.5" /><span>Chiến dịch</span></button>
-            <button type="button" onClick={() => setDashboardView('projects')} aria-pressed={dashboardView === 'projects'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'projects' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderOpen className="h-3.5 w-3.5" /><span>Dự án</span></button>
+          <div className="order-3 flex w-full items-center rounded-xl border border-white/[.08] bg-black/20 p-1 md:order-none md:w-auto" aria-label={t('dashboard.workspaceNav')}>
+            <button type="button" onClick={() => setDashboardView('campaigns')} aria-pressed={dashboardView === 'campaigns'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'campaigns' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderKanban className="h-3.5 w-3.5" /><span>{t('dashboard.campaigns')}</span></button>
+            <button type="button" onClick={() => setDashboardView('projects')} aria-pressed={dashboardView === 'projects'} className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors md:flex-none ${dashboardView === 'projects' ? 'bg-cyan-200/[.11] text-cyan-50' : 'text-zinc-600 hover:text-zinc-300'}`}><FolderOpen className="h-3.5 w-3.5" /><span>{t('dashboard.projects')}</span></button>
           </div>
-          <nav className="flex items-center gap-2" aria-label="Công cụ ứng dụng">
+          <nav className="flex items-center gap-2" aria-label={t('dashboard.tools')}>
+            <LanguageSwitcher />
             <WorkspaceSyncStatus />
             {onShowOperations && (
-              <button type="button" onClick={onShowOperations} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Trung tâm vận hành" title="Trung tâm vận hành"><Gauge className="h-4 w-4" /></button>
+              <button type="button" onClick={onShowOperations} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label={t('dashboard.operations')} title={t('dashboard.operations')}><Gauge className="h-4 w-4" /></button>
             )}
             {onShowOnboarding && (
-              <button type="button" onClick={onShowOnboarding} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Hướng dẫn sử dụng" title="Hướng dẫn"><HelpCircle className="h-4 w-4" /></button>
+              <button type="button" onClick={onShowOnboarding} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label={t('dashboard.guide')} title={t('dashboard.guideShort')}><HelpCircle className="h-4 w-4" /></button>
             )}
             {onShowModelConfig && (
-              <button type="button" onClick={onShowModelConfig} className="eg-button-secondary hidden items-center justify-center gap-2 px-4 text-xs font-semibold sm:inline-flex"><Cpu className="h-4 w-4" /> Mô hình và API</button>
+              <button type="button" onClick={onShowModelConfig} className="eg-button-secondary hidden items-center justify-center gap-2 px-4 text-xs font-semibold sm:inline-flex"><Cpu className="h-4 w-4" /> {t('dashboard.modelsApi')}</button>
             )}
-            <button type="button" onClick={() => void openCloudProjects()} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Dự án cloud" title="Dự án cloud"><Cloud className="h-4 w-4" /></button>
-            <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-4 text-xs font-bold"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">Dự án mới</span></button>
+            <button type="button" onClick={() => void openCloudProjects()} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label={t('dashboard.cloudProjects')} title={t('dashboard.cloudProjects')}><Cloud className="h-4 w-4" /></button>
+            <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-4 text-xs font-bold"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">{t('dashboard.newProject')}</span></button>
           </nav>
         </div>
       </header>
@@ -253,28 +258,28 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
           <div className="pointer-events-none absolute -right-16 -top-28 h-72 w-72 rounded-full bg-cyan-200/[.08] blur-3xl" />
           <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(420px,.9fr)] xl:items-end">
             <div>
-              <div className="eg-kicker">Phòng sản xuất Egoric</div>
+              <div className="eg-kicker">{t('dashboard.productionRoom')}</div>
               <h1 className="mt-3 max-w-3xl text-3xl font-semibold leading-tight tracking-[-.035em] text-white md:text-[42px] md:leading-[1.12]">
-                Mọi ý tưởng, nhân vật và cảnh quay trong một nhịp sản xuất.
+                {t('dashboard.heroTitle')}
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400">
-                Bắt đầu từ kịch bản, khóa hình ảnh nhất quán, dựng giọng Việt và hoàn thiện bản phim mà không rời khỏi không gian sản xuất.
+                {t('dashboard.heroDescription')}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold"><Sparkles className="h-4 w-4" /> Bắt đầu tác phẩm mới</button>
-                <button type="button" onClick={() => setShowLibrary(true)} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-5 text-xs font-semibold"><Archive className="h-4 w-4" /> Mở thư viện tài nguyên</button>
+                <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold"><Sparkles className="h-4 w-4" /> {t('dashboard.startNewWork')}</button>
+                <button type="button" onClick={() => setShowLibrary(true)} className="eg-button-secondary inline-flex items-center justify-center gap-2 px-5 text-xs font-semibold"><Archive className="h-4 w-4" /> {t('dashboard.openAssetLibrary')}</button>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
               {[
-                { label: 'Dự án', value: projects.length, icon: FolderOpen },
-                { label: 'Đã xuất bản', value: completedProjects, icon: Film },
-                { label: 'Cảnh quay', value: generatedShots, icon: Clapperboard },
-                { label: 'Bản thoại', value: readyVoiceLines, icon: Check },
+                { label: t('dashboard.statProjects'), value: projects.length, icon: FolderOpen },
+                { label: t('dashboard.statPublished'), value: completedProjects, icon: Film },
+                { label: t('dashboard.statShots'), value: generatedShots, icon: Clapperboard },
+                { label: t('dashboard.statVoiceTakes'), value: readyVoiceLines, icon: Check },
               ].map((stat) => (
                 <div key={stat.label} className="rounded-2xl border border-white/[.08] bg-black/20 p-4">
-                  <div className="flex items-center justify-between"><stat.icon className="h-4 w-4 text-cyan-200/70" /><span className="font-mono text-[9px] uppercase tracking-widest text-zinc-700">Trực tiếp</span></div>
+                  <div className="flex items-center justify-between"><stat.icon className="h-4 w-4 text-cyan-200/70" /><span className="font-mono text-[9px] uppercase tracking-widest text-zinc-700">{t('common.live')}</span></div>
                   <div className="mt-4 font-mono text-2xl font-semibold tabular-nums text-white">{stat.value}</div>
                   <div className="mt-1 text-[11px] text-zinc-500">{stat.label}</div>
                 </div>
@@ -286,20 +291,20 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
         <section className="mt-10">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="eg-kicker">Gần đây</div>
-              <h2 className="mt-1 text-xl font-semibold text-white">Các dự án đang sản xuất</h2>
+              <div className="eg-kicker">{t('dashboard.recent')}</div>
+              <h2 className="mt-1 text-xl font-semibold text-white">{t('dashboard.projectsInProduction')}</h2>
             </div>
-            <p className="text-xs text-zinc-600">Sắp xếp theo lần chỉnh sửa gần nhất</p>
+            <p className="text-xs text-zinc-600">{t('dashboard.sortedRecent')}</p>
           </div>
 
           {isLoading ? (
-            <div className="eg-panel flex min-h-72 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-cyan-200" /><span className="ml-3 text-xs text-zinc-500">Đang mở phòng dự án…</span></div>
+            <div className="eg-panel flex min-h-72 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-cyan-200" /><span className="ml-3 text-xs text-zinc-500">{t('dashboard.loadingProjects')}</span></div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <button type="button" onClick={handleCreate} className="group flex min-h-[310px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/[.12] bg-white/[.018] p-6 text-center transition-colors hover:border-cyan-200/35 hover:bg-cyan-200/[.035]">
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-200/[.07] text-cyan-100 transition-transform group-hover:scale-105"><Plus className="h-5 w-5" /></span>
-                <span className="mt-5 text-sm font-semibold text-white">Tạo dự án mới</span>
-                <span className="mt-2 max-w-[220px] text-xs leading-5 text-zinc-600">Mở không gian trống với quy trình sản xuất năm giai đoạn.</span>
+                <span className="mt-5 text-sm font-semibold text-white">{t('dashboard.createProject')}</span>
+                <span className="mt-2 max-w-[220px] text-xs leading-5 text-zinc-600">{t('dashboard.createProjectDescription')}</span>
               </button>
 
               {projects.map((project) => {
@@ -307,15 +312,15 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
                 const preview = getProjectPreview(project);
                 const voiceReady = project.voiceStudio?.takes.filter((take) => take.status === 'ready').length || 0;
                 return (
-                  <article key={project.id} className="eg-card eg-card-interactive group relative min-h-[310px] cursor-pointer overflow-hidden" onClick={() => onOpenProject(project)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpenProject(project); }} role="button" tabIndex={0} aria-label={`Mở dự án ${project.title}`}>
+                  <article key={project.id} className="eg-card eg-card-interactive group relative min-h-[310px] cursor-pointer overflow-hidden" onClick={() => onOpenProject(project)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpenProject(project); }} role="button" tabIndex={0} aria-label={t('dashboard.openProject', { title: project.title })}>
                     {deleteConfirmId === project.id && (
                       <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[rgba(7,9,12,.96)] p-6 text-center backdrop-blur-xl" onClick={(event) => event.stopPropagation()}>
                         <Trash2 className="h-5 w-5 text-rose-300" />
-                        <h3 className="mt-4 text-sm font-semibold text-white">Xóa “{project.title}”?</h3>
-                        <p className="mt-2 text-xs leading-5 text-zinc-500">Ảnh, video, bản thoại và lịch sử kết xuất trong dự án sẽ bị xóa khỏi thiết bị.</p>
+                        <h3 className="mt-4 text-sm font-semibold text-white">{t('dashboard.deleteProjectQuestion', { title: project.title })}</h3>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">{t('dashboard.deleteProjectDescription')}</p>
                         <div className="mt-5 flex w-full gap-2">
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConfirmId(null); }} className="eg-button-secondary flex-1 px-3 text-xs font-semibold">Giữ lại</button>
-                          <button type="button" onClick={(event) => void confirmDelete(event, project.id)} className="min-h-11 flex-1 rounded-xl border border-rose-300/20 bg-rose-300/10 px-3 text-xs font-semibold text-rose-200 hover:bg-rose-300/15">Xóa dự án</button>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConfirmId(null); }} className="eg-button-secondary flex-1 px-3 text-xs font-semibold">{t('dashboard.keepProject')}</button>
+                          <button type="button" onClick={(event) => void confirmDelete(event, project.id)} className="min-h-11 flex-1 rounded-xl border border-rose-300/20 bg-rose-300/10 px-3 text-xs font-semibold text-rose-200 hover:bg-rose-300/15">{t('dashboard.deleteProject')}</button>
                         </div>
                       </div>
                     )}
@@ -325,8 +330,8 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
                         <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(121,230,223,.08),transparent_55%)]"><Clapperboard className="h-8 w-8 text-cyan-100/20" /></div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-[#10161e] via-transparent to-transparent" />
-                      <span className="absolute bottom-3 left-3 eg-chip border-cyan-200/20 bg-black/55 text-cyan-100 backdrop-blur-lg">{stage.label} · {stage.step}/5</span>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConfirmId(project.id); }} className="eg-icon-button absolute right-3 top-3 flex h-11 w-11 items-center justify-center bg-black/55 opacity-0 backdrop-blur-lg transition-opacity group-hover:opacity-100 focus:opacity-100" aria-label={`Xóa dự án ${project.title}`}><Trash2 className="h-4 w-4" /></button>
+                      <span className="absolute bottom-3 left-3 eg-chip border-cyan-200/20 bg-black/55 text-cyan-100 backdrop-blur-lg">{t(stage.labelKey)} · {stage.step}/5</span>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConfirmId(project.id); }} className="eg-icon-button absolute right-3 top-3 flex h-11 w-11 items-center justify-center bg-black/55 opacity-0 backdrop-blur-lg transition-opacity group-hover:opacity-100 focus:opacity-100" aria-label={t('dashboard.deleteProjectQuestion', { title: project.title })}><Trash2 className="h-4 w-4" /></button>
                     </div>
 
                     <div className="p-5">
@@ -334,14 +339,14 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
                         <h3 className="line-clamp-1 text-sm font-semibold text-white">{project.title}</h3>
                         <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-700 transition-colors group-hover:text-cyan-200" />
                       </div>
-                      <p className="mt-2 line-clamp-2 min-h-10 text-[11px] leading-5 text-zinc-600">{project.scriptData?.logline || 'Một tác phẩm đang chờ được phát triển trong Egoric Film Studio.'}</p>
+                      <p className="mt-2 line-clamp-2 min-h-10 text-[11px] leading-5 text-zinc-600">{project.scriptData?.logline || t('dashboard.projectFallback')}</p>
                       <div className="mt-4 grid grid-cols-3 gap-2 border-t eg-divider pt-4 text-center">
-                        <div><div className="font-mono text-xs text-zinc-300">{project.scriptData?.characters.length || 0}</div><div className="mt-1 text-[9px] text-zinc-700">Nhân vật</div></div>
-                        <div><div className="font-mono text-xs text-zinc-300">{project.shots.length}</div><div className="mt-1 text-[9px] text-zinc-700">Cảnh quay</div></div>
-                        <div><div className="font-mono text-xs text-zinc-300">{voiceReady}</div><div className="mt-1 text-[9px] text-zinc-700">Bản thoại</div></div>
+                        <div><div className="font-mono text-xs text-zinc-300">{project.scriptData?.characters.length || 0}</div><div className="mt-1 text-[9px] text-zinc-700">{t('dashboard.characters')}</div></div>
+                        <div><div className="font-mono text-xs text-zinc-300">{project.shots.length}</div><div className="mt-1 text-[9px] text-zinc-700">{t('dashboard.shots')}</div></div>
+                        <div><div className="font-mono text-xs text-zinc-300">{voiceReady}</div><div className="mt-1 text-[9px] text-zinc-700">{t('dashboard.voiceTakes')}</div></div>
                       </div>
                     </div>
-                    <footer className="flex items-center justify-between border-t eg-divider bg-black/10 px-5 py-3 font-mono text-[9px] text-zinc-700"><span className="flex items-center gap-1.5"><CalendarDays className="h-3 w-3" />{formatDate(project.lastModified)}</span><ChevronRight className="h-3.5 w-3.5" /></footer>
+                    <footer className="flex items-center justify-between border-t eg-divider bg-black/10 px-5 py-3 font-mono text-[9px] text-zinc-700"><span className="flex items-center gap-1.5"><CalendarDays className="h-3 w-3" />{formatDate(project.lastModified, localeTag)}</span><ChevronRight className="h-3.5 w-3.5" /></footer>
                   </article>
                 );
               })}
@@ -350,11 +355,11 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
         </section>
 
         <section className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {onShowOperations && <button type="button" onClick={onShowOperations} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Gauge className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Trung tâm vận hành</span><span className="mt-1 block text-xs text-zinc-600">API, Voice, kiểm thử và hạn mức workspace.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
-          <button type="button" onClick={() => setShowLibrary(true)} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Archive className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Thư viện tài nguyên</span><span className="mt-1 block text-xs text-zinc-600">Tái sử dụng nhân vật và bối cảnh giữa dự án.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
-          <button type="button" onClick={() => void openCloudProjects()} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-sky-200"><CloudDownload className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Dự án cloud</span><span className="mt-1 block text-xs text-zinc-600">Khôi phục dự án trên thiết bị khác.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
-          {onShowModelConfig && <button type="button" onClick={onShowModelConfig} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-amber-200"><Cpu className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Mô hình và API</span><span className="mt-1 block text-xs text-zinc-600">Kết nối model hội thoại, hình ảnh và video.</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
-          <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-violet-200"><HelpCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Hỗ trợ sản phẩm</span><span className="mt-1 block text-xs text-zinc-600">Gửi lỗi hoặc đề xuất cho đội ngũ Egoric.</span></span><ExternalLink className="h-4 w-4 text-zinc-700" /></a>
+          {onShowOperations && <button type="button" onClick={onShowOperations} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Gauge className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t('dashboard.operations')}</span><span className="mt-1 block text-xs text-zinc-600">{t('dashboard.operationsDescription')}</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
+          <button type="button" onClick={() => setShowLibrary(true)} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-cyan-200"><Archive className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t('dashboard.assetLibrary')}</span><span className="mt-1 block text-xs text-zinc-600">{t('dashboard.assetLibraryDescription')}</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
+          <button type="button" onClick={() => void openCloudProjects()} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-sky-200"><CloudDownload className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t('dashboard.cloudProjects')}</span><span className="mt-1 block text-xs text-zinc-600">{t('dashboard.cloudDescription')}</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>
+          {onShowModelConfig && <button type="button" onClick={onShowModelConfig} className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-amber-200"><Cpu className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t('dashboard.modelsApi')}</span><span className="mt-1 block text-xs text-zinc-600">{t('dashboard.modelsDescription')}</span></span><ChevronRight className="h-4 w-4 text-zinc-700" /></button>}
+          <a href="https://github.com/leozvu/liemcainhe/issues" target="_blank" rel="noreferrer" className="eg-card eg-card-interactive flex min-h-28 items-center gap-4 p-5 text-left"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[.08] bg-black/20 text-violet-200"><HelpCircle className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t('dashboard.productSupport')}</span><span className="mt-1 block text-xs text-zinc-600">{t('dashboard.productSupportDescription')}</span></span><ExternalLink className="h-4 w-4 text-zinc-700" /></a>
         </section>
       </main>}
 
@@ -374,7 +379,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
                 <div className="space-y-3">{cloudProjects.map((cloudProject) => (
                   <article key={cloudProject.id} className="eg-card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-200/15 bg-sky-200/[.06] text-sky-100"><Cloud className="h-4 w-4" /></div>
-                    <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-white">{cloudProject.title}</h3><p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600">Cập nhật {formatDate(cloudProject.updatedAt)}</p></div>
+                    <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-white">{cloudProject.title}</h3><p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600">Cập nhật {formatDate(cloudProject.updatedAt, localeTag)}</p></div>
                     <div className="flex gap-2"><button type="button" onClick={() => void restoreCloudProject(cloudProject.id)} disabled={restoringCloudId !== null} className="eg-button-primary inline-flex flex-1 items-center justify-center gap-2 px-4 text-xs font-bold sm:flex-none">{restoringCloudId === cloudProject.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />} Khôi phục</button><button type="button" onClick={() => removeCloudProject(cloudProject.id, cloudProject.title)} className="eg-icon-button flex h-11 w-11 items-center justify-center text-zinc-600 hover:text-rose-200" aria-label={`Xóa bản sao cloud ${cloudProject.title}`}><Trash2 className="h-4 w-4" /></button></div>
                   </article>
                 ))}</div>
@@ -413,7 +418,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setAssetToUse(null)}>
           <div className="eg-panel w-full max-w-2xl p-6 md:p-7" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4"><div><div className="eg-kicker">Chèn tài nguyên</div><h2 className="mt-1 text-lg font-semibold text-white">Chọn dự án đích</h2><p className="mt-1 text-xs text-zinc-500">Đưa “{assetToUse.name}” vào một không gian làm việc đang có.</p></div><button type="button" onClick={() => setAssetToUse(null)} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label="Đóng"><X className="h-4 w-4" /></button></div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">{projects.length ? projects.map((project) => <button key={project.id} type="button" onClick={() => void handleUseAsset(project.id)} className="eg-card eg-card-interactive min-h-24 p-4 text-left"><span className="block truncate text-sm font-semibold text-white">{project.title}</span><span className="mt-2 flex items-center gap-2 text-[10px] text-zinc-600"><Clock3 className="h-3 w-3" />{formatDate(project.lastModified)}</span></button>) : <p className="col-span-full py-8 text-center text-sm text-zinc-600">Chưa có dự án để nhận tài nguyên.</p>}</div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">{projects.length ? projects.map((project) => <button key={project.id} type="button" onClick={() => void handleUseAsset(project.id)} className="eg-card eg-card-interactive min-h-24 p-4 text-left"><span className="block truncate text-sm font-semibold text-white">{project.title}</span><span className="mt-2 flex items-center gap-2 text-[10px] text-zinc-600"><Clock3 className="h-3 w-3" />{formatDate(project.lastModified, localeTag)}</span></button>) : <p className="col-span-full py-8 text-center text-sm text-zinc-600">Chưa có dự án để nhận tài nguyên.</p>}</div>
           </div>
         </div>
       )}

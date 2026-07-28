@@ -21,6 +21,8 @@ import {
   setProviderApiKey,
 } from '../../services/modelRegistry';
 import { DiscoveredProviderModel, discoverProviderModels, verifyProviderApiKey } from '../../services/providerService';
+import { useLocale } from '../../contexts/LocaleContext';
+import { TranslationKey } from '../../services/i18n';
 
 interface GlobalSettingsProps {
   onRefresh: () => void;
@@ -31,10 +33,10 @@ type VerificationState = {
   message: string;
 };
 
-const CAPABILITY_LABELS: Record<ModelType, string> = {
-  chat: 'Hội thoại',
-  image: 'Hình ảnh',
-  video: 'Video',
+const CAPABILITY_LABEL_KEYS: Record<ModelType, TranslationKey> = {
+  chat: 'model.chat',
+  image: 'model.image',
+  video: 'model.video',
 };
 
 const CAPABILITY_ICONS: Record<ModelType, React.ComponentType<{ className?: string }>> = {
@@ -44,6 +46,7 @@ const CAPABILITY_ICONS: Record<ModelType, React.ComponentType<{ className?: stri
 };
 
 const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
+  const { t } = useLocale();
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [draftKeys, setDraftKeys] = useState<Record<string, string>>({});
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
@@ -64,7 +67,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
           provider.id,
           {
             state: provider.apiKey ? 'success' : 'idle',
-            message: provider.apiKey ? 'Khóa đang được giữ an toàn trong phiên này' : '',
+            message: provider.apiKey ? t('model.sessionSafe') : '',
           },
         ])
       )
@@ -73,7 +76,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
 
   useEffect(() => {
     refreshProviders();
-  }, []);
+  }, [t]);
 
   const setStatus = (providerId: string, status: VerificationState) => {
     setStatuses((current) => ({ ...current, [providerId]: status }));
@@ -87,11 +90,11 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
   const handleVerifyAndSave = async (provider: ModelProvider) => {
     const key = (draftKeys[provider.id] || '').trim();
     if (!key) {
-      setStatus(provider.id, { state: 'error', message: 'Vui lòng nhập khóa API' });
+      setStatus(provider.id, { state: 'error', message: t('model.enterKey') });
       return;
     }
 
-    setStatus(provider.id, { state: 'checking', message: 'Đang kiểm tra kết nối…' });
+    setStatus(provider.id, { state: 'checking', message: t('model.checkingConnection') });
     const result = await verifyProviderApiKey(provider.id, key);
     if (!result.success) {
       setStatus(provider.id, { state: 'error', message: result.message });
@@ -108,7 +111,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
       setDiscoveredCounts((current) => ({ ...current, [provider.id]: 0 }));
     }
     setProviders(getProviders());
-    setStatus(provider.id, { state: 'success', message: `${result.message} · Đang dùng trong phiên` });
+    setStatus(provider.id, { state: 'success', message: `${result.message} · ${t('model.sessionActive')}` });
     onRefresh();
   };
 
@@ -118,7 +121,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
     const params = item.type === 'chat' ? { ...DEFAULT_CHAT_PARAMS } : item.type === 'image' ? { ...DEFAULT_IMAGE_PARAMS } : { ...DEFAULT_VIDEO_PARAMS_SORA };
     const modelId = `${provider.id}:${item.id}`;
     if (getModels().some((model) => model.id === modelId)) {
-      setStatus(provider.id, { state: 'success', message: `${item.name} đã có trong danh mục.` });
+      setStatus(provider.id, { state: 'success', message: t('model.alreadyInCatalog', { model: item.name }) });
       return;
     }
     registerModel({
@@ -128,11 +131,11 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
       type: item.type,
       providerId: provider.id,
       endpoint: item.type === 'chat' ? (provider.id === 'google-ai-studio' ? '/chat/completions' : '/v1/chat/completions') : undefined,
-      description: `Mô hình được phát hiện trực tiếp từ ${provider.name}.`,
+      description: t('model.discoveredDescription', { provider: provider.name }),
       isEnabled: true,
       params,
     } as any);
-    setStatus(provider.id, { state: 'success', message: `Đã thêm ${item.name} vào danh mục mô hình.` });
+    setStatus(provider.id, { state: 'success', message: t('model.importedToCatalog', { model: item.name }) });
     onRefresh();
   };
 
@@ -141,7 +144,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
     setDraftKeys((current) => ({ ...current, [provider.id]: '' }));
     setVisibleKeys((current) => ({ ...current, [provider.id]: false }));
     setProviders(getProviders());
-    setStatus(provider.id, { state: 'idle', message: 'Đã xóa khóa khỏi phiên này' });
+    setStatus(provider.id, { state: 'idle', message: t('model.keyCleared') });
     onRefresh();
   };
 
@@ -153,13 +156,12 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
             <ShieldCheck className="h-6 w-6 text-slate-950" aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Cổng AI nội bộ Egoric</h3>
+            <h3 className="text-base font-bold text-white">{t('model.gatewayTitle')}</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
-              Tạm thời chỉ ShopAIKey được bật cho hội thoại, hình ảnh và video. Khóa chỉ ở trong
-              phiên trình duyệt; không được ghi vào dự án hoặc cloud của Egoric.
+              {t('model.gatewayDescription')}
             </p>
             <p className="mt-2 max-w-2xl text-[10px] leading-4 text-amber-100/70">
-              Đây là reverse proxy bên thứ ba, không phải API chính chủ. Chỉ dùng nội bộ với số dư nhỏ và dữ liệu đã loại bỏ thông tin nhạy cảm.
+              {t('model.gatewayWarning')}
             </p>
           </div>
         </div>
@@ -186,11 +188,13 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                     {hasStoredKey && (
                       <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">
                         <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                        Đã cấu hình
+                        {t('model.configured')}
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">{provider.description}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                    {provider.id === 'shopaikey' ? t('model.providerDescription') : provider.description}
+                  </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {provider.supportedModelTypes.map((capability) => {
                       const Icon = CAPABILITY_ICONS[capability];
@@ -200,13 +204,13 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                           className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-[10px] text-zinc-400"
                         >
                           <Icon className="h-3 w-3" aria-hidden="true" />
-                          {CAPABILITY_LABELS[capability]}
+                          {t(CAPABILITY_LABEL_KEYS[capability])}
                         </span>
                       );
                     })}
                     {typeof discoveredCounts[provider.id] === 'number' && (
                       <span className="inline-flex items-center rounded-lg border border-cyan-200/15 bg-cyan-200/[.05] px-2.5 py-1.5 font-mono text-[10px] text-cyan-100/70">
-                        {discoveredCounts[provider.id]} mô hình đã phát hiện
+                        {t('model.discoveredCount', { count: discoveredCounts[provider.id] })}
                       </span>
                     )}
                   </div>
@@ -219,7 +223,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                     rel="noreferrer"
                     className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-semibold text-zinc-300 transition-colors hover:border-cyan-300/30 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
                   >
-                    Lấy khóa API
+                    {t('model.getApiKey')}
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                   </a>
                 )}
@@ -231,7 +235,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                   className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500"
                 >
                   <KeyRound className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
-                  Khóa API {provider.name}
+                  {t('model.apiKeyLabel', { provider: provider.name })}
                 </label>
                 <div className="relative">
                   <input
@@ -242,7 +246,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                     disabled={isChecking}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder={`Dán khóa ${provider.name} tại đây`}
+                    placeholder={t('model.apiKeyPlaceholder', { provider: provider.name })}
                     className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 pr-12 font-mono text-sm text-white outline-none transition focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-300/10 disabled:cursor-wait disabled:opacity-60"
                   />
                   <button
@@ -254,7 +258,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                       }))
                     }
                     className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
-                    aria-label={visibleKeys[provider.id] ? 'Ẩn khóa API' : 'Hiện khóa API'}
+                    aria-label={visibleKeys[provider.id] ? t('model.hideKey') : t('model.showKey')}
                   >
                     {visibleKeys[provider.id] ? (
                       <EyeOff className="h-4 w-4" aria-hidden="true" />
@@ -295,7 +299,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                       className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-xs font-semibold text-zinc-400 transition-colors hover:border-rose-400/30 hover:text-rose-300 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-rose-300/20"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      Xóa khóa
+                      {t('model.removeKey')}
                     </button>
                   )}
                   <button
@@ -305,20 +309,20 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
                     className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 text-xs font-bold text-slate-950 transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-cyan-100/50"
                   >
                     {isChecking && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                    {isChecking ? 'Đang kiểm tra…' : 'Kiểm tra và dùng trong phiên'}
+                    {isChecking ? t('model.checking') : t('model.verifyAndUse')}
                   </button>
                 </div>
 
                 {(discoveredModels[provider.id]?.length || 0) > 0 && (
                   <div className="mt-4 rounded-xl border border-cyan-200/15 bg-cyan-200/[.035] p-3">
-                    <label htmlFor={`discovered-${provider.id}`} className="text-[10px] font-semibold uppercase tracking-wider text-cyan-100/70">Mô hình phát hiện trực tiếp</label>
+                    <label htmlFor={`discovered-${provider.id}`} className="text-[10px] font-semibold uppercase tracking-wider text-cyan-100/70">{t('model.discoveredDirectly')}</label>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                       <select id={`discovered-${provider.id}`} value={selectedDiscovered[provider.id] || ''} onChange={(event) => setSelectedDiscovered((current) => ({ ...current, [provider.id]: event.target.value }))} className="eg-input min-w-0 flex-1 px-3 text-xs">
                         {discoveredModels[provider.id].slice(0, 500).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
                       </select>
-                      <button type="button" onClick={() => importDiscoveredModel(provider)} className="eg-button-secondary inline-flex items-center justify-center px-4 text-xs font-semibold">Thêm vào danh mục</button>
+                      <button type="button" onClick={() => importDiscoveredModel(provider)} className="eg-button-secondary inline-flex items-center justify-center px-4 text-xs font-semibold">{t('model.addToCatalog')}</button>
                     </div>
-                    {discoveredModels[provider.id].length > 500 && <p className="mt-2 text-[10px] text-zinc-600">Đang hiển thị 500 mô hình đầu tiên. Có thể tìm thêm bằng mã model tùy chỉnh.</p>}
+                    {discoveredModels[provider.id].length > 500 && <p className="mt-2 text-[10px] text-zinc-600">{t('model.first500')}</p>}
                   </div>
                 )}
               </div>
