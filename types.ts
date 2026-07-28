@@ -933,6 +933,51 @@ export interface AgencyReviewState {
   updatedAt: number;
 }
 
+export type DistributionPlatform = 'tiktok' | 'youtube' | 'instagram-reels' | 'facebook-reels';
+export type DistributionTargetStatus = 'ready' | 'queued' | 'uploading' | 'processing' | 'published' | 'failed' | 'indeterminate';
+export type DistributionPackageStatus = 'ready' | 'processing' | 'published' | 'attention';
+
+export interface DistributionTarget {
+  platform: DistributionPlatform;
+  status: DistributionTargetStatus;
+  accountId?: string;
+  externalId?: string;
+  publishedUrl?: string;
+  error?: string;
+  updatedAt: number;
+}
+
+/**
+ * Manifest bất biến mà adapter TikTok/YouTube/Reels được phép nhận.
+ *
+ * Package luôn trỏ tới đúng master cloud đã qua ba chữ ký nội bộ và quyết
+ * định của khách hàng. Adapter không được nhận trực tiếp ProjectState hoặc URL
+ * tuỳ ý, vì như vậy có thể bỏ qua cổng nghiệm thu.
+ */
+export interface DistributionPackage {
+  id: string;
+  projectId: string;
+  name: string;
+  status: DistributionPackageStatus;
+  reviewRoundId: string;
+  reviewPortalId: string;
+  reviewVersionId: string;
+  masterOutputId: string;
+  masterChecksum: string;
+  artifactSignature: string;
+  approvalFingerprint: string;
+  masterVideoUrl: string;
+  aspectRatio: AspectRatio;
+  artifactBytes?: number;
+  duration?: number;
+  title: string;
+  caption?: string;
+  targets: DistributionTarget[];
+  idempotencyKey: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AgencyClient {
   id: string;
   name: string;

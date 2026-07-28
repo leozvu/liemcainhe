@@ -16,6 +16,7 @@ import {
   Loader2,
   LockKeyhole,
   MessageSquareText,
+  PackageCheck,
   RefreshCw,
   RotateCcw,
   Send,
@@ -51,6 +52,7 @@ import { useAlert } from './GlobalAlert';
 interface Props {
   project: ProjectState;
   updateProject: (updates: Partial<ProjectState> | ((previous: ProjectState) => ProjectState)) => void;
+  onOpenDistribution: () => void;
 }
 
 const formatDate = (timestamp?: number) => timestamp
@@ -79,7 +81,7 @@ const INTERNAL_STATUS_META = {
   'changes-requested': { label: 'Yêu cầu sửa', className: 'border-amber-200/20 bg-amber-200/[.07] text-amber-100' },
 } as const;
 
-const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
+const ClientReviewManager: React.FC<Props> = ({ project, updateProject, onOpenDistribution }) => {
   const { showAlert } = useAlert();
   const [portals, setPortals] = useState<ClientReviewPortal[]>([]);
   const [selectedPortalId, setSelectedPortalId] = useState<string | null>(null);
@@ -405,7 +407,7 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject }) => {
                 {selectedPortal.status === 'active' ? <button type="button" onClick={() => void patchPortal(selectedPortal, { portalId: selectedPortal.id, status: 'closed' })} disabled={busyAction === selectedPortal.id} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-40"><LockKeyhole className="h-4 w-4" /> Đóng link</button> : <button type="button" onClick={() => void patchPortal(selectedPortal, { portalId: selectedPortal.id, status: 'active' })} disabled={busyAction === selectedPortal.id} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-40"><Link2 className="h-4 w-4" /> Mở link</button>}
                 {selectedPortal.decision === 'approved' && <button type="button" onClick={() => void patchPortal(selectedPortal, { portalId: selectedPortal.id, resetDecision: true })} disabled={busyAction === selectedPortal.id} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-200/[.055] px-4 text-xs font-semibold text-amber-100 disabled:opacity-40"><RotateCcw className="h-4 w-4" /> Mở vòng sửa</button>}
               </div>
-              {selectedPortal.decision !== 'pending' && <div className={`mt-4 rounded-2xl border p-4 ${decisionMeta.className}`}><div className="flex items-start gap-3"><DecisionIcon className="mt-0.5 h-4 w-4 shrink-0" /><div className="min-w-0"><strong className="block text-xs">{decisionMeta.label}{decisionVersion ? ` · V${decisionVersion.number}` : ''}</strong><p className="mt-1 text-[11px] leading-5 opacity-75">{selectedPortal.reviewerName || 'Khách hàng'} · {formatDate(selectedPortal.decidedAt)}</p><p className="mt-2 flex items-center gap-2 font-mono text-[9px] opacity-75"><Fingerprint className="h-3.5 w-3.5" /> {formatArtifactFingerprint(summary.approvalFingerprint)}</p>{!summary.decisionMatchesArtifact && <p className="mt-2 text-[10px] font-semibold">Chữ ký không còn trùng artifact. Không được dùng quyết định này để phân phối.</p>}{selectedPortal.decisionNote && <p className="mt-3 whitespace-pre-wrap text-xs leading-5">{selectedPortal.decisionNote}</p>}</div></div></div>}
+              {selectedPortal.decision !== 'pending' && <div className={`mt-4 rounded-2xl border p-4 ${decisionMeta.className}`}><div className="flex items-start gap-3"><DecisionIcon className="mt-0.5 h-4 w-4 shrink-0" /><div className="min-w-0 flex-1"><strong className="block text-xs">{decisionMeta.label}{decisionVersion ? ` · V${decisionVersion.number}` : ''}</strong><p className="mt-1 text-[11px] leading-5 opacity-75">{selectedPortal.reviewerName || 'Khách hàng'} · {formatDate(selectedPortal.decidedAt)}</p><p className="mt-2 flex items-center gap-2 font-mono text-[9px] opacity-75"><Fingerprint className="h-3.5 w-3.5" /> {formatArtifactFingerprint(summary.approvalFingerprint)}</p>{!summary.decisionMatchesArtifact && <p className="mt-2 text-[10px] font-semibold">Chữ ký không còn trùng artifact. Không được dùng quyết định này để phân phối.</p>}{selectedPortal.decisionNote && <p className="mt-3 whitespace-pre-wrap text-xs leading-5">{selectedPortal.decisionNote}</p>}{selectedPortal.decision === 'approved' && summary.decisionMatchesArtifact && decisionVersion?.sourceKind === 'master' && <button type="button" onClick={onOpenDistribution} className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-100/20 bg-black/20 px-4 text-xs font-bold text-emerald-50 transition-colors hover:bg-black/30"><PackageCheck className="h-4 w-4" /> Mở cổng phân phối</button>}</div></div></div>}
             </div>
           )}
         </div>
