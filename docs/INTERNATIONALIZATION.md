@@ -18,11 +18,13 @@ All shared interface copy lives in `services/i18n.ts`. Components consume it thr
 - Workspace loading and global production navigation.
 - Dashboard project overview and primary actions.
 - Campaign Hub overview, filters, status board, campaign objectives, priorities, platforms, and deliverable states.
+- Campaign creation/editing, deliverable setup, campaign details, and client directory.
+- Client profile creation and Brand Kit editing across identity, voice, platform rules, and approved memory.
 - API onboarding and the internal model gateway settings.
 
 ## Next translation waves
 
-1. Campaign forms, client profiles, Brand Kit, and campaign detail drawers.
+1. Pre-production Room and Campaign Zero operating panels.
 2. Content Studio, Script, Assets, Voice, Director, and Export stages.
 3. Operations, review portals, cost dashboards, empty/error states, and confirmation dialogs.
 4. Public/legal/help copy plus automated UI coverage for every route.

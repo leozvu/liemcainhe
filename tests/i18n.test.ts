@@ -16,6 +16,8 @@ describe('nền tảng giao diện song ngữ', () => {
   it('dịch và thay biến trong thông điệp', () => {
     expect(translate('en', 'campaign.outputCount', { count: 3 })).toBe('3 deliverables');
     expect(translate('vi', 'sidebar.productionProgress', { progress: 72 })).toBe('Tiến độ sản xuất 72%');
+    expect(translate('en', 'campaign.directoryCount', { count: 4 })).toBe('4 managed profiles.');
+    expect(translate('en', 'brand.readiness', { ready: 7, total: 10 })).toBe('7/10 data groups are ready for the agent.');
   });
 
   it('cấp locale chuẩn cho Intl', () => {
