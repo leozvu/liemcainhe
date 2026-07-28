@@ -743,6 +743,8 @@ export interface AISupervisorIssue {
   title: string;
   detail: string;
   repairTarget: AISupervisorRepairTarget;
+  /** Chỉ những keyframe thật sự có lỗi; rỗng/không có nghĩa là chưa xác định. */
+  frameTargets?: Array<'start' | 'end'>;
   confidence?: number;
   createdAt: number;
   updatedAt: number;
@@ -764,6 +766,12 @@ export interface AISupervisorPolicy {
   repairBudgetUsd: number;
   visionBudgetUsd: number;
   maxVisionShotsPerRun: number;
+  /** Bỏ kết quả Vision có độ tin thấp hơn ngưỡng này để giảm false positive. */
+  minimumVisionConfidence: number;
+  /** Chỉ cho phép Vision chặn release khi đạt ngưỡng cao hơn này. */
+  criticalVisionConfidence: number;
+  /** Bắt buộc mọi shot có media phải qua Vision trước khi release. */
+  requireVisionForRelease: boolean;
   requireHumanApproval: boolean;
 }
 

@@ -20,7 +20,7 @@ AI trong app đang đảm nhiệm **một vai**:
 |---|---|
 | **Máy sinh** | Mạnh. 114 model, chuyển tuyến khi lỗi, đếm chi phí |
 | **Người lập kế hoạch** | Yếu. Creative Director đề xuất nhưng không giải bài toán ràng buộc |
-| **Người thẩm định** | Yếu. AI Supervisor kiểm *sau khi đã tiêu tiền*, chưa hiệu chỉnh |
+| **Người thẩm định** | Đã có local audit, Vision dùng Reference Pack, confidence calibration, selective repair và Release Gate; còn thiếu dữ liệu chiến dịch thật để đo độ chính xác |
 | **Người học** | **Không có.** Mọi dự án bắt đầu từ con số không |
 
 Bằng chứng trong code: `CreativeDirectorToolName` có đúng sáu giá trị, cả sáu đều là công cụ sinh. Không có công cụ đọc số liệu, đọc lịch sử duyệt, hay ước tính chi phí trước khi làm.
