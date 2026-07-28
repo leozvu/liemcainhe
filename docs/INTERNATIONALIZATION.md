@@ -21,12 +21,13 @@ All shared interface copy lives in `services/i18n.ts`. Components consume it thr
 - Campaign creation/editing, deliverable setup, campaign details, and client directory.
 - Client profile creation and Brand Kit editing across identity, voice, platform rules, and approved memory.
 - API onboarding and the internal model gateway settings.
+- Pre-production Room, localized brief-readiness checks, deliverable handoff, and cost guardrails.
+- Campaign Zero runbook, evidence gates, telemetry, team clock, provider reconciliation, and paid-test preflight.
 
 ## Next translation waves
 
-1. Pre-production Room and Campaign Zero operating panels.
-2. Content Studio, Script, Assets, Voice, Director, and Export stages.
-3. Operations, review portals, cost dashboards, empty/error states, and confirmation dialogs.
-4. Public/legal/help copy plus automated UI coverage for every route.
+1. Content Studio, Script, Assets, Voice, Director, and Export stages.
+2. Operations, review portals, cost dashboards, empty/error states, and confirmation dialogs.
+3. Public/legal/help copy plus automated UI coverage for every route.
 
 New visible copy should not be hardcoded in a translated surface. Add the Vietnamese source and English counterpart together, then cover interpolation or fallback behavior when applicable.

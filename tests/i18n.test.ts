@@ -18,6 +18,9 @@ describe('nền tảng giao diện song ngữ', () => {
     expect(translate('vi', 'sidebar.productionProgress', { progress: 72 })).toBe('Tiến độ sản xuất 72%');
     expect(translate('en', 'campaign.directoryCount', { count: 4 })).toBe('4 managed profiles.');
     expect(translate('en', 'brand.readiness', { ready: 7, total: 10 })).toBe('7/10 data groups are ready for the agent.');
+    expect(translate('en', 'preproduction.readinessCount', { ready: 6, total: 8 })).toBe('6/8 items confirmed');
+    expect(translate('en', 'campaignZero.gatesShort', { completed: 9, total: 14 })).toBe('9/14 gates');
+    expect(translate('en', 'campaignZero.preflightLocked', { count: 2 })).toBe('Real requests locked · 2 conditions remaining');
   });
 
   it('cấp locale chuẩn cho Intl', () => {
