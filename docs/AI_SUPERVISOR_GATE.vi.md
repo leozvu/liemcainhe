@@ -72,8 +72,9 @@ Vision là tùy chọn mặc định để giữ chi phí thấp. Campaign cao c
 | Chạy sửa | `executeSupervisorRepair` |
 | Hủy sửa | `cancelSupervisorRepair` |
 | Hiển thị cổng release | `getAISupervisorGate` |
+| Chặn ghép/tải master tại màn Xuất bản | `assertAISupervisorCanRelease` |
 
-UI nằm tại `components/AISupervisor.tsx`, được mở từ Production Center.
+UI cấu hình nằm tại `components/AISupervisor.tsx`, được mở từ Production Center. Màn `components/StageExport/index.tsx` đọc cùng gate, vô hiệu nút ghép/tải master và kiểm tra lại trong handler trước khi tạo đầu ra. Xem trước, tải tài nguyên gốc và xuất EDL/SRT nội bộ vẫn khả dụng để editor xử lý lỗi.
 
 ## Kiểm thử không tốn API
 

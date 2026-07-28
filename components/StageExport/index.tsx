@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Film } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Film, ShieldAlert } from 'lucide-react';
 import { ProjectState } from '../../types';
 import { downloadEditorialPackage, downloadMasterVideo, downloadSourceAssets } from '../../services/exportService';
 import { cancelBrowserMasterRender, renderMasterVideoInBrowser } from '../../services/browserMasterRenderService';
+import { assertAISupervisorCanRelease, getAISupervisorGate } from '../../services/aiSupervisorService';
 import { STYLES } from './constants';
 import {
   calculateEstimatedDuration,
@@ -28,6 +29,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
   const completedShots = getCompletedShots(project);
   const progress = calculateProgress(project);
   const estimatedDuration = calculateEstimatedDuration(project);
+  const releaseGate = getAISupervisorGate(project);
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadPhase, setDownloadPhase] = useState('');
@@ -107,11 +109,10 @@ const StageExport: React.FC<Props> = ({ project }) => {
 
   const handleDownloadMaster = async () => {
     if (isDownloading || progress < 100) return;
-    
-    setIsDownloading(true);
-    setDownloadProgress(0);
-    
     try {
+      assertAISupervisorCanRelease(project);
+      setIsDownloading(true);
+      setDownloadProgress(0);
       await downloadMasterVideo(project, (phase, prog) => {
         setDownloadPhase(phase);
         setDownloadProgress(prog);
@@ -164,11 +165,12 @@ const StageExport: React.FC<Props> = ({ project }) => {
 
   const handleRenderMaster = async () => {
     if (isRenderingMaster || progress < 100) return;
-    renderCancelledRef.current = false;
-    setIsRenderingMaster(true);
-    setRenderProgress(0);
-    setRenderPhase('Đang chuẩn bị…');
     try {
+      assertAISupervisorCanRelease(project);
+      renderCancelledRef.current = false;
+      setIsRenderingMaster(true);
+      setRenderProgress(0);
+      setRenderPhase('Đang chuẩn bị…');
       await renderMasterVideoInBrowser(project, ({ phase, progress: nextProgress }) => {
         setRenderPhase(phase);
         setRenderProgress(nextProgress);
@@ -213,13 +215,37 @@ const StageExport: React.FC<Props> = ({ project }) => {
         </div>
         <div className="flex items-center gap-2">
           <span className={STYLES.header.status}>
-            Trạng thái: {progress === 100 ? 'SẴN SÀNG' : 'ĐANG XỬ LÝ'}
+            Trạng thái: {!releaseGate.canRelease ? 'ĐANG KHÓA' : progress === 100 ? 'SẴN SÀNG' : 'ĐANG XỬ LÝ'}
           </span>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 md:p-12">
         <div className="max-w-6xl mx-auto space-y-8">
+          <div
+            role="status"
+            aria-live="polite"
+            className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+              releaseGate.status === 'blocked'
+                ? 'border-rose-200/20 bg-rose-200/[.05]'
+                : releaseGate.status === 'review'
+                  ? 'border-amber-200/20 bg-amber-200/[.05]'
+                  : 'border-emerald-200/20 bg-emerald-200/[.05]'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              {releaseGate.status === 'blocked'
+                ? <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-200" />
+                : releaseGate.status === 'review'
+                  ? <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
+                  : <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-200" />}
+              <div>
+                <h3 className="text-sm font-semibold text-white">AI Supervisor · {releaseGate.label}</h3>
+                <p className="mt-1 text-[11px] leading-5 text-zinc-400">{releaseGate.reasons.join(' · ')}</p>
+              </div>
+            </div>
+            {!releaseGate.canRelease && <span className="text-[10px] font-semibold text-rose-100">Vào Production Center → AI Supervisor để xử lý</span>}
+          </div>
           
           <div>
             <StatusPanel 
@@ -244,6 +270,7 @@ const StageExport: React.FC<Props> = ({ project }) => {
                 phase: renderPhase,
                 progress: renderProgress,
               }}
+              releaseBlocked={!releaseGate.canRelease}
               onPreview={openVideoPlayer}
               onRenderMaster={() => void handleRenderMaster()}
               onCancelRender={handleCancelRender}

@@ -8,6 +8,7 @@ interface Props {
   progress: number;
   downloadState: DownloadState;
   renderState: DownloadState;
+  releaseBlocked: boolean;
   onPreview: () => void;
   onRenderMaster: () => void;
   onCancelRender: () => void;
@@ -21,6 +22,7 @@ const ActionButtons: React.FC<Props> = ({
   progress,
   downloadState,
   renderState,
+  releaseBlocked,
   onPreview,
   onRenderMaster,
   onCancelRender,
@@ -43,8 +45,9 @@ const ActionButtons: React.FC<Props> = ({
 
       <button
         onClick={isRendering ? onCancelRender : onRenderMaster}
-        disabled={progress < 100 && !isRendering}
-        className={isRendering ? STYLES.button.loading : progress === 100 ? STYLES.button.secondary : STYLES.button.disabled}
+        disabled={(progress < 100 || releaseBlocked) && !isRendering}
+        className={isRendering ? STYLES.button.loading : progress === 100 && !releaseBlocked ? STYLES.button.secondary : STYLES.button.disabled}
+        title={releaseBlocked ? 'AI Supervisor đang khóa đầu ra' : undefined}
       >
         {isRendering ? <X className="h-4 w-4" /> : <Scissors className="h-4 w-4" />}
         {isRendering ? `${renderPhase} ${renderProgress}% · Hủy` : 'Ghép & tải MP4'}
@@ -52,11 +55,12 @@ const ActionButtons: React.FC<Props> = ({
 
       <button 
         onClick={onDownloadMaster}
-        disabled={progress < 100 || isDownloading} 
+        disabled={progress < 100 || isDownloading || releaseBlocked}
+        title={releaseBlocked ? 'AI Supervisor đang khóa đầu ra' : undefined}
         className={
           isDownloading
             ? STYLES.button.loading
-            : progress === 100 
+            : progress === 100 && !releaseBlocked
             ? STYLES.button.secondary
             : STYLES.button.disabled
         }
