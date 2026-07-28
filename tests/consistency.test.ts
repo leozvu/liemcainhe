@@ -4,6 +4,8 @@ import {
   addReference,
   approveReference,
   assessCharacterReadiness,
+  buildShotConsistencyPrompt,
+  buildShotReferencePack,
   buildShotReferenceImages,
   buildDependencyGraph,
   classifyRegenerationScope,
@@ -177,6 +179,17 @@ describe('khoá tham số sinh', () => {
     const second = lockGenerationParams(character({ id: 'char_2', name: 'Minh' }), { modelId: 'm2', aspectRatio: '16:9' });
     expect(() => resolveGenerationParams([first, second], 'm3', '1:1')).toThrow(/Hạnh, Minh/);
   });
+
+  it('khóa bối cảnh được áp tại cùng entry point với khóa nhân vật', () => {
+    expect(resolveGenerationParams([], 'model-moi', '16:9', [{
+      name: 'Quầy giao dịch',
+      lock: { modelId: 'model-boi-canh', aspectRatio: '9:16', lockedAt: 1 },
+    }])).toMatchObject({
+      modelId: 'model-boi-canh',
+      aspectRatio: '9:16',
+      lockedBy: 'Quầy giao dịch',
+    });
+  });
 });
 
 describe('ảnh tham chiếu thực sự gửi vào keyframe', () => {
@@ -210,6 +223,73 @@ describe('ảnh tham chiếu thực sự gửi vào keyframe', () => {
       referencePack: [{ id: 'same', imageUrl: 'same', angle: 'front', approved: true, addedAt: 1 }],
     });
     expect(buildShotReferenceImages(shot(), data, ['same', 'brand'])).toEqual(['same', 'brand']);
+  });
+});
+
+describe('Reference Pack theo vai trò', () => {
+  it('giữ đồng thời neo nhân vật, sản phẩm và bối cảnh khi model chỉ nhận 3 ảnh', () => {
+    const p = project({
+      brandKitSnapshot: {
+        colors: [], fonts: [], toneOfVoice: '', mandatoryTerms: [], forbiddenTerms: [], ctas: [], approvedExamples: [], platformRules: [], updatedAt: 1,
+        assets: [{ id: 'product_1', type: 'product', name: 'Serum Egoric', url: 'product-image', notes: 'chai xanh ngọc' }],
+      },
+    });
+    p.scriptData!.characters[0].referenceImage = 'character-image';
+    p.scriptData!.scenes[0].referenceImage = 'scene-image';
+
+    const pack = buildShotReferencePack(p, p.shots[0]);
+
+    expect(pack.items.map((item) => item.role)).toEqual(['character', 'product', 'scene']);
+    expect(pack.images).toEqual(['character-image', 'product-image', 'scene-image']);
+    expect(pack.coverage).toMatchObject({ charactersWithImage: 1, product: true, scene: true });
+  });
+
+  it('không chặn sinh khi thiếu toàn bộ ảnh mà chuyển sang prompt fallback', () => {
+    const p = project();
+    const pack = buildShotReferencePack(p, p.shots[0]);
+    const prompt = buildShotConsistencyPrompt(p, p.shots[0]);
+
+    expect(pack.images).toEqual([]);
+    expect(pack.promptContext.join(' ')).toContain('Nhân vật Hạnh');
+    expect(pack.promptContext.join(' ')).toContain('Quầy giao dịch');
+    expect(pack.warnings.join(' ')).toContain('hệ thống sẽ giữ nhân vật bằng mô tả prompt');
+    expect(prompt).toContain('Không có ảnh tham chiếu');
+  });
+
+  it('tôn trọng lựa chọn bỏ khóa sản phẩm của người dùng', () => {
+    const p = project({
+      consistency: { lockedBrandAssetIds: [], updatedAt: 1 },
+      brandKitSnapshot: {
+        colors: [], fonts: [], toneOfVoice: '', mandatoryTerms: [], forbiddenTerms: [], ctas: [], approvedExamples: [], platformRules: [], updatedAt: 1,
+        assets: [{ id: 'product_1', type: 'product', name: 'Serum', url: 'product-image' }],
+      },
+    });
+    const pack = buildShotReferencePack(p, p.shots[0]);
+    expect(pack.items.some((item) => item.role === 'product')).toBe(false);
+    expect(pack.warnings).toContain('Chưa khoá sản phẩm Brand Kit cho shot này.');
+  });
+
+  it('ảnh trang phục được ưu tiên làm neo cho nhân vật của shot', () => {
+    const p = project();
+    p.scriptData!.characters[0].referenceImage = 'face';
+    p.scriptData!.characters[0].variations = [{ id: 'red', name: 'Áo đỏ', visualPrompt: 'áo đỏ', referenceImage: 'wardrobe' }];
+    p.shots[0].characterVariations = { char_1: 'red' };
+    const pack = buildShotReferencePack(p, p.shots[0], [], 1);
+    expect(pack.items[0]).toMatchObject({ role: 'wardrobe', imageUrl: 'wardrobe' });
+  });
+
+  it('tự lấy khung cuối shot trước làm neo continuity cho shot sau', () => {
+    const first = shot({
+      id: 'shot_1',
+      keyframes: [{ id: 'end_1', type: 'end', visualPrompt: 'x', imageUrl: 'previous-end', status: 'completed' }],
+    });
+    const second = shot({ id: 'shot_2' });
+    const p = project({ shots: [first, second] });
+
+    expect(buildShotReferencePack(p, second).items).toContainEqual(expect.objectContaining({
+      role: 'continuity',
+      imageUrl: 'previous-end',
+    }));
   });
 });
 

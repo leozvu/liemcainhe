@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { MapPin, Check, Sparkles, Loader2, Upload, Trash2, Edit2, AlertCircle, FolderPlus } from 'lucide-react';
+import { MapPin, Check, Loader2, Trash2, Edit2, AlertCircle, FolderPlus, LockKeyhole, LockKeyholeOpen } from 'lucide-react';
+import { AspectRatio, GenerationLock } from '../../types';
 import PromptEditor from './PromptEditor';
 import ImageUploadButton from './ImageUploadButton';
 
@@ -12,6 +13,7 @@ interface SceneCardProps {
     visualPrompt?: string;
     referenceImage?: string;
     status?: 'pending' | 'generating' | 'completed' | 'failed';
+    lock?: GenerationLock;
   };
   isGenerating: boolean;
   onGenerate: () => void;
@@ -21,6 +23,10 @@ interface SceneCardProps {
   onDelete: () => void;
   onUpdateInfo: (updates: { location?: string; time?: string; atmosphere?: string }) => void;
   onAddToLibrary: () => void;
+  currentModelId: string;
+  currentAspectRatio: AspectRatio;
+  onLockGeneration: () => void;
+  onUnlockGeneration: () => void;
 }
 
 const SceneCard: React.FC<SceneCardProps> = ({
@@ -33,6 +39,10 @@ const SceneCard: React.FC<SceneCardProps> = ({
   onDelete,
   onUpdateInfo,
   onAddToLibrary,
+  currentModelId,
+  currentAspectRatio,
+  onLockGeneration,
+  onUnlockGeneration,
 }) => {
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isEditingTime, setIsEditingTime] = useState(false);
@@ -206,6 +216,32 @@ const SceneCard: React.FC<SceneCardProps> = ({
             />
           </div>
         )}
+
+        <div className="mt-3 pt-3 border-t border-white/10">
+          <div className={`rounded-xl border px-3 py-2.5 ${scene.lock ? 'border-cyan-200/25 bg-cyan-300/[0.055]' : 'border-white/10 bg-black/10'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">Khóa bối cảnh</p>
+                <p className="text-[9px] text-zinc-600 truncate mt-0.5">
+                  {scene.lock ? `${scene.lock.modelId} · ${scene.lock.aspectRatio || currentAspectRatio}` : 'Giữ cùng model và tỷ lệ cho mọi shot'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={scene.lock ? onUnlockGeneration : onLockGeneration}
+                disabled={isGenerating}
+                title={scene.lock ? 'Mở khóa bối cảnh' : `Khóa ${currentModelId} · ${currentAspectRatio}`}
+                aria-pressed={Boolean(scene.lock)}
+                aria-label={scene.lock ? `Mở khóa bối cảnh ${scene.location}` : `Khóa model và tỷ lệ cho bối cảnh ${scene.location}`}
+                className={`w-11 h-11 shrink-0 rounded-xl grid place-items-center border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 disabled:opacity-30 ${scene.lock
+                  ? 'border-cyan-200/25 bg-cyan-300/10 text-cyan-200 hover:bg-cyan-300/15'
+                  : 'border-white/10 bg-white/[0.04] text-zinc-500 hover:text-white hover:bg-white/[0.08]'}`}
+              >
+                {scene.lock ? <LockKeyhole className="w-3.5 h-3.5" /> : <LockKeyholeOpen className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-3 pt-3 border-t border-white/10">
           <button
