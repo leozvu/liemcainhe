@@ -719,7 +719,7 @@ async function handleAccountApi(request, env, url) {
   }
 
   if (url.pathname === '/api/account/export' && request.method === 'GET') {
-    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments, campaignFinancials, distributionPackages] = await Promise.all([
+    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments, campaignFinancials, distributionPackages, distributionConnections, distributionJobs] = await Promise.all([
       ensureAccountProfile(request, env, email),
       env.DB.prepare('SELECT project_id AS projectId, title, payload_json AS payloadJson, updated_at AS updatedAt FROM egoric_projects WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 100').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 5000').bind(email).all(),
@@ -732,6 +732,8 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('SELECT * FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?) ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_campaign_financials WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_distribution_packages WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
+      env.DB.prepare('SELECT id, platform, external_account_id, display_name, status, scopes_json, expires_at, last_verified_at, created_at, updated_at FROM egoric_distribution_connections WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
+      env.DB.prepare('SELECT id, project_id, package_id, platform, connection_id, status, idempotency_key, attempt, payload_json, created_at, updated_at FROM egoric_distribution_jobs WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
     ]);
     return json({
       product: 'Egoric Film Studio', exportedAt: new Date().toISOString(), profile,
@@ -741,6 +743,8 @@ async function handleAccountApi(request, env, url) {
       clientReviewPortals: clientReviewPortals.results || [], clientReviewComments: clientReviewComments.results || [],
       campaignFinancials: campaignFinancials.results || [],
       distributionPackages: distributionPackages.results || [],
+      distributionConnections: distributionConnections.results || [],
+      distributionJobs: distributionJobs.results || [],
     });
   }
 
@@ -752,6 +756,9 @@ async function handleAccountApi(request, env, url) {
     await deleteMediaPrefix(env.MEDIA, `${owner}/`);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?)').bind(email),
+      env.DB.prepare('DELETE FROM egoric_distribution_jobs WHERE owner_email = ?').bind(email),
+      env.DB.prepare('DELETE FROM egoric_distribution_oauth_states WHERE owner_email = ?').bind(email),
+      env.DB.prepare('DELETE FROM egoric_distribution_connections WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_distribution_packages WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_client_review_portals WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_stage_approvals WHERE owner_email = ?').bind(email),
@@ -1556,6 +1563,713 @@ async function handleDistributionPackagesApi(request, env, url) {
   return json({ package: packagePayload, duplicate: false }, 201);
 }
 
+const DISTRIBUTION_OAUTH_PLATFORMS = new Set(['youtube', 'tiktok']);
+const DISTRIBUTION_JOB_STATUSES = new Set(['queued', 'uploading', 'processing', 'awaiting-user', 'published', 'failed', 'indeterminate', 'cancelled']);
+const YOUTUBE_CHUNK_BYTES = 8 * 1024 * 1024;
+const TIKTOK_CHUNK_BYTES = 10 * 1024 * 1024;
+
+const distributionAdapterReadiness = (env, platform, connectionCount = 0) => {
+  if (platform === 'youtube') {
+    const configured = Boolean(env.YOUTUBE_CLIENT_ID && env.YOUTUBE_CLIENT_SECRET && String(env.DISTRIBUTION_TOKEN_KEY || '').length >= 32);
+    return {
+      platform, configured, mode: 'resumable-upload', connectionCount,
+      blocker: configured ? undefined : 'Cần YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET và DISTRIBUTION_TOKEN_KEY trên server.',
+    };
+  }
+  if (platform === 'tiktok') {
+    const configured = Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET && String(env.DISTRIBUTION_TOKEN_KEY || '').length >= 32);
+    return {
+      platform, configured, mode: 'creator-inbox', connectionCount,
+      blocker: configured ? undefined : 'Cần TikTok Login Kit, quyền video.upload và khóa mã hóa token trên server.',
+    };
+  }
+  return {
+    platform, configured: false, mode: 'app-review', connectionCount,
+    blocker: 'Adapter Meta đang khóa cho tới khi App Review và Page/Instagram permissions được phê duyệt.',
+  };
+};
+
+const bytesToBase64Url = (bytes) => btoa(String.fromCharCode(...bytes))
+  .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+const base64UrlToBytes = (value) => {
+  const padded = String(value || '').replaceAll('-', '+').replaceAll('_', '/') + '==='.slice((String(value || '').length + 3) % 4);
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+};
+
+const distributionTokenKey = async (env) => {
+  const secret = String(env.DISTRIBUTION_TOKEN_KEY || '');
+  if (secret.length < 32) throw new Error('Server chưa có khóa mã hóa token phân phối tối thiểu 32 ký tự.');
+  const raw = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+};
+
+const encryptDistributionSecret = async (env, value) => {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, await distributionTokenKey(env), new TextEncoder().encode(JSON.stringify(value)),
+  );
+  return `v1:${bytesToBase64Url(iv)}:${bytesToBase64Url(new Uint8Array(ciphertext))}`;
+};
+
+const decryptDistributionSecret = async (env, value) => {
+  const [version, iv, ciphertext] = String(value || '').split(':');
+  if (version !== 'v1' || !iv || !ciphertext) throw new Error('Token kết nối bị lỗi định dạng.');
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64UrlToBytes(iv) }, await distributionTokenKey(env), base64UrlToBytes(ciphertext),
+  );
+  return JSON.parse(new TextDecoder().decode(plaintext));
+};
+
+const createOauthState = () => bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+const safeDistributionPlatform = (value) => Object.prototype.hasOwnProperty.call(DISTRIBUTION_PLATFORM_RULES, value) ? value : null;
+const safeDistributionId = (value, prefix) => new RegExp(`^${prefix}_[a-zA-Z0-9-]{8,180}$`).test(value || '') ? value : null;
+
+const hydrateDistributionConnection = (row) => {
+  let scopes = [];
+  try { scopes = JSON.parse(row.scopes_json || '[]'); } catch { /* Không lộ secret vì metadata lỗi. */ }
+  return {
+    id: row.id,
+    platform: row.platform,
+    status: row.status,
+    externalAccountId: row.external_account_id,
+    displayName: row.display_name,
+    scopes: Array.isArray(scopes) ? scopes : [],
+    expiresAt: row.expires_at ? Number(row.expires_at) : undefined,
+    lastVerifiedAt: row.last_verified_at ? Number(row.last_verified_at) : undefined,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+};
+
+const hydrateDistributionJob = (row) => {
+  let payload = {};
+  try { payload = JSON.parse(row.payload_json || '{}'); } catch { /* Trả metadata tối thiểu để operator còn thấy lỗi. */ }
+  return {
+    ...payload,
+    id: row.id,
+    projectId: row.project_id,
+    packageId: row.package_id,
+    platform: row.platform,
+    connectionId: row.connection_id,
+    status: DISTRIBUTION_JOB_STATUSES.has(row.status) ? row.status : 'failed',
+    attempt: Number(row.attempt || 1),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+};
+
+const readExternalPayload = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); } catch { return { message: text.slice(0, 500) }; }
+};
+
+const externalErrorMessage = (payload, fallback) => cleanText(
+  payload?.error?.message || payload?.error_description || payload?.message || payload?.error?.code || fallback,
+  500,
+);
+
+async function upsertDistributionConnection(env, email, platform, externalAccountId, displayName, scopes, tokenPayload, expiresAt) {
+  const existing = await env.DB.prepare(
+    'SELECT id, created_at FROM egoric_distribution_connections WHERE owner_email = ? AND platform = ? AND external_account_id = ?'
+  ).bind(email, platform, externalAccountId).first();
+  const now = Date.now();
+  const id = existing?.id || `connection_${crypto.randomUUID()}`;
+  const secret = await encryptDistributionSecret(env, tokenPayload);
+  await env.DB.prepare(
+    `INSERT INTO egoric_distribution_connections
+      (id, owner_email, platform, external_account_id, display_name, status, scopes_json, secret_json, expires_at, last_verified_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'connected', ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(owner_email, platform, external_account_id) DO UPDATE SET
+       display_name = excluded.display_name, status = 'connected', scopes_json = excluded.scopes_json,
+       secret_json = excluded.secret_json, expires_at = excluded.expires_at,
+       last_verified_at = excluded.last_verified_at, updated_at = excluded.updated_at`
+  ).bind(
+    id, email, platform, externalAccountId, displayName || externalAccountId,
+    JSON.stringify(scopes || []), secret, expiresAt || null, now, Number(existing?.created_at || now), now,
+  ).run();
+  return id;
+}
+
+async function handleDistributionOauthStart(request, env, url) {
+  if (!env.DB) return json({ error: 'OAuth phân phối chưa được cấp D1.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập trước khi kết nối tài khoản nền tảng.' }, 401);
+  const platform = safeDistributionPlatform(url.searchParams.get('platform'));
+  const projectId = safeProjectId(url.searchParams.get('projectId'));
+  if (!platform || !projectId || !DISTRIBUTION_OAUTH_PLATFORMS.has(platform)) return json({ error: 'Nền tảng OAuth không hợp lệ.' }, 400);
+  const readiness = distributionAdapterReadiness(env, platform);
+  if (!readiness.configured) return json({ error: readiness.blocker }, 503);
+
+  const state = createOauthState();
+  const stateHash = await hashText(state);
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM egoric_distribution_oauth_states WHERE expires_at < ?').bind(now),
+    env.DB.prepare(
+      `INSERT INTO egoric_distribution_oauth_states
+       (state_hash, owner_email, project_id, platform, return_path, expires_at, created_at)
+       VALUES (?, ?, ?, ?, '/', ?, ?)`
+    ).bind(stateHash, email, projectId, platform, now + 10 * 60_000, now),
+  ]);
+  const callbackUrl = `${url.origin}/api/distribution-oauth/callback/${platform}`;
+  let authorizeUrl;
+  if (platform === 'youtube') {
+    const target = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    target.searchParams.set('client_id', env.YOUTUBE_CLIENT_ID);
+    target.searchParams.set('redirect_uri', callbackUrl);
+    target.searchParams.set('response_type', 'code');
+    target.searchParams.set('scope', 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly');
+    target.searchParams.set('access_type', 'offline');
+    target.searchParams.set('include_granted_scopes', 'true');
+    target.searchParams.set('prompt', 'consent');
+    target.searchParams.set('state', state);
+    authorizeUrl = target.toString();
+  } else {
+    const target = new URL('https://www.tiktok.com/v2/auth/authorize/');
+    target.searchParams.set('client_key', env.TIKTOK_CLIENT_KEY);
+    target.searchParams.set('redirect_uri', callbackUrl);
+    target.searchParams.set('response_type', 'code');
+    target.searchParams.set('scope', 'user.info.basic,video.upload');
+    target.searchParams.set('state', state);
+    authorizeUrl = target.toString();
+  }
+  return json({ authorizeUrl });
+}
+
+const oauthResultRedirect = (url, platform, result, detail) => {
+  const target = new URL('/', url.origin);
+  target.searchParams.set('distributionOAuth', result);
+  target.searchParams.set('platform', platform || 'unknown');
+  if (detail) target.searchParams.set('detail', cleanText(detail, 160));
+  const message = JSON.stringify({
+    type: 'egoric:distribution-oauth', result, platform: platform || 'unknown', detail: detail ? cleanText(detail, 160) : undefined,
+  }).replaceAll('<', '\\u003c');
+  const fallback = JSON.stringify(target.toString()).replaceAll('<', '\\u003c');
+  return new Response(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Egoric · OAuth</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#07090c;color:#e4e4e7;font:14px system-ui"><p>Đã xử lý kết nối. Cửa sổ này sẽ tự đóng…</p><script>const message=${message};const fallback=${fallback};if(window.opener){window.opener.postMessage(message,location.origin);window.close();setTimeout(()=>location.replace(fallback),700)}else{location.replace(fallback)}</script></body></html>`, {
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+  });
+};
+
+async function handleDistributionOauthCallback(request, env, url) {
+  if (!env.DB) return oauthResultRedirect(url, 'unknown', 'error', 'D1 chưa sẵn sàng');
+  const match = url.pathname.match(/^\/api\/distribution-oauth\/callback\/(youtube|tiktok)$/);
+  const platform = match?.[1];
+  const state = url.searchParams.get('state');
+  const code = url.searchParams.get('code');
+  if (!platform || !state) return oauthResultRedirect(url, platform, 'error', 'OAuth state không hợp lệ');
+  const stateHash = await hashText(state);
+  const row = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_oauth_states WHERE state_hash = ? AND platform = ?'
+  ).bind(stateHash, platform).first();
+  if (!row || Number(row.expires_at) < Date.now()) return oauthResultRedirect(url, platform, 'error', 'Phiên kết nối đã hết hạn');
+  await env.DB.prepare('DELETE FROM egoric_distribution_oauth_states WHERE state_hash = ?').bind(stateHash).run();
+  if (url.searchParams.get('error') || !code) return oauthResultRedirect(url, platform, 'cancelled', 'Người dùng chưa cấp quyền');
+  const callbackUrl = `${url.origin}/api/distribution-oauth/callback/${platform}`;
+
+  try {
+    if (platform === 'youtube') {
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: env.YOUTUBE_CLIENT_ID, client_secret: env.YOUTUBE_CLIENT_SECRET,
+          code, grant_type: 'authorization_code', redirect_uri: callbackUrl,
+        }),
+      });
+      const tokens = await readExternalPayload(tokenResponse);
+      if (!tokenResponse.ok || !tokens.access_token) throw new Error(externalErrorMessage(tokens, 'Google không cấp access token.'));
+      const channelResponse = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const channelPayload = await readExternalPayload(channelResponse);
+      const channel = channelPayload?.items?.[0];
+      if (!channelResponse.ok || !channel?.id) throw new Error(externalErrorMessage(channelPayload, 'Không tìm thấy kênh YouTube.'));
+      const expiresAt = Date.now() + Number(tokens.expires_in || 3600) * 1000;
+      await upsertDistributionConnection(
+        env, row.owner_email, platform, channel.id, channel.snippet?.title || 'YouTube channel',
+        String(tokens.scope || '').split(' ').filter(Boolean), { ...tokens, expiresAt }, expiresAt,
+      );
+    } else {
+      const tokenResponse = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_key: env.TIKTOK_CLIENT_KEY, client_secret: env.TIKTOK_CLIENT_SECRET,
+          code, grant_type: 'authorization_code', redirect_uri: callbackUrl,
+        }),
+      });
+      const tokens = await readExternalPayload(tokenResponse);
+      if (!tokenResponse.ok || !tokens.access_token || !tokens.open_id) throw new Error(externalErrorMessage(tokens, 'TikTok không cấp access token.'));
+      const profileResponse = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const profilePayload = await readExternalPayload(profileResponse);
+      const profile = profilePayload?.data?.user || {};
+      const expiresAt = Date.now() + Number(tokens.expires_in || 86400) * 1000;
+      await upsertDistributionConnection(
+        env, row.owner_email, platform, tokens.open_id, profile.display_name || 'TikTok creator',
+        String(tokens.scope || '').split(',').filter(Boolean), { ...tokens, expiresAt }, expiresAt,
+      );
+    }
+    return oauthResultRedirect(url, platform, 'success');
+  } catch (error) {
+    console.error('Distribution OAuth callback error', platform, error);
+    return oauthResultRedirect(url, platform, 'error', error instanceof Error ? error.message : 'Kết nối thất bại');
+  }
+}
+
+async function handleDistributionConnectionsApi(request, env, url) {
+  if (!env.DB) return json({ error: 'Kết nối phân phối chưa được cấp D1.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập để quản lý tài khoản nền tảng.' }, 401);
+  if (request.method !== 'DELETE') return json({ error: 'Route này chỉ nhận DELETE.' }, 405);
+  const id = safeDistributionId(url.searchParams.get('id'), 'connection');
+  if (!id) return json({ error: 'Mã kết nối không hợp lệ.' }, 400);
+  const active = await env.DB.prepare(
+    `SELECT id FROM egoric_distribution_jobs WHERE owner_email = ? AND connection_id = ?
+     AND status IN ('queued', 'uploading', 'processing', 'indeterminate') LIMIT 1`
+  ).bind(email, id).first();
+  if (active) return json({ error: 'Không thể ngắt kết nối khi còn job đang chạy hoặc chưa đối soát.' }, 409);
+  await env.DB.prepare(
+    `UPDATE egoric_distribution_connections SET status = 'revoked', secret_json = '', updated_at = ?
+     WHERE id = ? AND owner_email = ?`
+  ).bind(Date.now(), id, email).run();
+  return json({ success: true });
+}
+
+async function handleDistributionOperationsApi(request, env, url) {
+  if (!env.DB) return json({ error: 'Hàng đợi phân phối chưa được cấp D1.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập để xem hàng đợi xuất bản.' }, 401);
+  const projectId = safeProjectId(url.searchParams.get('projectId'));
+  if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
+  const [connections, jobs] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id, platform, external_account_id, display_name, status, scopes_json, expires_at,
+       last_verified_at, created_at, updated_at FROM egoric_distribution_connections
+       WHERE owner_email = ? AND status != 'revoked' ORDER BY updated_at DESC LIMIT 100`
+    ).bind(email).all(),
+    env.DB.prepare(
+      'SELECT * FROM egoric_distribution_jobs WHERE owner_email = ? AND project_id = ? ORDER BY updated_at DESC LIMIT 200'
+    ).bind(email, projectId).all(),
+  ]);
+  const publicConnections = (connections.results || []).map(hydrateDistributionConnection);
+  const counts = publicConnections.reduce((result, item) => ({ ...result, [item.platform]: (result[item.platform] || 0) + 1 }), {});
+  const adapters = Object.keys(DISTRIBUTION_PLATFORM_RULES).map((platform) => distributionAdapterReadiness(env, platform, counts[platform] || 0));
+  return json({ connections: publicConnections, jobs: (jobs.results || []).map(hydrateDistributionJob), adapters });
+}
+
+async function getDistributionAccessToken(env, row) {
+  if (row.status !== 'connected' || !row.secret_json) throw new Error('Tài khoản nền tảng đã hết hạn hoặc bị ngắt kết nối.');
+  let tokens = await decryptDistributionSecret(env, row.secret_json);
+  if (Number(tokens.expiresAt || row.expires_at || 0) > Date.now() + 60_000 && tokens.access_token) return tokens.access_token;
+  if (!tokens.refresh_token) throw new Error('Kết nối không có refresh token; hãy kết nối lại tài khoản.');
+  let response;
+  if (row.platform === 'youtube') {
+    response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: env.YOUTUBE_CLIENT_ID, client_secret: env.YOUTUBE_CLIENT_SECRET,
+        grant_type: 'refresh_token', refresh_token: tokens.refresh_token,
+      }),
+    });
+  } else if (row.platform === 'tiktok') {
+    response = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_key: env.TIKTOK_CLIENT_KEY, client_secret: env.TIKTOK_CLIENT_SECRET,
+        grant_type: 'refresh_token', refresh_token: tokens.refresh_token,
+      }),
+    });
+  } else throw new Error('Adapter chưa hỗ trợ refresh token.');
+  const refreshed = await readExternalPayload(response);
+  if (!response.ok || !refreshed.access_token) {
+    await env.DB.prepare(`UPDATE egoric_distribution_connections SET status = 'expired', updated_at = ? WHERE id = ?`).bind(Date.now(), row.id).run();
+    throw new Error(externalErrorMessage(refreshed, 'Không thể làm mới access token.'));
+  }
+  const expiresAt = Date.now() + Number(refreshed.expires_in || 3600) * 1000;
+  tokens = { ...tokens, ...refreshed, refresh_token: refreshed.refresh_token || tokens.refresh_token, expiresAt };
+  await env.DB.prepare(
+    `UPDATE egoric_distribution_connections SET secret_json = ?, expires_at = ?, status = 'connected', last_verified_at = ?, updated_at = ? WHERE id = ?`
+  ).bind(await encryptDistributionSecret(env, tokens), expiresAt, Date.now(), Date.now(), row.id).run();
+  return tokens.access_token;
+}
+
+const distributionTargetStatus = (status) => status === 'awaiting-user' ? 'awaiting-user' : status;
+
+async function syncDistributionPackageFromJobs(env, email, packageId) {
+  const packageRow = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_packages WHERE id = ? AND owner_email = ?'
+  ).bind(packageId, email).first();
+  if (!packageRow) return undefined;
+  const rows = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_jobs WHERE owner_email = ? AND package_id = ? ORDER BY updated_at DESC'
+  ).bind(email, packageId).all();
+  const jobs = (rows.results || []).map(hydrateDistributionJob);
+  const latestByPlatform = new Map();
+  jobs.forEach((item) => { if (!latestByPlatform.has(item.platform)) latestByPlatform.set(item.platform, item); });
+  const current = hydrateDistributionPackage(packageRow);
+  const targets = (current.targets || []).map((target) => {
+    const job = latestByPlatform.get(target.platform);
+    if (!job) return target;
+    return {
+      ...target, status: distributionTargetStatus(job.status), accountId: job.connectionId,
+      externalId: job.externalId, publishedUrl: job.publishedUrl, error: job.error, updatedAt: job.updatedAt,
+    };
+  });
+  const statuses = targets.map((target) => target.status);
+  const status = statuses.length && statuses.every((item) => item === 'published')
+    ? 'published'
+    : statuses.some((item) => ['failed', 'indeterminate'].includes(item))
+      ? 'attention'
+      : statuses.some((item) => ['queued', 'uploading', 'processing', 'awaiting-user'].includes(item)) ? 'processing' : 'ready';
+  const updatedAt = Date.now();
+  const payload = { ...current, targets, status, updatedAt };
+  await env.DB.prepare(
+    'UPDATE egoric_distribution_packages SET status = ?, payload_json = ?, updated_at = ? WHERE id = ? AND owner_email = ?'
+  ).bind(status, JSON.stringify(payload), updatedAt, packageId, email).run();
+  return payload;
+}
+
+async function persistDistributionJob(env, row, job, privateState) {
+  const updatedAt = Date.now();
+  const publicPayload = { ...job, updatedAt };
+  delete publicPayload.id;
+  delete publicPayload.projectId;
+  delete publicPayload.packageId;
+  delete publicPayload.platform;
+  delete publicPayload.connectionId;
+  delete publicPayload.status;
+  delete publicPayload.attempt;
+  delete publicPayload.createdAt;
+  await env.DB.prepare(
+    `UPDATE egoric_distribution_jobs SET status = ?, attempt = ?, payload_json = ?, private_json = ?, updated_at = ?
+     WHERE id = ? AND owner_email = ?`
+  ).bind(job.status, job.attempt, JSON.stringify(publicPayload), await encryptDistributionSecret(env, privateState), updatedAt, row.id, row.owner_email).run();
+  const refreshed = await env.DB.prepare('SELECT * FROM egoric_distribution_jobs WHERE id = ? AND owner_email = ?').bind(row.id, row.owner_email).first();
+  const hydrated = hydrateDistributionJob(refreshed);
+  const distributionPackage = await syncDistributionPackageFromJobs(env, row.owner_email, row.package_id);
+  return { job: hydrated, package: distributionPackage };
+}
+
+const failDistributionJob = (job, code, message, retrySafe, status = 'failed') => ({
+  ...job, status, errorCode: cleanText(code, 120), error: cleanText(message, 500), retrySafe,
+  indeterminateAt: status === 'indeterminate' ? Date.now() : undefined,
+});
+
+const parseUploadedRange = (value) => {
+  const match = String(value || '').match(/(?:bytes=|bytes\s+0-)(?:0-)?(\d+)$/i);
+  return match ? Number(match[1]) + 1 : 0;
+};
+
+async function runYoutubeDistributionJob(env, row, job, privateState, connection, reconcile) {
+  const token = await getDistributionAccessToken(env, connection);
+  if (job.status === 'queued') {
+    let response;
+    try {
+      response = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=UTF-8',
+          'x-upload-content-length': String(job.totalBytes), 'x-upload-content-type': 'video/mp4',
+        },
+        body: JSON.stringify({
+          snippet: { title: cleanText(privateState.title, 100), description: cleanText(privateState.caption, 5000), categoryId: '22' },
+          status: { privacyStatus: job.visibility || 'private', embeddable: true, license: 'youtube' },
+        }),
+      });
+    } catch (error) {
+      return { job: failDistributionJob(job, 'youtube_init_network', error instanceof Error ? error.message : 'Không thể mở upload session.', true), privateState };
+    }
+    const payload = response.ok ? {} : await readExternalPayload(response);
+    const uploadUrl = response.headers.get('location');
+    if (!response.ok || !uploadUrl) {
+      return { job: failDistributionJob(job, `youtube_init_${response.status}`, externalErrorMessage(payload, 'YouTube từ chối mở upload session.'), response.status >= 500), privateState };
+    }
+    return { job: { ...job, status: 'uploading', progress: 0, retrySafe: true, error: undefined, errorCode: undefined }, privateState: { ...privateState, uploadUrl, offset: 0 } };
+  }
+
+  if (job.status === 'indeterminate') {
+    if (!reconcile || !privateState.uploadUrl) return { job, privateState };
+    try {
+      const response = await fetch(privateState.uploadUrl, {
+        method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-length': '0', 'content-range': `bytes */${job.totalBytes}` },
+      });
+      if (response.status === 308) {
+        const offset = parseUploadedRange(response.headers.get('range'));
+        return { job: { ...job, status: 'uploading', uploadedBytes: offset, progress: Math.min(99, offset / job.totalBytes * 100), error: undefined, errorCode: undefined, retrySafe: true, indeterminateAt: undefined }, privateState: { ...privateState, offset } };
+      }
+      if (response.ok) {
+        const payload = await readExternalPayload(response);
+        return { job: { ...job, status: 'processing', uploadedBytes: job.totalBytes, progress: 100, externalId: payload.id, error: undefined, errorCode: undefined, retrySafe: false, indeterminateAt: undefined }, privateState: { ...privateState, videoId: payload.id } };
+      }
+      return { job: failDistributionJob(job, `youtube_reconcile_${response.status}`, 'YouTube không xác nhận được vị trí upload.', false, 'indeterminate'), privateState };
+    } catch (error) {
+      return { job: failDistributionJob(job, 'youtube_reconcile_network', error instanceof Error ? error.message : 'Đối soát YouTube thất bại.', false, 'indeterminate'), privateState };
+    }
+  }
+
+  if (job.status === 'uploading') {
+    const offset = Number(privateState.offset || job.uploadedBytes || 0);
+    const length = Math.min(YOUTUBE_CHUNK_BYTES, job.totalBytes - offset);
+    const object = await env.MEDIA.get(privateState.mediaKey, { range: { offset, length } });
+    if (!object?.body || length <= 0) return { job: failDistributionJob(job, 'master_missing', 'Không đọc được chunk master trên R2.', false), privateState };
+    let response;
+    try {
+      response = await fetch(privateState.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`, 'content-type': 'video/mp4', 'content-length': String(length),
+          'content-range': `bytes ${offset}-${offset + length - 1}/${job.totalBytes}`,
+        },
+        body: object.body,
+      });
+    } catch (error) {
+      return { job: failDistributionJob(job, 'youtube_upload_unknown', `${error instanceof Error ? error.message : 'Mất kết nối upload.'} Không rõ YouTube đã nhận chunk hay chưa.`, false, 'indeterminate'), privateState };
+    }
+    if (response.status === 308) {
+      const nextOffset = parseUploadedRange(response.headers.get('range')) || offset + length;
+      return { job: { ...job, uploadedBytes: nextOffset, progress: Math.min(99, nextOffset / job.totalBytes * 100), retrySafe: true }, privateState: { ...privateState, offset: nextOffset } };
+    }
+    const payload = await readExternalPayload(response);
+    if (response.ok && payload.id) {
+      return { job: { ...job, status: 'processing', uploadedBytes: job.totalBytes, progress: 100, externalId: payload.id, retrySafe: false }, privateState: { ...privateState, offset: job.totalBytes, videoId: payload.id } };
+    }
+    const unknown = response.status >= 500;
+    return { job: failDistributionJob(job, `youtube_upload_${response.status}`, externalErrorMessage(payload, 'YouTube từ chối chunk video.'), !unknown, unknown ? 'indeterminate' : 'failed'), privateState };
+  }
+
+  if (job.status === 'processing') {
+    const videoId = privateState.videoId || job.externalId;
+    if (!videoId) return { job: failDistributionJob(job, 'youtube_video_id_missing', 'Thiếu video ID để kiểm tra xử lý.', false, 'indeterminate'), privateState };
+    try {
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=status&id=${encodeURIComponent(videoId)}`, { headers: { Authorization: `Bearer ${token}` } });
+      const payload = await readExternalPayload(response);
+      if (!response.ok) return { job: failDistributionJob(job, `youtube_status_${response.status}`, externalErrorMessage(payload, 'Không đọc được trạng thái YouTube.'), false, response.status >= 500 ? 'indeterminate' : 'failed'), privateState };
+      const status = payload?.items?.[0]?.status?.uploadStatus;
+      if (status === 'processed') return { job: { ...job, status: 'published', publishedUrl: `https://www.youtube.com/watch?v=${videoId}`, progress: 100, retrySafe: false, error: undefined, errorCode: undefined }, privateState };
+      if (['failed', 'rejected', 'deleted'].includes(status)) return { job: failDistributionJob(job, `youtube_${status}`, payload?.items?.[0]?.status?.rejectionReason || `YouTube báo ${status}.`, true), privateState };
+      return { job: { ...job, nextPollAt: Date.now() + 15_000 }, privateState };
+    } catch (error) {
+      return { job: failDistributionJob(job, 'youtube_status_unknown', error instanceof Error ? error.message : 'Mất kết nối khi kiểm tra YouTube.', false, 'indeterminate'), privateState };
+    }
+  }
+  return { job, privateState };
+}
+
+const tiktokChunkPlan = (totalBytes) => totalBytes < 5 * 1024 * 1024
+  ? { chunkSize: totalBytes, totalChunkCount: 1 }
+  : {
+    chunkSize: Math.min(TIKTOK_CHUNK_BYTES, totalBytes),
+    totalChunkCount: Math.max(1, Math.floor(totalBytes / Math.min(TIKTOK_CHUNK_BYTES, totalBytes))),
+  };
+
+async function fetchTikTokStatus(token, publishId) {
+  const response = await fetch('https://open.tiktokapis.com/v2/post/publish/status/fetch/', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ publish_id: publishId }),
+  });
+  const payload = await readExternalPayload(response);
+  if (!response.ok || payload?.error?.code !== 'ok') throw new Error(externalErrorMessage(payload, 'TikTok không trả trạng thái hợp lệ.'));
+  return payload.data || {};
+}
+
+async function runTikTokDistributionJob(env, row, job, privateState, connection, reconcile) {
+  const token = await getDistributionAccessToken(env, connection);
+  if (job.status === 'queued') {
+    const plan = tiktokChunkPlan(job.totalBytes);
+    let response;
+    try {
+      response = await fetch('https://open.tiktokapis.com/v2/post/publish/inbox/video/init/', {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({ source_info: { source: 'FILE_UPLOAD', video_size: job.totalBytes, chunk_size: plan.chunkSize, total_chunk_count: plan.totalChunkCount } }),
+      });
+    } catch (error) {
+      return { job: failDistributionJob(job, 'tiktok_init_network', error instanceof Error ? error.message : 'Không thể mở upload session TikTok.', true), privateState };
+    }
+    const payload = await readExternalPayload(response);
+    if (!response.ok || payload?.error?.code !== 'ok' || !payload?.data?.upload_url || !payload?.data?.publish_id) {
+      return { job: failDistributionJob(job, payload?.error?.code || `tiktok_init_${response.status}`, externalErrorMessage(payload, 'TikTok từ chối mở upload session.'), response.status >= 500), privateState };
+    }
+    return { job: { ...job, status: 'uploading', progress: 0, retrySafe: true, error: undefined, errorCode: undefined }, privateState: { ...privateState, uploadUrl: payload.data.upload_url, publishId: payload.data.publish_id, offset: 0, chunkSize: plan.chunkSize } };
+  }
+
+  if (job.status === 'indeterminate') {
+    if (!reconcile || !privateState.publishId) return { job, privateState };
+    try {
+      const data = await fetchTikTokStatus(token, privateState.publishId);
+      const uploadedBytes = Math.min(job.totalBytes, Number(data.uploaded_bytes || 0));
+      if (data.status === 'FAILED') return { job: failDistributionJob(job, data.fail_reason || 'tiktok_failed', data.fail_reason || 'TikTok xử lý thất bại.', data.fail_reason === 'internal'), privateState };
+      if (data.status === 'SEND_TO_USER_INBOX') return { job: { ...job, status: 'awaiting-user', uploadedBytes: job.totalBytes, progress: 100, error: undefined, errorCode: undefined, retrySafe: false, indeterminateAt: undefined }, privateState };
+      if (data.status === 'PUBLISH_COMPLETE') {
+        const postId = data.publicaly_available_post_id?.[0];
+        return { job: { ...job, status: 'published', uploadedBytes: job.totalBytes, progress: 100, externalId: postId ? String(postId) : privateState.publishId, error: undefined, errorCode: undefined, retrySafe: false, indeterminateAt: undefined }, privateState };
+      }
+      return { job: { ...job, status: uploadedBytes < job.totalBytes ? 'uploading' : 'processing', uploadedBytes, progress: Math.min(100, uploadedBytes / job.totalBytes * 100), error: undefined, errorCode: undefined, retrySafe: true, indeterminateAt: undefined }, privateState: { ...privateState, offset: uploadedBytes } };
+    } catch (error) {
+      return { job: failDistributionJob(job, 'tiktok_reconcile_network', error instanceof Error ? error.message : 'Đối soát TikTok thất bại.', false, 'indeterminate'), privateState };
+    }
+  }
+
+  if (job.status === 'uploading') {
+    const offset = Number(privateState.offset || job.uploadedBytes || 0);
+    const chunkSize = Number(privateState.chunkSize || TIKTOK_CHUNK_BYTES);
+    const remaining = job.totalBytes - offset;
+    const length = remaining <= chunkSize * 2 ? remaining : chunkSize;
+    const object = await env.MEDIA.get(privateState.mediaKey, { range: { offset, length } });
+    if (!object?.body || length <= 0) return { job: failDistributionJob(job, 'master_missing', 'Không đọc được chunk master trên R2.', false), privateState };
+    let response;
+    try {
+      response = await fetch(privateState.uploadUrl, {
+        method: 'PUT',
+        headers: { 'content-type': 'video/mp4', 'content-length': String(length), 'content-range': `bytes ${offset}-${offset + length - 1}/${job.totalBytes}` },
+        body: object.body,
+      });
+    } catch (error) {
+      return { job: failDistributionJob(job, 'tiktok_upload_unknown', `${error instanceof Error ? error.message : 'Mất kết nối upload.'} Không rõ TikTok đã nhận chunk hay chưa.`, false, 'indeterminate'), privateState };
+    }
+    if (response.status === 206) {
+      const nextOffset = offset + length;
+      return { job: { ...job, uploadedBytes: nextOffset, progress: Math.min(99, nextOffset / job.totalBytes * 100), retrySafe: true }, privateState: { ...privateState, offset: nextOffset } };
+    }
+    if (response.status === 201) return { job: { ...job, status: 'processing', uploadedBytes: job.totalBytes, progress: 100, externalId: privateState.publishId, retrySafe: false }, privateState: { ...privateState, offset: job.totalBytes } };
+    const payload = await readExternalPayload(response);
+    const unknown = response.status >= 500 || response.status === 416;
+    return { job: failDistributionJob(job, `tiktok_upload_${response.status}`, externalErrorMessage(payload, 'TikTok từ chối chunk video.'), !unknown, unknown ? 'indeterminate' : 'failed'), privateState };
+  }
+
+  if (['processing', 'awaiting-user'].includes(job.status)) {
+    try {
+      const data = await fetchTikTokStatus(token, privateState.publishId || job.externalId);
+      if (data.status === 'FAILED') return { job: failDistributionJob(job, data.fail_reason || 'tiktok_failed', data.fail_reason || 'TikTok xử lý thất bại.', data.fail_reason === 'internal'), privateState };
+      if (data.status === 'SEND_TO_USER_INBOX') return { job: { ...job, status: 'awaiting-user', nextPollAt: Date.now() + 30_000, retrySafe: false }, privateState };
+      if (data.status === 'PUBLISH_COMPLETE') {
+        const postId = data.publicaly_available_post_id?.[0];
+        return { job: { ...job, status: 'published', externalId: postId ? String(postId) : (job.externalId || privateState.publishId), progress: 100, retrySafe: false, error: undefined, errorCode: undefined }, privateState };
+      }
+      return { job: { ...job, status: 'processing', nextPollAt: Date.now() + 15_000 }, privateState };
+    } catch (error) {
+      return { job: failDistributionJob(job, 'tiktok_status_unknown', error instanceof Error ? error.message : 'Mất kết nối khi kiểm tra TikTok.', false, 'indeterminate'), privateState };
+    }
+  }
+  return { job, privateState };
+}
+
+async function queueDistributionJob(request, env, url, email, projectId, body) {
+  const packageId = safeDistributionId(body?.packageId, 'distribution');
+  const connectionId = safeDistributionId(body?.connectionId, 'connection');
+  const platform = safeDistributionPlatform(body?.platform);
+  if (!packageId || !connectionId || !platform) return json({ error: 'Package, nền tảng hoặc tài khoản kết nối không hợp lệ.' }, 400);
+  if (!DISTRIBUTION_OAUTH_PLATFORMS.has(platform)) return json({ error: 'Adapter này chưa được mở cho upload tự động.' }, 409);
+  const [packageRow, projectRow, connection] = await Promise.all([
+    env.DB.prepare('SELECT * FROM egoric_distribution_packages WHERE id = ? AND owner_email = ? AND project_id = ?').bind(packageId, email, projectId).first(),
+    env.DB.prepare('SELECT payload_json AS payload FROM egoric_projects WHERE owner_email = ? AND project_id = ?').bind(email, projectId).first(),
+    env.DB.prepare('SELECT * FROM egoric_distribution_connections WHERE id = ? AND owner_email = ? AND platform = ?').bind(connectionId, email, platform).first(),
+  ]);
+  if (!packageRow || !projectRow) return json({ error: 'Không tìm thấy package hoặc dự án cloud.' }, 404);
+  if (!connection || connection.status !== 'connected') return json({ error: 'Tài khoản nền tảng chưa kết nối hoặc đã hết hạn.' }, 409);
+  const distributionPackage = hydrateDistributionPackage(packageRow);
+  if (!(distributionPackage.targets || []).some((target) => target.platform === platform)) return json({ error: 'Package không cho phép adapter này.' }, 409);
+  let project;
+  try { project = JSON.parse(projectRow.payload); } catch { return json({ error: 'Dự án cloud bị lỗi dữ liệu.' }, 500); }
+  const master = (project.autoEditor?.outputs || []).find((output) => output?.id === distributionPackage.masterOutputId);
+  const mediaPath = getCloudMediaPath(projectId, master?.videoUrl);
+  const round = (project.agencyReview?.rounds || []).find((item) => item?.id === distributionPackage.reviewRoundId);
+  const gatesApproved = ['director', 'editor', 'account'].every((role) => round?.gates?.find((gate) => gate.role === role)?.status === 'approved');
+  if (!master || !mediaPath || master.storage !== 'cloud' || master.status !== 'ready'
+    || master.checksum !== distributionPackage.masterChecksum
+    || `master:${master.id}:${master.checksum}` !== distributionPackage.artifactSignature
+    || !round || !gatesApproved || round.sourceSignature !== reviewSourceSignature(project, round.shotIds || [], master.id)) {
+    return json({ error: 'Package đã stale: master hoặc chữ ký nguồn không còn khớp. Hãy tạo vòng duyệt mới.' }, 409);
+  }
+  const portal = await env.DB.prepare(
+    `SELECT decision, decision_version_id, decision_artifact_signature FROM egoric_client_review_portals
+     WHERE id = ? AND owner_email = ? AND project_id = ?`
+  ).bind(distributionPackage.reviewPortalId, email, projectId).first();
+  if (!portal || portal.decision !== 'approved' || portal.decision_version_id !== distributionPackage.reviewVersionId
+    || portal.decision_artifact_signature !== distributionPackage.artifactSignature) {
+    return json({ error: 'Quyết định khách hàng không còn trùng package.' }, 409);
+  }
+  const openComment = await env.DB.prepare(
+    `SELECT id FROM egoric_client_review_comments WHERE portal_id = ? AND version_id = ? AND status = 'open' LIMIT 1`
+  ).bind(distributionPackage.reviewPortalId, distributionPackage.reviewVersionId).first();
+  if (openComment) return json({ error: 'Version đã duyệt có góp ý mở; không được xếp hàng.' }, 409);
+  const owner = await hashOwner(email);
+  const mediaKey = `${owner}/${projectId}/${mediaPath}`;
+  const mediaObject = await env.MEDIA.head(mediaKey);
+  if (!mediaObject?.size) return json({ error: 'Master không còn tồn tại trên R2.' }, 409);
+  const totalBytes = Number(mediaObject.size);
+  const visibility = platform === 'youtube' && ['private', 'unlisted', 'public'].includes(body?.visibility) ? body.visibility : platform === 'youtube' ? 'private' : undefined;
+  const idempotencyKey = await hashText(JSON.stringify({ packageId, platform, connectionId }));
+  const existing = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_jobs WHERE owner_email = ? AND project_id = ? AND idempotency_key = ?'
+  ).bind(email, projectId, idempotencyKey).first();
+  if (existing) return json({ job: hydrateDistributionJob(existing), package: distributionPackage, duplicate: true });
+  const now = Date.now();
+  const id = `distributionjob_${crypto.randomUUID()}`;
+  const publicPayload = {
+    connectionLabel: connection.display_name, visibility, progress: 0, uploadedBytes: 0, totalBytes,
+    retrySafe: true, createdAt: now, updatedAt: now,
+  };
+  const privatePayload = { mediaKey, mediaPath, title: distributionPackage.title, caption: distributionPackage.caption || '', offset: 0 };
+  await env.DB.prepare(
+    `INSERT INTO egoric_distribution_jobs
+      (id, owner_email, project_id, package_id, platform, connection_id, status, idempotency_key, attempt, payload_json, private_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, 1, ?, ?, ?, ?)`
+  ).bind(id, email, projectId, packageId, platform, connectionId, idempotencyKey, JSON.stringify(publicPayload), await encryptDistributionSecret(env, privatePayload), now, now).run();
+  const created = await env.DB.prepare('SELECT * FROM egoric_distribution_jobs WHERE id = ?').bind(id).first();
+  const updatedPackage = await syncDistributionPackageFromJobs(env, email, packageId);
+  return json({ job: hydrateDistributionJob(created), package: updatedPackage, duplicate: false }, 201);
+}
+
+async function runDistributionJob(env, email, projectId, body) {
+  const jobId = safeDistributionId(body?.jobId, 'distributionjob');
+  if (!jobId) return json({ error: 'Mã job không hợp lệ.' }, 400);
+  const row = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_jobs WHERE id = ? AND owner_email = ? AND project_id = ?'
+  ).bind(jobId, email, projectId).first();
+  if (!row) return json({ error: 'Không tìm thấy job xuất bản.' }, 404);
+  let job = hydrateDistributionJob(row);
+  let privateState = {};
+  try { privateState = await decryptDistributionSecret(env, row.private_json); } catch { return json({ error: 'Trạng thái upload riêng tư bị lỗi hoặc không giải mã được.' }, 500); }
+  if (['published', 'cancelled'].includes(job.status)) return json({ job, package: await syncDistributionPackageFromJobs(env, email, row.package_id) });
+  if (job.status === 'indeterminate' && body.action !== 'reconcile') {
+    return json({ error: 'Kết quả chưa xác định. Hãy đối soát trước; không được upload lại mù.' }, 409);
+  }
+  if (job.status === 'failed') {
+    if (!job.retrySafe) return json({ error: 'Job không an toàn để retry. Hãy kiểm tra nền tảng trước.' }, 409);
+    job = { ...job, status: 'queued', attempt: job.attempt + 1, progress: 0, uploadedBytes: 0, error: undefined, errorCode: undefined };
+    privateState = { mediaKey: privateState.mediaKey, mediaPath: privateState.mediaPath, title: privateState.title, caption: privateState.caption, offset: 0 };
+  }
+  const connection = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_connections WHERE id = ? AND owner_email = ? AND platform = ?'
+  ).bind(row.connection_id, email, row.platform).first();
+  if (!connection) return json({ error: 'Kết nối của job không còn tồn tại.' }, 409);
+  let result;
+  try {
+    result = row.platform === 'youtube'
+      ? await runYoutubeDistributionJob(env, row, job, privateState, connection, body.action === 'reconcile')
+      : row.platform === 'tiktok'
+        ? await runTikTokDistributionJob(env, row, job, privateState, connection, body.action === 'reconcile')
+        : { job: failDistributionJob(job, 'adapter_unavailable', 'Adapter chưa sẵn sàng.', false), privateState };
+  } catch (error) {
+    result = { job: failDistributionJob(job, 'adapter_runtime_error', error instanceof Error ? error.message : 'Adapter thất bại.', false), privateState };
+  }
+  return json(await persistDistributionJob(env, row, result.job, result.privateState));
+}
+
+async function handleDistributionJobsApi(request, env, url) {
+  if (!env.DB || !env.MEDIA) return json({ error: 'Publishing Queue chưa được cấp D1/R2.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập để vận hành hàng đợi.' }, 401);
+  const projectId = safeProjectId(url.searchParams.get('projectId'));
+  if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
+  if (request.method !== 'POST') return json({ error: 'Publishing Queue chỉ nhận POST.' }, 405);
+  const body = await request.json();
+  if (body?.action === 'queue') return queueDistributionJob(request, env, url, email, projectId, body);
+  if (['run', 'reconcile'].includes(body?.action)) return runDistributionJob(env, email, projectId, body);
+  return json({ error: 'Hành động Publishing Queue không hợp lệ.' }, 400);
+}
+
 const reviewPortalUnavailable = (row) => {
   if (row.status === 'closed') return 'Link duyệt này đã được đóng.';
   if (row.expires_at && Number(row.expires_at) < Date.now()) return 'Link duyệt này đã hết hạn.';
@@ -1755,6 +2469,46 @@ export default {
       } catch (error) {
         console.error('Distribution Gateway API error', error);
         return json({ error: error instanceof Error ? error.message : 'Distribution Gateway thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/distribution-oauth/start') {
+      try {
+        return await handleDistributionOauthStart(request, env, url);
+      } catch (error) {
+        console.error('Distribution OAuth start error', error);
+        return json({ error: error instanceof Error ? error.message : 'Không thể bắt đầu OAuth phân phối.' }, 500);
+      }
+    }
+
+    if (url.pathname.startsWith('/api/distribution-oauth/callback/')) {
+      return handleDistributionOauthCallback(request, env, url);
+    }
+
+    if (url.pathname === '/api/distribution-connections') {
+      try {
+        return await handleDistributionConnectionsApi(request, env, url);
+      } catch (error) {
+        console.error('Distribution connections error', error);
+        return json({ error: error instanceof Error ? error.message : 'Quản lý kết nối phân phối thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/distribution-operations') {
+      try {
+        return await handleDistributionOperationsApi(request, env, url);
+      } catch (error) {
+        console.error('Distribution operations error', error);
+        return json({ error: error instanceof Error ? error.message : 'Không thể tải Publishing Queue.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/distribution-jobs') {
+      try {
+        return await handleDistributionJobsApi(request, env, url);
+      } catch (error) {
+        console.error('Distribution jobs error', error);
+        return json({ error: error instanceof Error ? error.message : 'Publishing Queue thất bại.' }, 500);
       }
     }
 

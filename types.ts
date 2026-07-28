@@ -934,7 +934,7 @@ export interface AgencyReviewState {
 }
 
 export type DistributionPlatform = 'tiktok' | 'youtube' | 'instagram-reels' | 'facebook-reels';
-export type DistributionTargetStatus = 'ready' | 'queued' | 'uploading' | 'processing' | 'published' | 'failed' | 'indeterminate';
+export type DistributionTargetStatus = 'ready' | 'queued' | 'uploading' | 'processing' | 'awaiting-user' | 'published' | 'failed' | 'indeterminate';
 export type DistributionPackageStatus = 'ready' | 'processing' | 'published' | 'attention';
 
 export interface DistributionTarget {
@@ -976,6 +976,67 @@ export interface DistributionPackage {
   idempotencyKey: string;
   createdAt: number;
   updatedAt: number;
+}
+
+export type DistributionConnectionStatus = 'connected' | 'expired' | 'revoked' | 'error';
+
+/** Metadata công khai của một tài khoản nền tảng. Token luôn ở phía server. */
+export interface DistributionConnection {
+  id: string;
+  platform: DistributionPlatform;
+  status: DistributionConnectionStatus;
+  externalAccountId: string;
+  displayName: string;
+  scopes: string[];
+  expiresAt?: number;
+  lastVerifiedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type DistributionJobStatus =
+  | 'queued'
+  | 'uploading'
+  | 'processing'
+  | 'awaiting-user'
+  | 'published'
+  | 'failed'
+  | 'indeterminate'
+  | 'cancelled';
+
+export type DistributionVisibility = 'private' | 'unlisted' | 'public';
+
+/** Job bền vững; có thể tiếp tục sau khi đóng tab mà không upload lại từ đầu. */
+export interface DistributionPublishJob {
+  id: string;
+  projectId: string;
+  packageId: string;
+  platform: DistributionPlatform;
+  connectionId: string;
+  connectionLabel: string;
+  status: DistributionJobStatus;
+  visibility?: DistributionVisibility;
+  attempt: number;
+  progress: number;
+  uploadedBytes: number;
+  totalBytes: number;
+  externalId?: string;
+  publishedUrl?: string;
+  errorCode?: string;
+  error?: string;
+  retrySafe: boolean;
+  indeterminateAt?: number;
+  nextPollAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DistributionAdapterReadiness {
+  platform: DistributionPlatform;
+  configured: boolean;
+  mode: 'resumable-upload' | 'creator-inbox' | 'app-review';
+  connectionCount: number;
+  blocker?: string;
 }
 
 export interface AgencyClient {

@@ -108,6 +108,8 @@ Một lần chạy thật cho biết nhiều hơn ba epic nữa.
 
 > Tiến độ phân phối: Sprint 1F đã thêm [Distribution Gateway](DISTRIBUTION_GATEWAY.vi.md). Server chỉ tạo package khi ba chữ ký nội bộ, quyết định khách hàng, version và checksum cùng trỏ một master R2; ledger có idempotency và manifest JSON. Upload tự động vẫn chờ adapter OAuth + polling chính thức của từng nền tảng.
 
+> Tiến độ upload: Sprint 1G đã thêm [Publishing Queue](DISTRIBUTION_PUBLISHING.vi.md). YouTube có OAuth server-side + resumable chunks + status probe; TikTok có OAuth + FILE_UPLOAD + creator inbox + status polling. Job và offset nằm ở D1, token mã hóa AES-GCM, kết quả mạng mơ hồ chuyển sang `indeterminate` thay vì retry mù. Meta vẫn chờ App Review.
+
 Mở rộng đúng đường ống đã có, không xây mới:
 
 - `PublishChannelId` thêm `tiktok`, `youtube`, `facebook-reels`.
