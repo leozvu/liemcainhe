@@ -111,6 +111,11 @@ const hashOwner = async (email) => {
   return Array.from(new Uint8Array(digest)).slice(0, 12).map((value) => value.toString(16).padStart(2, '0')).join('');
 };
 
+const hashText = async (value) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
+  return Array.from(new Uint8Array(digest)).map((item) => item.toString(16).padStart(2, '0')).join('');
+};
+
 const safeProjectId = (value) => /^[a-zA-Z0-9_-]{3,120}$/.test(value || '') ? value : null;
 const safeReviewId = (value) => /^[a-zA-Z0-9_-]{6,180}$/.test(value || '') ? value : null;
 const safeFieldTestCode = (value) => /^[A-HJ-NP-Z2-9]{8}$/.test(value || '') ? value : null;
@@ -714,7 +719,7 @@ async function handleAccountApi(request, env, url) {
   }
 
   if (url.pathname === '/api/account/export' && request.method === 'GET') {
-    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments, campaignFinancials] = await Promise.all([
+    const [profile, projects, usage, events, jobs, media, notes, approvals, clientReviewPortals, clientReviewComments, campaignFinancials, distributionPackages] = await Promise.all([
       ensureAccountProfile(request, env, email),
       env.DB.prepare('SELECT project_id AS projectId, title, payload_json AS payloadJson, updated_at AS updatedAt FROM egoric_projects WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 100').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_usage_events WHERE owner_email = ? ORDER BY created_at DESC LIMIT 5000').bind(email).all(),
@@ -726,6 +731,7 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('SELECT id, project_id, title, client_name, campaign_name, deliverable_title, status, decision, decision_version_id, decision_artifact_signature, decision_note, reviewer_name, reviewer_email, decided_at, expires_at, payload_json, created_at, updated_at FROM egoric_client_review_portals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?) ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_campaign_financials WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
+      env.DB.prepare('SELECT * FROM egoric_distribution_packages WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
     ]);
     return json({
       product: 'Egoric Film Studio', exportedAt: new Date().toISOString(), profile,
@@ -734,6 +740,7 @@ async function handleAccountApi(request, env, url) {
       media: media.results || [], reviewNotes: notes.results || [], approvals: approvals.results || [],
       clientReviewPortals: clientReviewPortals.results || [], clientReviewComments: clientReviewComments.results || [],
       campaignFinancials: campaignFinancials.results || [],
+      distributionPackages: distributionPackages.results || [],
     });
   }
 
@@ -745,6 +752,7 @@ async function handleAccountApi(request, env, url) {
     await deleteMediaPrefix(env.MEDIA, `${owner}/`);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?)').bind(email),
+      env.DB.prepare('DELETE FROM egoric_distribution_packages WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_client_review_portals WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_stage_approvals WHERE owner_email = ?').bind(email),
       env.DB.prepare('DELETE FROM egoric_review_notes WHERE owner_email = ?').bind(email),
@@ -1388,6 +1396,166 @@ async function handleClientReviewsApi(request, env, url) {
   return json({ error: 'Client review route không tồn tại.' }, 404);
 }
 
+const DISTRIBUTION_PLATFORM_RULES = {
+  tiktok: ['9:16'],
+  youtube: ['16:9', '9:16', '1:1'],
+  'instagram-reels': ['9:16'],
+  'facebook-reels': ['9:16'],
+};
+
+const hydrateDistributionPackage = (row) => {
+  let payload = {};
+  try { payload = JSON.parse(row.payload_json || '{}'); } catch { /* Bản ghi lỗi vẫn được trả với metadata tối thiểu. */ }
+  return {
+    ...payload,
+    id: row.id,
+    projectId: row.project_id,
+    status: row.status,
+    reviewPortalId: row.review_portal_id,
+    reviewVersionId: row.review_version_id,
+    reviewRoundId: row.review_round_id,
+    masterOutputId: row.master_output_id,
+    masterChecksum: row.master_checksum,
+    artifactSignature: row.artifact_signature,
+    approvalFingerprint: row.artifact_signature,
+    idempotencyKey: row.idempotency_key,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+};
+
+async function handleDistributionPackagesApi(request, env, url) {
+  if (!env.DB || !env.MEDIA) return json({ error: 'Distribution Gateway chưa được cấp D1/R2.' }, 503);
+  const email = getAuthenticatedEmail(request);
+  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để quản lý gói phát hành.' }, 401);
+  const projectId = safeProjectId(url.searchParams.get('projectId'));
+  if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
+
+  if (request.method === 'GET') {
+    const rows = await env.DB.prepare(
+      'SELECT * FROM egoric_distribution_packages WHERE owner_email = ? AND project_id = ? ORDER BY updated_at DESC LIMIT 100'
+    ).bind(email, projectId).all();
+    return json({ packages: (rows.results || []).map(hydrateDistributionPackage) });
+  }
+
+  if (request.method !== 'POST') return json({ error: 'Distribution Gateway chỉ nhận GET hoặc POST.' }, 405);
+
+  const body = await request.json();
+  const requestedPlatforms = Array.from(new Set(Array.isArray(body?.platforms) ? body.platforms : []));
+  const platforms = requestedPlatforms.filter((platform) => Object.prototype.hasOwnProperty.call(DISTRIBUTION_PLATFORM_RULES, platform));
+  if (!platforms.length || platforms.length !== requestedPlatforms.length) {
+    return json({ error: 'Hãy chọn ít nhất một nền tảng phân phối hợp lệ.' }, 400);
+  }
+
+  const projectRow = await env.DB.prepare(
+    'SELECT payload_json AS payload FROM egoric_projects WHERE owner_email = ? AND project_id = ?'
+  ).bind(email, projectId).first();
+  if (!projectRow) return json({ error: 'Hãy sao lưu dự án lên cloud trước khi tạo package.' }, 409);
+  let project;
+  try { project = JSON.parse(projectRow.payload); } catch { return json({ error: 'Bản sao dự án cloud bị lỗi dữ liệu.' }, 500); }
+
+  const reviewRoundId = safeReviewId(body?.reviewRoundId);
+  const reviewPortalId = safeReviewId(body?.reviewPortalId);
+  const reviewVersionId = safeReviewId(body?.reviewVersionId);
+  const masterOutputId = safeReviewId(body?.masterOutputId);
+  if (!reviewRoundId || !reviewPortalId || !reviewVersionId || !masterOutputId) {
+    return json({ error: 'Package thiếu định danh vòng duyệt, version hoặc master.' }, 400);
+  }
+
+  const reviewRound = (project?.agencyReview?.rounds || []).find((round) => round?.id === reviewRoundId);
+  const allGatesApproved = ['director', 'editor', 'account'].every((role) => reviewRound?.gates?.find((gate) => gate.role === role)?.status === 'approved');
+  if (!reviewRound || !allGatesApproved || !['client-review', 'approved'].includes(reviewRound.status)) {
+    return json({ error: 'Package bị chặn: vòng Director → Editor → Account chưa hoàn tất hoặc chưa gửi khách.' }, 409);
+  }
+  if (reviewRound.portalId !== reviewPortalId || reviewRound.versionId !== reviewVersionId || reviewRound.masterOutputId !== masterOutputId) {
+    return json({ error: 'Package bị chặn: portal, version hoặc master không trùng vòng duyệt.' }, 409);
+  }
+  if (!Array.isArray(reviewRound.shotIds) || !reviewRound.shotIds.length || reviewRound.sourceSignature !== reviewSourceSignature(project, reviewRound.shotIds, masterOutputId)) {
+    return json({ error: 'Package bị chặn: nguồn dựng đã thay đổi sau vòng duyệt.' }, 409);
+  }
+
+  const master = (project.autoEditor?.outputs || []).find((output) => output?.id === masterOutputId);
+  const masterMediaPath = getCloudMediaPath(projectId, master?.videoUrl);
+  if (!master || master.status !== 'ready' || master.storage !== 'cloud' || !master.checksum || !masterMediaPath) {
+    return json({ error: 'Package bị chặn: master cloud không còn hợp lệ.' }, 409);
+  }
+  if (reviewRound.masterChecksum !== master.checksum) {
+    return json({ error: 'Package bị chặn: checksum master đã đổi sau vòng duyệt.' }, 409);
+  }
+  if (platforms.some((platform) => !DISTRIBUTION_PLATFORM_RULES[platform].includes(master.aspectRatio))) {
+    return json({ error: `Tỷ lệ ${master.aspectRatio || 'không xác định'} không tương thích với toàn bộ nền tảng đã chọn.` }, 409);
+  }
+
+  const portalRow = await env.DB.prepare(
+    'SELECT * FROM egoric_client_review_portals WHERE id = ? AND owner_email = ? AND project_id = ?'
+  ).bind(reviewPortalId, email, projectId).first();
+  if (!portalRow || portalRow.decision !== 'approved' || portalRow.decision_version_id !== reviewVersionId) {
+    return json({ error: 'Package bị chặn: khách hàng chưa phê duyệt đúng version.' }, 409);
+  }
+  let reviewPayload = { versions: [] };
+  try { reviewPayload = JSON.parse(portalRow.payload_json || '{}'); } catch { return json({ error: 'Dữ liệu version khách duyệt bị lỗi.' }, 500); }
+  const reviewVersion = (reviewPayload.versions || []).find((version) => version?.id === reviewVersionId);
+  const expectedArtifactSignature = `master:${master.id}:${master.checksum}`;
+  if (!reviewVersion
+    || reviewVersion.sourceKind !== 'master'
+    || reviewVersion.masterOutputId !== master.id
+    || reviewVersion.artifactChecksum !== master.checksum
+    || reviewVersion.artifactSignature !== expectedArtifactSignature
+    || portalRow.decision_artifact_signature !== expectedArtifactSignature) {
+    return json({ error: 'Package bị chặn: fingerprint khách ký không trùng artifact hiện tại.' }, 409);
+  }
+  const openComment = await env.DB.prepare(
+    `SELECT id FROM egoric_client_review_comments
+     WHERE portal_id = ? AND version_id = ? AND status = 'open' LIMIT 1`
+  ).bind(reviewPortalId, reviewVersionId).first();
+  if (openComment) return json({ error: 'Package bị chặn: version đã duyệt vẫn còn góp ý chưa xử lý.' }, 409);
+
+  const name = cleanText(body?.name, 120);
+  const title = cleanText(body?.title, 240);
+  const caption = cleanText(body?.caption, 2200) || undefined;
+  if (!name || !title) return json({ error: 'Tên package và tiêu đề phát hành là bắt buộc.' }, 400);
+  const orderedPlatforms = [...platforms].sort();
+  const idempotencyKey = await hashText(JSON.stringify({ expectedArtifactSignature, orderedPlatforms, name, title, caption }));
+  const existing = await env.DB.prepare(
+    'SELECT * FROM egoric_distribution_packages WHERE owner_email = ? AND project_id = ? AND idempotency_key = ?'
+  ).bind(email, projectId, idempotencyKey).first();
+  if (existing) return json({ package: hydrateDistributionPackage(existing), duplicate: true });
+
+  const now = Date.now();
+  const id = `distribution_${crypto.randomUUID()}`;
+  const packagePayload = {
+    id,
+    projectId,
+    name,
+    status: 'ready',
+    reviewRoundId,
+    reviewPortalId,
+    reviewVersionId,
+    masterOutputId,
+    masterChecksum: master.checksum,
+    artifactSignature: expectedArtifactSignature,
+    approvalFingerprint: expectedArtifactSignature,
+    masterVideoUrl: `/api/cloud/media/${encodeURIComponent(projectId)}/${masterMediaPath.split('/').map(encodeURIComponent).join('/')}`,
+    aspectRatio: master.aspectRatio,
+    artifactBytes: Number(master.bytes || reviewVersion.artifactBytes || 0) || undefined,
+    duration: Number(reviewVersion.duration || 0) || undefined,
+    title,
+    caption,
+    targets: orderedPlatforms.map((platform) => ({ platform, status: 'ready', updatedAt: now })),
+    idempotencyKey,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await env.DB.prepare(
+    `INSERT INTO egoric_distribution_packages
+      (id, owner_email, project_id, review_portal_id, review_version_id, review_round_id,
+       master_output_id, master_checksum, artifact_signature, idempotency_key, status, payload_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?)`
+  ).bind(id, email, projectId, reviewPortalId, reviewVersionId, reviewRoundId, masterOutputId, master.checksum,
+    expectedArtifactSignature, idempotencyKey, JSON.stringify(packagePayload), now, now).run();
+  return json({ package: packagePayload, duplicate: false }, 201);
+}
+
 const reviewPortalUnavailable = (row) => {
   if (row.status === 'closed') return 'Link duyệt này đã được đóng.';
   if (row.expires_at && Number(row.expires_at) < Date.now()) return 'Link duyệt này đã hết hạn.';
@@ -1578,6 +1746,15 @@ export default {
       } catch (error) {
         console.error('Client reviews API error', error);
         return json({ error: error instanceof Error ? error.message : 'Quản lý cổng duyệt thất bại.' }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/distribution-packages') {
+      try {
+        return await handleDistributionPackagesApi(request, env, url);
+      } catch (error) {
+        console.error('Distribution Gateway API error', error);
+        return json({ error: error instanceof Error ? error.message : 'Distribution Gateway thất bại.' }, 500);
       }
     }
 

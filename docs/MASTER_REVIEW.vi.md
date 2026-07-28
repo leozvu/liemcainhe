@@ -50,3 +50,5 @@ TikTok, YouTube và Reels chỉ được nhận version có:
 - `sourceKind === master` và còn `masterOutputId`.
 
 Nếu chữ ký lệch, campaign bị đưa về trạng thái cần chỉnh sửa thay vì coi là đã nghiệm thu.
+
+Sprint 1F đã hiện thực gate này bằng [Distribution Gateway](DISTRIBUTION_GATEWAY.vi.md). Package được server dựng từ đúng round, portal, version, master và fingerprint; client không thể tự bịa URL để bỏ qua nghiệm thu.

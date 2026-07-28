@@ -106,6 +106,8 @@ Một lần chạy thật cho biết nhiều hơn ba epic nữa.
 
 > Tiến độ review: Sprint 1E đã nối [Master Review](MASTER_REVIEW.vi.md). Vòng Director → Editor → Account và quyết định khách hàng đều khóa đúng `masterOutputId + checksum`; version cũ không thể ký nhầm artifact mới. Bước kế tiếp là Distribution Gateway chỉ nhận master có chữ ký nghiệm thu hợp lệ.
 
+> Tiến độ phân phối: Sprint 1F đã thêm [Distribution Gateway](DISTRIBUTION_GATEWAY.vi.md). Server chỉ tạo package khi ba chữ ký nội bộ, quyết định khách hàng, version và checksum cùng trỏ một master R2; ledger có idempotency và manifest JSON. Upload tự động vẫn chờ adapter OAuth + polling chính thức của từng nền tảng.
+
 Mở rộng đúng đường ống đã có, không xây mới:
 
 - `PublishChannelId` thêm `tiktok`, `youtube`, `facebook-reels`.

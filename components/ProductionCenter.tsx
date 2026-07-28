@@ -16,6 +16,7 @@ import {
   Layers3,
   ListTodo,
   MessageSquareText,
+  PackageCheck,
   Play,
   RotateCcw,
   ScanSearch,
@@ -48,17 +49,18 @@ import ClientReviewManager from './ClientReviewManager';
 import VideoFactory from './VideoFactory';
 import AISupervisor from './AISupervisor';
 import AutoEditor from './AutoEditor';
+import DistributionGateway from './DistributionGateway';
 
 interface Props {
   project: ProjectState;
   updateProject: (updates: Partial<ProjectState> | ((previous: ProjectState) => ProjectState)) => void;
-  initialTab?: 'overview' | 'board' | 'factory' | 'supervisor' | 'editor' | 'review';
+  initialTab?: 'overview' | 'board' | 'factory' | 'supervisor' | 'editor' | 'review' | 'distribution';
   setStage: (stage: CoreStage) => void;
   onClose: () => void;
   onShowModelConfig: () => void;
 }
 
-type CenterTab = 'overview' | 'board' | 'factory' | 'supervisor' | 'editor' | 'review' | 'jobs' | 'history';
+type CenterTab = 'overview' | 'board' | 'factory' | 'supervisor' | 'editor' | 'review' | 'distribution' | 'jobs' | 'history';
 
 const STATUS_META: Record<ProductionJobStatus, { label: string; className: string; icon: React.ComponentType<{ className?: string }> }> = {
   queued: { label: 'Đang chờ', className: 'border-sky-200/20 bg-sky-200/[.07] text-sky-100', icon: CircleDashed },
@@ -263,6 +265,7 @@ const ProductionCenter: React.FC<Props> = ({
               { id: 'supervisor' as const, label: 'AI Supervisor', icon: ScanSearch },
               { id: 'editor' as const, label: 'Auto Editor', icon: Scissors },
               { id: 'review' as const, label: 'Duyệt khách hàng', icon: MessageSquareText },
+              { id: 'distribution' as const, label: 'Phân phối', icon: PackageCheck },
               { id: 'jobs' as const, label: `Tác vụ ${activeJobs.length ? `· ${activeJobs.length}` : ''}`, icon: ListTodo },
               { id: 'history' as const, label: `Checkpoint · ${workflow.checkpoints.length}`, icon: History },
             ]).map((tab) => (
@@ -390,7 +393,11 @@ const ProductionCenter: React.FC<Props> = ({
             )}
 
             {activeTab === 'review' && (
-              <ClientReviewManager project={project} updateProject={updateProject} />
+              <ClientReviewManager project={project} updateProject={updateProject} onOpenDistribution={() => setActiveTab('distribution')} />
+            )}
+
+            {activeTab === 'distribution' && (
+              <DistributionGateway project={project} onOpenReview={() => setActiveTab('review')} />
             )}
 
             {activeTab === 'jobs' && (

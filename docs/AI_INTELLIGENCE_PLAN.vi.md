@@ -1,5 +1,7 @@
 # Kế hoạch: từ máy sinh thành trí tuệ sản xuất
 
+> Cập nhật Sprint 1F: Distribution Gateway đã khóa đầu ra thương mại theo đúng master và fingerprint nghiệm thu. Agent/adapter tương lai chỉ được nhận package đã ký; không được tự chọn URL video trong `ProjectState`.
+
 ## Thước đo, trước khi bàn tính năng
 
 "Hoàn mỹ" không đo được nên không lập kế hoạch được. Ba con số dưới đây đo được, và **mọi hạng mục trong tài liệu này phải dịch chuyển ít nhất một trong ba**:
