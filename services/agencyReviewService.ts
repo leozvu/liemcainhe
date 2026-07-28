@@ -3,6 +3,7 @@ import {
   AgencyReviewRole,
   AgencyReviewRound,
   AgencyReviewState,
+  AutoEditorOutput,
   ClientReviewPortal,
   ProjectState,
 } from '../types';
@@ -33,6 +34,17 @@ const hashValue = (value: string): string => {
 
 export const createDefaultAgencyReviewState = (): AgencyReviewState => ({ rounds: [], updatedAt: now() });
 
+export const getReviewableMasters = (project: ProjectState): AutoEditorOutput[] => (project.autoEditor?.outputs || [])
+  .filter((output) => output.status === 'ready'
+    && output.storage === 'cloud'
+    && Boolean(output.videoUrl)
+    && Boolean(output.checksum))
+  .sort((left, right) => (right.archivedAt || right.renderedAt || right.updatedAt) - (left.archivedAt || left.renderedAt || left.updatedAt));
+
+const getReviewMaster = (project: ProjectState, masterOutputId?: string): AutoEditorOutput | undefined => (
+  masterOutputId ? getReviewableMasters(project).find((output) => output.id === masterOutputId) : undefined
+);
+
 const normalizeGate = (role: AgencyReviewRole, gate?: Partial<AgencyReviewGate>): AgencyReviewGate => ({
   role,
   status: ['approved', 'changes-requested'].includes(gate?.status || '') ? gate!.status! : 'pending',
@@ -54,6 +66,7 @@ export const normalizeAgencyReviewState = (value?: Partial<AgencyReviewState> | 
   return {
     rounds,
     activeRoundId: rounds.some((round) => round.id === value.activeRoundId) ? value.activeRoundId : rounds[0]?.id,
+    preferredMasterOutputId: typeof value.preferredMasterOutputId === 'string' ? value.preferredMasterOutputId : undefined,
     updatedAt: Number(value.updatedAt) || now(),
   };
 };
@@ -74,12 +87,28 @@ export const getAgencyReviewShotIds = (project: ProjectState): string[] => {
   });
 };
 
-export const getAgencyReviewSourceSignature = (project: ProjectState, shotIds = getAgencyReviewShotIds(project)): string => {
+export const getAgencyReviewSourceSignature = (
+  project: ProjectState,
+  shotIds = getAgencyReviewShotIds(project),
+  masterOutputId?: string,
+): string => {
   const shots = new Map(project.shots.map((shot) => [shot.id, shot]));
+  const master = getReviewMaster(project, masterOutputId);
   const payload = {
     shotIds,
     planSignature: project.autoEditor?.planSignature,
     editorSettings: project.autoEditor?.settings,
+    master: master ? {
+      id: master.id,
+      status: master.status,
+      storage: master.storage,
+      videoUrl: master.videoUrl,
+      checksum: master.checksum,
+      bytes: master.bytes,
+      aspectRatio: master.aspectRatio,
+      renderedAt: master.renderedAt,
+      archivedAt: master.archivedAt,
+    } : undefined,
     clips: shotIds.map((shotId) => {
       const shot = shots.get(shotId);
       const voiceTakeId = project.voiceStudio?.selectedTakeByShot[shotId];
@@ -101,7 +130,7 @@ export const getAgencyReviewSourceSignature = (project: ProjectState, shotIds = 
 export const getAgencyReviewSummary = (project: ProjectState) => {
   const state = normalizeAgencyReviewState(project.agencyReview);
   const activeRound = state.rounds.find((round) => round.id === state.activeRoundId);
-  const stale = Boolean(activeRound && activeRound.sourceSignature !== getAgencyReviewSourceSignature(project, activeRound.shotIds));
+  const stale = Boolean(activeRound && activeRound.sourceSignature !== getAgencyReviewSourceSignature(project, activeRound.shotIds, activeRound.masterOutputId));
   const nextRole = activeRound && !stale
     ? AGENCY_REVIEW_ROLES.find((role) => activeRound.gates.find((gate) => gate.role === role)?.status !== 'approved')
     : undefined;
@@ -116,12 +145,25 @@ export const getAgencyReviewSummary = (project: ProjectState) => {
   };
 };
 
-export const createAgencyReviewRound = (project: ProjectState, label: string, note?: string): ProjectState => {
+export const selectAgencyReviewMaster = (project: ProjectState, masterOutputId: string): ProjectState => {
+  if (!getReviewMaster(project, masterOutputId)) {
+    throw new Error('Master phải được render và lưu cloud trước khi chọn để duyệt.');
+  }
+  const state = normalizeAgencyReviewState(project.agencyReview);
+  return {
+    ...project,
+    agencyReview: { ...state, preferredMasterOutputId: masterOutputId, updatedAt: now() },
+  };
+};
+
+export const createAgencyReviewRound = (project: ProjectState, label: string, note?: string, masterOutputId?: string): ProjectState => {
   const shotIds = getAgencyReviewShotIds(project);
   if (!shotIds.length) throw new Error('Chưa có video hợp lệ để mở vòng duyệt nội bộ.');
   if (project.autoEditor?.timeline.length && getAutoEditorSummary(project).stale) {
     throw new Error('Timeline Auto Editor đã thay đổi. Hãy lập lại timeline trước khi mở vòng duyệt.');
   }
+  const master = masterOutputId ? getReviewMaster(project, masterOutputId) : undefined;
+  if (masterOutputId && !master) throw new Error('Master đã chọn chưa được lưu cloud hoặc thiếu checksum.');
   const state = normalizeAgencyReviewState(project.agencyReview);
   const timestamp = now();
   const id = createId('agency_review');
@@ -130,8 +172,10 @@ export const createAgencyReviewRound = (project: ProjectState, label: string, no
     label: label.trim().slice(0, 120) || `Vòng duyệt ${state.rounds.length + 1}`,
     note: note?.trim().slice(0, 1000) || undefined,
     status: 'internal-review',
-    sourceSignature: getAgencyReviewSourceSignature(project, shotIds),
+    sourceSignature: getAgencyReviewSourceSignature(project, shotIds, master?.id),
     shotIds,
+    masterOutputId: master?.id,
+    masterChecksum: master?.checksum,
     gates: AGENCY_REVIEW_ROLES.map((role) => ({ role, status: 'pending', updatedAt: timestamp })),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -151,6 +195,7 @@ export const createAgencyReviewRound = (project: ProjectState, label: string, no
     agencyReview: {
       rounds: [round, ...state.rounds].slice(0, 30),
       activeRoundId: id,
+      preferredMasterOutputId: master?.id || state.preferredMasterOutputId,
       updatedAt: timestamp,
     },
   };
@@ -244,7 +289,7 @@ export const refreshAgencyReviewSourceSignature = (project: ProjectState, roundI
       ...state,
       rounds: state.rounds.map((item) => item.id === roundId ? {
         ...item,
-        sourceSignature: getAgencyReviewSourceSignature(project, item.shotIds),
+        sourceSignature: getAgencyReviewSourceSignature(project, item.shotIds, item.masterOutputId),
         updatedAt: timestamp,
       } : item),
       updatedAt: timestamp,
@@ -259,6 +304,10 @@ export const syncAgencyReviewFromClientDecision = (
   if (!portal || portal.decision === 'pending') return project;
   const state = normalizeAgencyReviewState(project.agencyReview);
   const version = portal.versions.find((item) => item.id === portal.decisionVersionId) || portal.versions.at(-1);
+  const artifactMatches = !portal.decisionArtifactSignature
+    || !version?.artifactSignature
+    || portal.decisionArtifactSignature === version.artifactSignature;
+  if (portal.decision === 'approved' && !artifactMatches) return project;
   const roundId = version?.internalRoundId;
   if (!roundId || !state.rounds.some((round) => round.id === roundId)) return project;
   const timestamp = portal.decidedAt || now();

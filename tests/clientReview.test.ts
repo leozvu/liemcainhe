@@ -53,4 +53,24 @@ describe('client review portal', () => {
     expect(getClientReviewSummary(portal({ decision: 'approved' })).isLocked).toBe(true);
     expect(getClientReviewSummary(portal({ status: 'closed' })).isLocked).toBe(true);
   });
+
+  it('binds a client decision to the exact artifact signature', () => {
+    const signed = portal({
+      decision: 'approved',
+      decisionVersionId: 'version_1',
+      decisionArtifactSignature: 'master:output_1:sha256-a',
+      versions: [{
+        ...portal().versions[0],
+        sourceKind: 'master',
+        masterOutputId: 'output_1',
+        artifactSignature: 'master:output_1:sha256-a',
+        artifactChecksum: 'sha256-a',
+      }],
+    });
+    expect(getClientReviewSummary(signed)).toMatchObject({
+      decisionMatchesArtifact: true,
+      approvalFingerprint: 'master:output_1:sha256-a',
+    });
+    expect(getClientReviewSummary({ ...signed, decisionArtifactSignature: 'master:output_1:sha256-old' }).decisionMatchesArtifact).toBe(false);
+  });
 });

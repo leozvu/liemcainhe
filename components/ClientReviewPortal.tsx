@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Clock3,
   Film,
+  Fingerprint,
   Loader2,
   LockKeyhole,
   MessageSquarePlus,
@@ -19,6 +20,7 @@ import {
 import { ClientReviewDecisionStatus, ClientReviewPortal as ClientReviewPortalData } from '../types';
 import {
   createPublicReviewComment,
+  formatArtifactFingerprint,
   formatReviewTimecode,
   getPublicClientReview,
   submitPublicReviewDecision,
@@ -79,6 +81,11 @@ const ClientReviewPortal: React.FC<Props> = ({ token }) => {
   const latestVersion = portal?.versions.at(-1);
   const isLatestVersion = Boolean(selectedVersion && selectedVersion.id === latestVersion?.id);
   const interactionLocked = locked || !isLatestVersion;
+  const playerAspectClass = selectedVersion?.aspectRatio === '9:16'
+    ? 'mx-auto aspect-[9/16] h-[70dvh] max-h-[760px] max-w-full'
+    : selectedVersion?.aspectRatio === '1:1'
+      ? 'mx-auto aspect-square h-[70dvh] max-h-[760px] max-w-full'
+      : 'aspect-video';
 
   useEffect(() => {
     if (!selectedVersion?.clips.some((clip) => clip.id === selectedClipId)) {
@@ -153,6 +160,7 @@ const ClientReviewPortal: React.FC<Props> = ({ token }) => {
       const updated = await submitPublicReviewDecision(token, {
         decision: decisionDraft,
         versionId: selectedVersion?.id || '',
+        artifactSignature: selectedVersion?.artifactSignature,
         reviewerName: authorName.trim(),
         reviewerEmail: authorEmail.trim() || undefined,
         note: decisionNote.trim() || undefined,
@@ -196,12 +204,12 @@ const ClientReviewPortal: React.FC<Props> = ({ token }) => {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,.45fr)]">
             <section className="min-w-0">
               <div className="overflow-hidden rounded-3xl border border-white/[.08] bg-black shadow-2xl shadow-black/30">
-                <div className="relative aspect-video bg-black">
+                <div className={`relative bg-black ${playerAspectClass}`}>
                   <video key={selectedClip.id} ref={videoRef} src={selectedClip.videoUrl} poster={selectedClip.posterUrl} controls playsInline preload="metadata" onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)} className="h-full w-full object-contain" aria-label={`${selectedClip.title}: ${selectedClip.actionSummary}`} />
                   <div className="pointer-events-none absolute left-4 top-4 rounded-lg border border-white/10 bg-black/65 px-3 py-2 font-mono text-[11px] text-white backdrop-blur-md">{formatReviewTimecode(currentTime)}</div>
                 </div>
                 <div className="flex flex-col gap-4 border-t border-white/[.07] p-4 sm:flex-row sm:items-center sm:justify-between md:px-5">
-                  <div className="min-w-0"><div className="flex items-center gap-2"><span className="eg-chip">V{selectedVersion.number}</span><h3 className="truncate text-sm font-semibold text-white">{selectedClip.title}</h3></div><p className="mt-2 line-clamp-2 text-[11px] leading-5 text-zinc-500">{selectedClip.actionSummary || 'Cảnh video cần duyệt.'}</p></div>
+                  <div className="min-w-0"><div className="flex items-center gap-2"><span className="eg-chip">V{selectedVersion.number}</span><h3 className="truncate text-sm font-semibold text-white">{selectedClip.title}</h3></div><p className="mt-2 line-clamp-2 text-[11px] leading-5 text-zinc-500">{selectedClip.actionSummary || 'Cảnh video cần duyệt.'}</p><p className="mt-2 flex items-center gap-2 font-mono text-[9px] text-zinc-600"><Fingerprint className="h-3.5 w-3.5" /> {formatArtifactFingerprint(selectedVersion.artifactSignature)}</p></div>
                   <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => changeClip(clipIndex - 1)} disabled={clipIndex <= 0} className="eg-icon-button flex h-11 w-11 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30" aria-label="Cảnh trước"><ChevronLeft className="h-4 w-4" /></button><span className="min-w-16 text-center font-mono text-[10px] text-zinc-500">{clipIndex + 1}/{selectedVersion.clips.length}</span><button type="button" onClick={() => changeClip(clipIndex + 1)} disabled={clipIndex >= selectedVersion.clips.length - 1} className="eg-icon-button flex h-11 w-11 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30" aria-label="Cảnh tiếp theo"><ChevronRight className="h-4 w-4" /></button></div>
                 </div>
               </div>
@@ -230,7 +238,7 @@ const ClientReviewPortal: React.FC<Props> = ({ token }) => {
 
         <section className={`mt-8 rounded-3xl border p-5 md:p-7 ${locked ? 'border-emerald-200/20 bg-emerald-200/[.045]' : !isLatestVersion || portal.decision === 'changes-requested' ? 'border-amber-200/20 bg-amber-200/[.045]' : 'border-white/[.08] bg-white/[.025]'}`}>
           <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div className="flex items-start gap-4"><span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${locked ? 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' : 'border-white/[.08] bg-black/20 text-zinc-400'}`}>{locked ? <CheckCircle2 className="h-5 w-5" /> : !isLatestVersion ? <LockKeyhole className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}</span><div><div className="eg-kicker">Quyết định cuối vòng</div><h3 className="mt-1 text-lg font-semibold text-white">{locked ? 'Phiên bản đã được nghiệm thu' : !isLatestVersion ? 'Phiên bản cũ chỉ để đối chiếu' : portal.decision === 'changes-requested' ? 'Đã gửi yêu cầu chỉnh sửa' : 'Sẵn sàng chốt vòng duyệt?'}</h3><p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-500">{locked ? `${portal.reviewerName || 'Khách hàng'} đã duyệt lúc ${formatDate(portal.decidedAt)}. Phiên được khóa để bảo toàn phạm vi nghiệm thu.` : !isLatestVersion ? 'Mọi góp ý và quyết định mới phải thực hiện trên version mới nhất để tránh lẫn phạm vi chỉnh sửa.' : '“Yêu cầu chỉnh sửa” gửi brief sửa lại cho team. “Phê duyệt” khóa phiên và xác nhận nghiệm thu.'}</p>{portal.decisionNote && <p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-zinc-300">{portal.decisionNote}</p>}</div></div>
+            <div className="flex items-start gap-4"><span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${locked ? 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' : 'border-white/[.08] bg-black/20 text-zinc-400'}`}>{locked ? <CheckCircle2 className="h-5 w-5" /> : !isLatestVersion ? <LockKeyhole className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}</span><div><div className="eg-kicker">Quyết định cuối vòng</div><h3 className="mt-1 text-lg font-semibold text-white">{locked ? 'Phiên bản đã được nghiệm thu' : !isLatestVersion ? 'Phiên bản cũ chỉ để đối chiếu' : portal.decision === 'changes-requested' ? 'Đã gửi yêu cầu chỉnh sửa' : 'Sẵn sàng chốt vòng duyệt?'}</h3><p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-500">{locked ? `${portal.reviewerName || 'Khách hàng'} đã duyệt lúc ${formatDate(portal.decidedAt)}. Phiên được khóa để bảo toàn phạm vi nghiệm thu.` : !isLatestVersion ? 'Mọi góp ý và quyết định mới phải thực hiện trên version mới nhất để tránh lẫn phạm vi chỉnh sửa.' : '“Yêu cầu chỉnh sửa” gửi brief sửa lại cho team. “Phê duyệt” khóa phiên và xác nhận nghiệm thu.'}</p><p className="mt-3 flex items-center gap-2 font-mono text-[9px] text-zinc-500"><Fingerprint className="h-3.5 w-3.5" /> {formatArtifactFingerprint(locked ? portal.decisionArtifactSignature : selectedVersion?.artifactSignature)}</p>{portal.decisionNote && <p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-zinc-300">{portal.decisionNote}</p>}</div></div>
             {!locked && isLatestVersion && <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]"><button type="button" onClick={() => setDecisionDraft('changes-requested')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-200/[.055] px-5 text-xs font-semibold text-amber-100"><RefreshCw className="h-4 w-4" /> Yêu cầu chỉnh sửa</button><button type="button" onClick={() => setDecisionDraft('approved')} className="eg-button-primary inline-flex min-h-11 items-center justify-center gap-2 px-5 text-xs font-bold"><CheckCircle2 className="h-4 w-4" /> Phê duyệt bản này</button></div>}
           </div>
         </section>
@@ -242,7 +250,7 @@ const ClientReviewPortal: React.FC<Props> = ({ token }) => {
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" role="dialog" aria-modal="true" aria-labelledby="decision-title" onClick={() => !decisionBusy && setDecisionDraft(null)}>
           <div className="eg-panel w-full max-w-xl overflow-hidden" onClick={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b eg-divider p-5 md:p-6"><div><div className="eg-kicker">Xác nhận quyết định</div><h2 id="decision-title" className="mt-1 text-lg font-semibold text-white">{decisionDraft === 'approved' ? 'Phê duyệt và khóa phiên bản?' : 'Gửi yêu cầu chỉnh sửa?'}</h2><p className="mt-2 text-xs leading-5 text-zinc-500">{decisionDraft === 'approved' ? 'Sau khi xác nhận, cổng góp ý sẽ bị khóa. Team Egoric có thể mở vòng duyệt mới khi cần.' : 'Team Egoric sẽ nhận ghi chú này làm brief cho vòng sửa tiếp theo.'}</p></div><button type="button" onClick={() => setDecisionDraft(null)} disabled={decisionBusy} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng xác nhận"><X className="h-4 w-4" /></button></header>
-            <div className="p-5 md:p-6"><div className="grid gap-3 sm:grid-cols-2"><label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Tên người duyệt *<input value={authorName} onChange={(event) => setAuthorName(event.target.value)} autoComplete="name" className="eg-input mt-2 px-4 text-sm font-normal normal-case tracking-normal" /></label><label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Email<input type="email" value={authorEmail} onChange={(event) => setAuthorEmail(event.target.value)} autoComplete="email" className="eg-input mt-2 px-4 text-sm font-normal normal-case tracking-normal" /></label></div><label className="mt-4 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Ghi chú quyết định<textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} maxLength={1000} rows={5} className="eg-input mt-2 min-h-28 resize-y px-4 py-3 text-sm font-normal leading-5 normal-case tracking-normal" placeholder={decisionDraft === 'approved' ? 'Ví dụ: Đã duyệt để chạy quảng cáo…' : 'Tóm tắt các thay đổi bắt buộc ở vòng tiếp theo…'} /></label>{formMessage && <p className="mt-3 text-[11px] text-amber-100" role="alert">{formMessage}</p>}</div>
+            <div className="p-5 md:p-6"><div className="mb-4 flex items-center gap-2 rounded-xl border border-white/[.07] bg-black/20 p-3 font-mono text-[9px] text-zinc-500"><Fingerprint className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Artifact: {formatArtifactFingerprint(selectedVersion?.artifactSignature)}</span></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Tên người duyệt *<input value={authorName} onChange={(event) => setAuthorName(event.target.value)} autoComplete="name" className="eg-input mt-2 px-4 text-sm font-normal normal-case tracking-normal" /></label><label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Email<input type="email" value={authorEmail} onChange={(event) => setAuthorEmail(event.target.value)} autoComplete="email" className="eg-input mt-2 px-4 text-sm font-normal normal-case tracking-normal" /></label></div><label className="mt-4 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Ghi chú quyết định<textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} maxLength={1000} rows={5} className="eg-input mt-2 min-h-28 resize-y px-4 py-3 text-sm font-normal leading-5 normal-case tracking-normal" placeholder={decisionDraft === 'approved' ? 'Ví dụ: Đã duyệt để chạy quảng cáo…' : 'Tóm tắt các thay đổi bắt buộc ở vòng tiếp theo…'} /></label>{formMessage && <p className="mt-3 text-[11px] text-amber-100" role="alert">{formMessage}</p>}</div>
             <footer className="grid grid-cols-[auto_1fr] gap-3 border-t eg-divider bg-black/15 p-4 md:px-6"><button type="button" onClick={() => setDecisionDraft(null)} disabled={decisionBusy} className="eg-button-secondary px-5 text-xs font-semibold">Hủy</button><button type="button" onClick={() => void submitDecision()} disabled={decisionBusy || authorName.trim().length < 2} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-xs font-bold disabled:opacity-40 ${decisionDraft === 'approved' ? 'eg-button-primary' : 'border border-amber-200/20 bg-amber-200/[.07] text-amber-100'}`}>{decisionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : decisionDraft === 'approved' ? <CheckCircle2 className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />} {decisionDraft === 'approved' ? 'Xác nhận nghiệm thu' : 'Gửi yêu cầu sửa'}</button></footer>
           </div>
         </div>

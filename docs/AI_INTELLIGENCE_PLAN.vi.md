@@ -141,6 +141,8 @@ Auto Editor hiện cắt máy móc: cắt thẳng hoặc mờ chồng theo thứ
 
 > Đã làm — xem [EDITING_INTELLIGENCE.vi.md](EDITING_INTELLIGENCE.vi.md). Smart Reframe đã nối vào FFmpeg theo từng shot+tỷ lệ. Master render trên bản Sites nay được lưu bền vững vào [Master Library](MASTER_LIBRARY.vi.md), tạo đầu vào ổn định cho vòng duyệt và phân phối.
 
+> Master Library nay đã có entry point thật vào [Master Review](MASTER_REVIEW.vi.md): agent và team chỉ duyệt một artifact có checksum, không còn duyệt playlist shot rồi phân phối một file khác.
+
 ---
 
 ## Thứ tự và lý do

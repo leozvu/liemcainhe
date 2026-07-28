@@ -4,8 +4,10 @@ import { createNewProjectState } from '../services/storageService';
 import { createAutoEditorPlan } from '../services/autoEditorService';
 import {
   createAgencyReviewRound,
+  getReviewableMasters,
   getAgencyReviewSummary,
   markAgencyReviewPublished,
+  selectAgencyReviewMaster,
   syncAgencyReviewFromClientDecision,
   updateAgencyReviewGate,
 } from '../services/agencyReviewService';
@@ -65,6 +67,33 @@ const portalFor = (project: ProjectState, decision: 'pending' | 'changes-request
 };
 
 describe('Agency Review Workflow', () => {
+  it('khóa vòng duyệt vào đúng master cloud và checksum', () => {
+    const project = fixture();
+    const output = project.autoEditor!.outputs[0];
+    project.autoEditor!.outputs[0] = {
+      ...output,
+      status: 'ready',
+      storage: 'cloud',
+      videoUrl: `/api/cloud/media/${project.id}/editor/masters/${output.id}.mp4`,
+      checksum: 'sha256-master-v1',
+      bytes: 12_000_000,
+      archivedAt: 50,
+    };
+    expect(getReviewableMasters(project).map((item) => item.id)).toEqual([output.id]);
+    const selected = selectAgencyReviewMaster(project, output.id);
+    const opened = createAgencyReviewRound(selected, 'Master V1', undefined, output.id);
+    expect(getAgencyReviewSummary(opened).activeRound).toMatchObject({ masterOutputId: output.id, masterChecksum: 'sha256-master-v1' });
+    opened.autoEditor!.outputs[0].checksum = 'sha256-master-v2';
+    expect(getAgencyReviewSummary(opened).stale).toBe(true);
+  });
+
+  it('không cho chọn master chỉ có trên thiết bị', () => {
+    const project = fixture();
+    const output = project.autoEditor!.outputs[0];
+    project.autoEditor!.outputs[0] = { ...output, status: 'ready', storage: 'downloaded', checksum: 'local-only' };
+    expect(() => selectAgencyReviewMaster(project, output.id)).toThrow(/lưu cloud/);
+  });
+
   it('mở vòng duyệt theo đúng timeline và tạo checkpoint cùng job theo dõi', () => {
     const project = createAgencyReviewRound(fixture(), 'Bản duyệt V1', 'Bản dựng đầu tiên');
     const summary = getAgencyReviewSummary(project);
@@ -113,5 +142,14 @@ describe('Agency Review Workflow', () => {
     expect(getAgencyReviewSummary(published).activeRound).toMatchObject({ status: 'client-review', portalId: 'portal_1', versionId: 'version_1' });
     const accepted = syncAgencyReviewFromClientDecision(published, { ...portal, decision: 'approved', decisionVersionId: 'version_1', decidedAt: 99 });
     expect(getAgencyReviewSummary(accepted).activeRound).toMatchObject({ status: 'approved', clientDecisionAt: 99 });
+  });
+
+  it('không đồng bộ nghiệm thu nếu chữ ký quyết định lệch artifact', () => {
+    const approved = approveInternal(createAgencyReviewRound(fixture(), 'V1'));
+    const portal = portalFor(approved, 'approved');
+    portal.versions[0].artifactSignature = 'master:output_1:new';
+    portal.decisionArtifactSignature = 'master:output_1:old';
+    const published = markAgencyReviewPublished(approved, approved.agencyReview!.activeRoundId!, portal);
+    expect(syncAgencyReviewFromClientDecision(published, portal)).toEqual(published);
   });
 });
