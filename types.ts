@@ -790,6 +790,7 @@ export type AutoEditorCaptionStyle = 'clean' | 'bold' | 'boxed';
 export type AutoEditorLogoPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type AutoEditorColorPreset = 'natural' | 'cinematic' | 'warm' | 'cool' | 'contrast';
 export type AutoEditorOutputStatus = 'planned' | 'rendering' | 'ready' | 'failed';
+export type AutoEditorReframeFocus = 'center' | 'left' | 'right' | 'top';
 
 export interface AutoEditorTimelineClip {
   id: string;
@@ -839,6 +840,13 @@ export interface AutoEditorPacingOverride {
   transition: AutoEditorTransition;
 }
 
+/** Quyết định crop thủ công cho một shot trong đúng một tỷ lệ đầu ra. */
+export interface AutoEditorReframeOverride {
+  shotId: string;
+  aspectRatio: AspectRatio;
+  focus: AutoEditorReframeFocus;
+}
+
 export interface AutoEditorOutput {
   id: string;
   name: string;
@@ -862,6 +870,8 @@ export interface AutoEditorState {
    * xoá mất.
    */
   pacing?: AutoEditorPacingOverride[];
+  /** Chỉ lưu phần người dựng đã sửa; đề xuất mặc định luôn được tính lại từ shot. */
+  reframeOverrides?: AutoEditorReframeOverride[];
   planSignature?: string;
   lastPlannedAt?: number;
   lastRenderedAt?: number;

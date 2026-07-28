@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clapperboard,
   Clock3,
+  Crop,
   Download,
   Film,
   Image,
@@ -18,6 +19,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  RotateCcw,
   Scissors,
   ShieldCheck,
   Sparkles,
@@ -31,25 +33,30 @@ import {
   AutoEditorColorPreset,
   AutoEditorLogoPosition,
   AutoEditorOutputStatus,
+  AutoEditorReframeFocus,
   AutoEditorTransition,
   ProjectState,
 } from '../types';
 import {
   applyEditingRecommendations,
+  clearAutoEditorReframeOverrides,
   clearEditingRecommendations,
   createAutoEditorPlan,
   downloadAutoEditorSrt,
   getAutoEditorEditingReport,
+  getAutoEditorReframePlan,
   failAutoEditorRender,
   finishAutoEditorRender,
   getAutoEditorSources,
   getAutoEditorSummary,
   normalizeAutoEditorState,
   startAutoEditorRender,
+  updateAutoEditorReframeFocus,
   updateAutoEditorSettings,
 } from '../services/autoEditorService';
 import { cancelAutoEditorRender, renderAutoEditorOutputInBrowser } from '../services/autoEditorRenderService';
 import { describeEditingReport } from '../services/editingIntelligenceService';
+import { getAISupervisorGate } from '../services/aiSupervisorService';
 import { useAlert } from './GlobalAlert';
 
 interface Props {
@@ -85,6 +92,21 @@ const LOGO_POSITIONS: Array<{ id: AutoEditorLogoPosition; label: string }> = [
   { id: 'bottom-right', label: 'Dưới phải' },
 ];
 
+const REFRAME_FOCUSES: Array<{ id: AutoEditorReframeFocus; label: string }> = [
+  { id: 'left', label: 'Trái' },
+  { id: 'center', label: 'Giữa' },
+  { id: 'right', label: 'Phải' },
+  { id: 'top', label: 'Trên' },
+];
+
+const ratioValue = (ratio: AspectRatio): number => ratio === '16:9' ? 16 / 9 : ratio === '9:16' ? 9 / 16 : 1;
+
+const availableReframeFocuses = (from: AspectRatio, to: AspectRatio) => {
+  if (ratioValue(to) < ratioValue(from)) return REFRAME_FOCUSES.filter((item) => item.id !== 'top');
+  if (ratioValue(to) > ratioValue(from)) return REFRAME_FOCUSES.filter((item) => ['center', 'top'].includes(item.id));
+  return REFRAME_FOCUSES.filter((item) => item.id === 'center');
+};
+
 const OUTPUT_META: Record<AutoEditorOutputStatus, { label: string; className: string; icon: React.ComponentType<{ className?: string }> }> = {
   planned: { label: 'Chờ render', className: 'border-white/10 bg-white/[.04] text-zinc-400', icon: Clock3 },
   rendering: { label: 'Đang render', className: 'border-cyan-200/25 bg-cyan-200/[.08] text-cyan-100', icon: Loader2 },
@@ -111,12 +133,24 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
   const summary = useMemo(() => getAutoEditorSummary(project), [project]);
   const sources = useMemo(() => getAutoEditorSources(project), [project]);
   const editing = useMemo(() => getAutoEditorEditingReport(project), [project]);
+  const releaseGate = useMemo(() => getAISupervisorGate(project), [project]);
   const logoAssets = project.brandKitSnapshot?.assets.filter((asset) => asset.type === 'logo' && asset.url) || [];
   const musicInputRef = useRef<HTMLInputElement>(null);
   const [renderingId, setRenderingId] = useState<string>();
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderPhase, setRenderPhase] = useState('');
   const [uploadingMusic, setUploadingMusic] = useState(false);
+  const [reframeRatio, setReframeRatio] = useState<AspectRatio>(
+    state.settings.aspectRatios.find((ratio) => ratio !== '16:9') || state.settings.aspectRatios[0] || '9:16',
+  );
+  const [showAllReframes, setShowAllReframes] = useState(false);
+  const activeReframeRatio = state.settings.aspectRatios.includes(reframeRatio)
+    ? reframeRatio
+    : state.settings.aspectRatios[0] || '9:16';
+  const reframePlan = useMemo(
+    () => getAutoEditorReframePlan(project, activeReframeRatio),
+    [project, activeReframeRatio],
+  );
 
   const patchSettings = (updates: Parameters<typeof updateAutoEditorSettings>[1]) => {
     updateProject((previous) => updateAutoEditorSettings(previous, updates));
@@ -232,6 +266,19 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
     }
   };
 
+  const handleReframe = (shotId: string, focus?: AutoEditorReframeFocus) => {
+    try {
+      updateProject((previous) => updateAutoEditorReframeFocus(previous, activeReframeRatio, shotId, focus));
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể cập nhật vùng giữ khung.', { type: 'error' });
+    }
+  };
+
+  const handleClearReframes = () => {
+    updateProject((previous) => clearAutoEditorReframeOverrides(previous, activeReframeRatio));
+    showAlert(`Đã trả toàn bộ shot ${activeReframeRatio} về đề xuất tự động.`, { type: 'success' });
+  };
+
   return (
     <div className="space-y-6">
       <section className="eg-panel relative overflow-hidden p-5 md:p-8">
@@ -339,6 +386,67 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
           </section>
 
           <section className="eg-panel overflow-hidden">
+            <div className="border-b border-white/[.07] p-5 md:p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="eg-kicker">05 · Smart Reframe</div>
+                  <h3 className="mt-1 text-lg font-semibold text-white">Giữ đúng chủ thể khi đổi tỷ lệ</h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">Hệ thống đề xuất vùng crop cho từng shot. Chỉ quyết định bạn sửa thủ công mới được lưu.</p>
+                </div>
+                {(state.reframeOverrides || []).some((item) => item.aspectRatio === activeReframeRatio) && (
+                  <button type="button" onClick={handleClearReframes} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold">
+                    <RotateCcw className="h-4 w-4" /> Đặt lại tỷ lệ này
+                  </button>
+                )}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2" aria-label="Tỷ lệ cần căn lại khung">
+                {state.settings.aspectRatios.map((ratio) => (
+                  <button key={ratio} type="button" onClick={() => setReframeRatio(ratio)} aria-pressed={activeReframeRatio === ratio} className={`min-h-11 rounded-xl border px-4 text-xs font-semibold ${activeReframeRatio === ratio ? 'border-cyan-200/35 bg-cyan-200/[.08] text-cyan-100' : 'border-white/[.07] bg-black/15 text-zinc-500 hover:text-white'}`}>
+                    {ratio}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {reframePlan.length === 0 ? (
+              <div className="flex min-h-44 flex-col items-center justify-center p-8 text-center"><Crop className="h-8 w-8 text-zinc-700" /><p className="mt-3 text-xs text-zinc-500">Lập timeline để kiểm tra crop theo từng shot.</p></div>
+            ) : (
+              <div className="divide-y divide-white/[.06]">
+                {reframePlan.slice(0, showAllReframes ? undefined : 6).map((item, index) => {
+                  const clip = state.timeline.find((candidate) => candidate.shotId === item.shotId);
+                  const shot = project.shots.find((candidate) => candidate.id === item.shotId);
+                  const previewSize = activeReframeRatio === '9:16' ? 'h-24 w-14' : activeReframeRatio === '1:1' ? 'h-20 w-20' : 'h-14 w-24';
+                  const objectPosition = item.focus === 'left' ? 'object-left' : item.focus === 'right' ? 'object-right' : item.focus === 'top' ? 'object-top' : 'object-center';
+                  return (
+                    <article key={`${item.aspectRatio}-${item.shotId}`} className="grid gap-4 p-5 md:grid-cols-[96px_1fr] md:p-6">
+                      <div className="flex items-start gap-3 md:block">
+                        <span className="font-mono text-[9px] text-zinc-600">{String(index + 1).padStart(2, '0')}</span>
+                        <div className={`${previewSize} mt-2 overflow-hidden rounded-xl border border-white/[.09] bg-black/30`}>
+                          {clip?.videoUrl ? <video src={clip.videoUrl} className={`h-full w-full object-cover ${objectPosition}`} muted preload="metadata" /> : <div className="flex h-full items-center justify-center"><Film className="h-4 w-4 text-zinc-700" /></div>}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div><h4 className="text-sm font-semibold text-zinc-100">{shot?.actionSummary || `Cảnh ${index + 1}`}</h4><p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600">{item.sourceAspectRatio} → {item.aspectRatio} · {item.overridden ? 'Editor đã chỉnh' : 'Đề xuất tự động'}</p></div>
+                          {item.overridden && <button type="button" onClick={() => handleReframe(item.shotId)} className="min-h-11 rounded-xl border border-white/[.08] px-3 text-[10px] font-semibold text-zinc-500 hover:text-white">Dùng đề xuất</button>}
+                        </div>
+                        <p className="mt-3 text-[10px] leading-4 text-zinc-500">{item.reason}</p>
+                        {item.warning && <div className="mt-3 flex gap-2 rounded-xl border border-amber-200/15 bg-amber-200/[.05] p-3 text-[10px] leading-4 text-amber-100/75"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{item.warning}</span></div>}
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={`Vùng giữ khung cho cảnh ${index + 1}`}>
+                          {availableReframeFocuses(item.sourceAspectRatio, item.aspectRatio).map((focus) => (
+                            <button key={focus.id} type="button" onClick={() => handleReframe(item.shotId, focus.id)} aria-pressed={item.focus === focus.id} className={`min-h-11 rounded-xl border px-3 text-xs font-semibold ${item.focus === focus.id ? 'border-cyan-200/35 bg-cyan-200/[.09] text-cyan-50' : 'border-white/[.07] bg-black/15 text-zinc-500 hover:text-white'}`}>{focus.label}{item.recommendedFocus === focus.id ? ' · Gợi ý' : ''}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+                {reframePlan.length > 6 && <div className="p-4 text-center"><button type="button" onClick={() => setShowAllReframes((current) => !current)} className="min-h-11 rounded-xl border border-white/[.08] px-5 text-xs font-semibold text-zinc-400 hover:text-white">{showAllReframes ? 'Thu gọn' : `Xem thêm ${reframePlan.length - 6} shot`}</button></div>}
+              </div>
+            )}
+          </section>
+
+          <section className="eg-panel overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-white/[.07] p-5 md:flex-row md:items-end md:justify-between md:p-6"><div><div className="eg-kicker">Timeline</div><h3 className="mt-1 text-lg font-semibold text-white">Nhịp dựng theo storyboard</h3></div>{state.captions.length > 0 && <button type="button" onClick={handleDownloadSrt} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold"><Download className="h-4 w-4" /> Tải SRT</button>}</div>
             {state.timeline.length === 0 ? (
               <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Clapperboard className="h-10 w-10 text-zinc-700" /><h4 className="mt-4 text-sm font-semibold text-zinc-300">Timeline chưa được lập</h4><p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Chọn nguồn và định dạng, sau đó nhấn “Lập timeline tự động”.</p></div>
@@ -405,6 +513,10 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
 
           <section className="eg-panel p-5">
             <div className="flex items-center justify-between gap-3"><div><div className="eg-kicker">Render queue</div><h3 className="mt-1 text-base font-semibold text-white">Master & biến thể</h3></div><Sparkles className="h-5 w-5 text-amber-200/70" /></div>
+            <div className={`mt-4 rounded-xl border p-3 ${releaseGate.canRelease ? 'border-emerald-200/15 bg-emerald-200/[.05]' : 'border-rose-200/15 bg-rose-200/[.05]'}`}>
+              <div className={`flex items-center gap-2 text-[11px] font-semibold ${releaseGate.canRelease ? 'text-emerald-100' : 'text-rose-100'}`}>{releaseGate.canRelease ? <CheckCircle2 className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />} AI Supervisor · {releaseGate.label}</div>
+              <p className="mt-1 text-[10px] leading-4 text-zinc-600">{releaseGate.reasons.join(' · ')}</p>
+            </div>
             <div className="mt-4 space-y-3">
               {state.outputs.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center text-xs leading-5 text-zinc-600">Lập timeline để tạo danh sách đầu ra.</div> : state.outputs.map((output) => {
                 const meta = OUTPUT_META[output.status];
@@ -416,12 +528,12 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
                     <div className="mt-4 flex items-center justify-between text-[10px] text-zinc-500"><span>Ước tính {output.estimatedRenderMinutes} phút</span><strong className="text-emerald-200">$0 API</strong></div>
                     {active && <div className="mt-4" aria-live="polite"><div className="flex items-center justify-between gap-3 text-[10px] text-cyan-100"><span className="truncate">{renderPhase}</span><span className="font-mono tabular-nums">{renderProgress}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-cyan-200 transition-[width] duration-300" style={{ width: `${renderProgress}%` }} /></div></div>}
                     {output.error && output.status === 'failed' && <p role="alert" className="mt-3 text-[10px] leading-4 text-rose-200/70">{output.error}</p>}
-                    <button type="button" onClick={active ? handleCancel : () => void handleRender(output.id)} disabled={Boolean(renderingId && !active) || summary.stale || summary.blocked > 0} className={`mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${active ? 'border-rose-200/25 bg-rose-200/[.07] text-rose-100' : 'border-cyan-200/30 bg-cyan-200/[.09] text-cyan-50 hover:bg-cyan-200/[.14]'}`}>{active ? <><Pause className="h-4 w-4" /> Hủy render</> : <><Play className="h-4 w-4 fill-current" /> Render MP4</>}</button>
+                    <button type="button" onClick={active ? handleCancel : () => void handleRender(output.id)} disabled={Boolean(renderingId && !active) || summary.stale || summary.blocked > 0 || !releaseGate.canRelease} className={`mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${active ? 'border-rose-200/25 bg-rose-200/[.07] text-rose-100' : 'border-cyan-200/30 bg-cyan-200/[.09] text-cyan-50 hover:bg-cyan-200/[.14]'}`}>{active ? <><Pause className="h-4 w-4" /> Hủy render</> : <><Play className="h-4 w-4 fill-current" /> Render MP4</>}</button>
                   </article>
                 );
               })}
             </div>
-            {(summary.stale || summary.blocked > 0) && <p className="mt-4 text-[10px] leading-4 text-amber-100/65">{summary.stale ? 'Hãy lập lại timeline sau khi thay đổi cấu hình hoặc media.' : 'Xử lý lỗi chặn trong Preflight trước khi render.'}</p>}
+            {(summary.stale || summary.blocked > 0 || !releaseGate.canRelease) && <p className="mt-4 text-[10px] leading-4 text-amber-100/65">{summary.stale ? 'Hãy lập lại timeline sau khi thay đổi cấu hình hoặc media.' : summary.blocked > 0 ? 'Xử lý lỗi chặn trong Preflight trước khi render.' : 'Chạy AI Supervisor và xử lý lỗi nghiêm trọng trước khi render master.'}</p>}
           </section>
 
           <section className="rounded-3xl border border-cyan-200/15 bg-cyan-200/[.05] p-5">

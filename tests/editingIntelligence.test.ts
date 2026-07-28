@@ -229,20 +229,22 @@ describe('đổi tỷ lệ khung', () => {
     expect(suggestReframe(shot(), '16:9', '16:9').focus).toBe('center');
   });
 
-  it('khung rộng ra thì không cắt bỏ gì', () => {
-    expect(suggestReframe(shot(), '9:16', '16:9').reason).toContain('không phải cắt bỏ');
+  it('dọc sang ngang thì crop trên dưới và ưu tiên phần trên', () => {
+    const result = suggestReframe(shot(), '9:16', '16:9');
+    expect(result.focus).toBe('top');
+    expect(result.reason).toContain('trên/dưới');
   });
 
-  it('cảnh toàn cắt sang dọc thì giữ phần trên', () => {
+  it('cảnh toàn cắt sang dọc thì giữ trục giữa vì chỉ mất hai bên', () => {
     const result = suggestReframe(shot({ shotSize: 'toàn cảnh' }), '16:9', '9:16');
-    expect(result.focus).toBe('top');
-    expect(result.reason).toContain('chân trời');
+    expect(result.focus).toBe('center');
+    expect(result.reason).toContain('Crop hai bên');
   });
 
   it('nhiều nhân vật thì cảnh báo sẽ mất người', () => {
     const result = suggestReframe(shot({ characters: ['a', 'b'] }), '16:9', '9:16');
     expect(result.warning).toContain('2 nhân vật');
-    expect(result.warning).toContain('dựng riêng bản dọc');
+    expect(result.warning).toContain('dựng riêng');
   });
 
   it('một chủ thể thì giữ giữa khung', () => {

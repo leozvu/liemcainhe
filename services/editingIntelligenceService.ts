@@ -1,4 +1,4 @@
-import { AspectRatio, AutoEditorTimelineClip, AutoEditorTransition, Shot, VoiceTake } from '../types';
+import { AspectRatio, AutoEditorReframeFocus, AutoEditorTimelineClip, AutoEditorTransition, Shot, VoiceTake } from '../types';
 
 /**
  * Trí tuệ dựng phim.
@@ -237,15 +237,13 @@ export const pickBestTake = (takes: VoiceTake[], targetDuration: number): TakeCh
 
 /* ───────────────────────────  Đổi tỷ lệ khung  ──────────────────────── */
 
-export type ReframeFocus = 'center' | 'left' | 'right' | 'top';
+export type ReframeFocus = AutoEditorReframeFocus;
 
 /**
  * Nên cắt khung theo hướng nào khi đổi tỷ lệ.
  *
- * Chuyển từ ngang sang dọc luôn mất hai bên, nên phải chọn giữ phần nào. Quy
- * tắc thực dụng: một nhân vật thì giữ giữa, hai nhân vật thì giữ giữa nhưng
- * cảnh báo vì kiểu gì cũng mất một người, cảnh toàn thì ưu tiên phần trên vì
- * chân trời và bối cảnh thường nằm ở đó.
+ * Crop hai bên thì giữ giữa và cảnh báo nếu có nhiều nhân vật; crop trên/dưới
+ * thì ưu tiên phần trên để giữ mặt và đường chân trời.
  */
 export const suggestReframe = (
   shot: Shot | undefined,
@@ -254,28 +252,32 @@ export const suggestReframe = (
 ): { focus: ReframeFocus; reason: string; warning?: string } => {
   if (from === to) return { focus: 'center', reason: 'Không đổi tỷ lệ.' };
 
-  const narrowing = from === '16:9' && (to === '9:16' || to === '1:1');
-  if (!narrowing) {
-    return { focus: 'center', reason: 'Khung rộng ra, không phải cắt bỏ gì.' };
-  }
+  const ratioValue = (ratio: AspectRatio): number => ratio === '16:9' ? 16 / 9 : ratio === '9:16' ? 9 / 16 : 1;
+  const horizontalCrop = ratioValue(to) < ratioValue(from);
+  const verticalCrop = ratioValue(to) > ratioValue(from);
 
   const characterCount = shot?.characters?.length ?? 0;
-  if (characterCount >= 2) {
+  if (horizontalCrop && characterCount >= 2) {
     return {
       focus: 'center',
       reason: 'Giữ giữa khung.',
-      warning: `Shot có ${characterCount} nhân vật; cắt sang khung dọc sẽ mất bớt. Cân nhắc dựng riêng bản dọc.`,
+      warning: `Shot có ${characterCount} nhân vật; crop hai bên có thể làm mất chủ thể. Cân nhắc dựng riêng cho tỷ lệ ${to}.`,
     };
   }
 
-  if (shotSizeClass(shot?.shotSize) === 'wide') {
+  if (verticalCrop) {
     return {
       focus: 'top',
-      reason: 'Cảnh toàn: giữ phần trên vì bối cảnh và đường chân trời thường nằm ở đó.',
+      reason: 'Khung bị cắt trên/dưới: ưu tiên phần trên để giữ mặt và đường chân trời.',
     };
   }
 
-  return { focus: 'center', reason: 'Một chủ thể, giữ giữa khung là an toàn nhất.' };
+  return {
+    focus: 'center',
+    reason: shotSizeClass(shot?.shotSize) === 'wide'
+      ? 'Crop hai bên cảnh toàn: giữ trục giữa và kiểm tra preview trước khi xuất.'
+      : 'Crop hai bên: giữ chủ thể ở giữa khung.',
+  };
 };
 
 /* ────────────────────────────  Chèn b-roll  ─────────────────────────── */

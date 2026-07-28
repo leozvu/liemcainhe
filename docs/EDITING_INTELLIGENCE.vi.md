@@ -53,9 +53,15 @@ Không take nào vừa thì vẫn chọn bản gần nhất và **khuyên kéo d
 
 ## Đổi tỷ lệ khung
 
-`suggestReframe` chỉ trả lời một câu: cắt sang khung hẹp hơn thì giữ phần nào.
+`suggestReframe` xác định đúng trục bị crop theo tỷ lệ nguồn và tỷ lệ đích:
 
-Cảnh toàn giữ phần trên (bối cảnh và đường chân trời thường ở đó). Còn lại giữ giữa khung. Từ hai nhân vật trở lên thì **cảnh báo** rằng kiểu gì cũng mất bớt người, và gợi ý dựng riêng bản dọc — không giả vờ rằng có một cách cắt đúng.
+- Ngang sang dọc/vuông mất hai bên: cho chọn Trái, Giữa hoặc Phải. Shot nhiều nhân vật có cảnh báo nên dựng riêng.
+- Dọc sang ngang mất trên/dưới: cho chọn Trên hoặc Giữa; mặc định giữ phần trên để bảo vệ mặt và đường chân trời.
+- Cùng tỷ lệ không hiện lựa chọn vô nghĩa.
+
+`AutoEditorState.reframeOverrides` chỉ lưu quyết định editor đã sửa theo khoá `shotId + aspectRatio`; đề xuất mặc định vẫn được tính lại từ shot. Thay đổi crop làm `planSignature` cũ ngay lập tức, buộc lập lại timeline trước khi render.
+
+`autoEditorRenderService` đọc kế hoạch hiệu lực và tạo biểu thức `crop=w:h:x:y` riêng cho từng clip sau bước scale-cover. Vì vậy lựa chọn trong giao diện đi thẳng vào FFmpeg, không phải mock UI.
 
 ## Giao diện
 
@@ -69,22 +75,35 @@ Bảng “Trí tuệ dựng phim” trong Auto Editor (cột phải, dưới Pre
 
 Ô nhập BPM nằm trong thẻ Nhạc nền.
 
+Workbench **Smart Reframe** nằm trong cột chính, trước Timeline:
+
+- Chuyển giữa từng tỷ lệ đầu ra.
+- Xem preview theo vùng crop hiệu lực.
+- Chỉnh vùng giữ khung theo từng shot hoặc trả lại đề xuất.
+- Cảnh báo shot nhiều nhân vật ngay tại shot và trong Preflight.
+- Tối đa 6 shot được mở mặc định; danh sách dài dùng nút mở rộng để giao diện không quá tải.
+
+Đường **Render MP4** là entry point tạo master gửi khách nên bắt buộc qua `assertAISupervisorCanRelease`, giống khu vực Xuất bản. Auto Editor hiển thị trạng thái gate và lý do khóa trước khi người dùng bấm.
+
 ## Kiểm chứng
 
 ```bash
 npx vitest run tests/editingIntelligence.test.ts tests/autoEditor.test.ts
 ```
 
-47 test. Đáng chú ý:
+Các test đáng chú ý:
 
 - Nhịp đã áp **sống sót qua lần lập kế hoạch sau** và kế hoạch không bị đánh dấu là cũ — đây là thứ dễ hỏng nhất trong toàn bộ epic.
 - `snapToBeats` **từ chối** dịch khi phải dịch đúng nửa phách (60 bpm, clip 2.5s).
 - Sau khi áp nhịp, không còn clip nào cắt mất thoại.
 - Take dài hơn khung bị loại **kèm số giây thừa**, không chỉ bị bỏ im lặng.
+- Override Smart Reframe chỉ ảnh hưởng đúng cặp shot+tỷ lệ và sống qua lần lập kế hoạch sau.
+- Bốn vùng giữ khung sinh đúng biểu thức crop FFmpeg.
+- Render master bị khóa khi AI Supervisor chưa quét và mở sau lượt quét sạch.
 
 ## Chưa làm
 
 - Không phân tích nội dung khung hình để chọn điểm cắt — muốn vậy phải đọc từng frame, đắt và chậm.
 - Không tự tìm cảnh phụ để chèn; mới chỉ chỉ ra **chỗ nên chèn**.
 - Không đoán BPM từ tệp nhạc.
-- `suggestReframe` chưa được nối vào bước render nhiều tỷ lệ — hiện mới là hàm thuần, chưa có nút bấm.
+- Chưa theo dõi khuôn mặt/chủ thể theo từng frame; Smart Reframe hiện dùng metadata shot và quyết định của editor, không gọi Vision nên chi phí API vẫn bằng 0.
