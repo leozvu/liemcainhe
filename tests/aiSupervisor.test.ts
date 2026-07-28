@@ -4,9 +4,15 @@ import { createNewProjectState } from '../services/storageService';
 import { createDefaultBrandKit } from '../services/brandKitService';
 import {
   createDefaultAISupervisorState,
+  cancelSupervisorRepair,
+  executeSupervisorRepair,
+  getAISupervisorGate,
   getShotFullSignature,
+  getSupervisorRepairPlan,
+  getVisionInputs,
   queueSupervisorRepair,
   runLocalSupervisorAudit,
+  updateAISupervisorPolicy,
 } from '../services/aiSupervisorService';
 
 const storage = new Map<string, string>();
@@ -59,6 +65,24 @@ const fixture = (): ProjectState => {
   return project;
 };
 
+const cleanFixture = (): ProjectState => {
+  const project = createNewProjectState();
+  project.scriptData = {
+    title: 'Shot đạt', genre: 'Quảng cáo', logline: 'Đầu ra sạch', characters: [],
+    scenes: [{ id: 'scene_clean', location: 'Studio', time: 'Sáng', atmosphere: 'Sạch', visualPrompt: 'Bright studio' }],
+    storyParagraphs: [],
+  };
+  project.shots = [{
+    id: 'shot_clean', sceneId: 'scene_clean', actionSummary: 'Sản phẩm trong studio.', dialogue: '', cameraMovement: 'Tĩnh', characters: [],
+    keyframes: [
+      { id: 'clean_start', type: 'start', visualPrompt: 'Product start', imageUrl: 'data:image/png;base64,clean-start', status: 'completed' },
+      { id: 'clean_end', type: 'end', visualPrompt: 'Product end', imageUrl: 'data:image/png;base64,clean-end', status: 'completed' },
+    ],
+    interval: { id: 'clean_interval', startKeyframeId: 'clean_start', endKeyframeId: 'clean_end', duration: 4, motionStrength: 0.5, videoUrl: 'data:video/mp4;base64,clean', status: 'completed' },
+  }];
+  return project;
+};
+
 describe('AI Supervisor', () => {
   it('quét local bắt lỗi thoại/media/brand nhưng vẫn cho nhân vật chạy bằng prompt khi không có reference', () => {
     const audited = runLocalSupervisorAudit(fixture());
@@ -92,6 +116,42 @@ describe('AI Supervisor', () => {
     expect(next.issues.some((issue) => issue.source === 'ai-vision')).toBe(false);
   });
 
+  it('giữ kết quả Vision khi media và Reference Pack không đổi', () => {
+    let project = runLocalSupervisorAudit(cleanFixture());
+    const report = project.aiSupervisor!.reports[0];
+    project.aiSupervisor = {
+      ...project.aiSupervisor!,
+      reports: [{
+        ...report,
+        visionStatus: 'complete',
+        visionAnalyzedAt: 123,
+        mediaSignature: getShotFullSignature(project, project.shots[0]),
+        issues: [...report.issues, {
+          id: 'vision_current', kind: 'hands', severity: 'warning', status: 'open', source: 'ai-vision', title: 'Tay cần duyệt', detail: 'Dấu hiệu bất thường', repairTarget: 'keyframes', frameTargets: ['end'], createdAt: 1, updatedAt: 1,
+        }],
+      }],
+    };
+    const audited = runLocalSupervisorAudit(project);
+    expect(audited.aiSupervisor!.reports[0].visionStatus).toBe('complete');
+    expect(audited.aiSupervisor!.reports[0].issues.some((issue) => issue.id === 'vision_current')).toBe(true);
+  });
+
+  it('chỉ gửi asset đã khóa trong Reference Pack sang Vision', () => {
+    const project = cleanFixture();
+    project.brandKitSnapshot = {
+      ...createDefaultBrandKit(),
+      assets: [
+        { id: 'product_old', type: 'product', name: 'SKU cũ', url: 'data:image/png;base64,old' },
+        { id: 'product_locked', type: 'product', name: 'SKU chuẩn', url: 'data:image/png;base64,locked', notes: 'Đúng nhãn xanh' },
+      ],
+    };
+    project.consistency = { lockedBrandAssetIds: ['product_locked'], updatedAt: 1 };
+    const inputs = getVisionInputs(project, project.shots[0]);
+    expect(inputs.labels.some((label) => label.includes('SKU chuẩn'))).toBe(true);
+    expect(inputs.labels.some((label) => label.includes('SKU cũ'))).toBe(false);
+    expect(inputs.context.join(' ')).toContain('Đúng nhãn xanh');
+  });
+
   it('chỉ xếp đúng shot lỗi, tạo checkpoint và chưa chạy API', () => {
     const audited = runLocalSupervisorAudit(fixture());
     const next = queueSupervisorRepair(audited, 'shot_2');
@@ -108,5 +168,92 @@ describe('AI Supervisor', () => {
     project.aiSupervisor = { ...createDefaultAISupervisorState(), policy: { ...createDefaultAISupervisorState().policy, repairBudgetUsd: 0.001 } };
     const audited = runLocalSupervisorAudit(project);
     expect(() => queueSupervisorRepair(audited, 'shot_2')).toThrow('vượt ngân sách');
+  });
+
+  it('lập kế hoạch chỉ tạo lại khung bị Vision chỉ định rồi dựng lại video', () => {
+    let project = runLocalSupervisorAudit(cleanFixture());
+    const report = project.aiSupervisor!.reports[0];
+    project.aiSupervisor = {
+      ...project.aiSupervisor!,
+      reports: [{
+        ...report,
+        issues: [{
+          id: 'vision_end', kind: 'hands', severity: 'critical', status: 'open', source: 'ai-vision', title: 'Lỗi tay khung cuối', detail: 'Khung cuối có sáu ngón', repairTarget: 'keyframes', frameTargets: ['end'], confidence: 0.96, createdAt: 1, updatedAt: 1,
+        }],
+      }],
+    };
+    const plan = getSupervisorRepairPlan(project, 'shot_clean');
+    expect(plan.frameTargets).toEqual(['end']);
+    expect(plan.actions.map((action) => action.tool)).toEqual(['generate-end-keyframe', 'generate-video']);
+  });
+
+  it('không xếp API cho lỗi thoại cần producer sửa nội dung', () => {
+    const project = fixture();
+    project.shots = [project.shots[0]];
+    project.brandKitSnapshot = createDefaultBrandKit();
+    const audited = runLocalSupervisorAudit(project);
+    const dialogue = audited.aiSupervisor!.reports[0].issues.find((issue) => issue.kind === 'dialogue-overrun');
+    expect(dialogue?.repairTarget).toBe('script');
+    expect(() => queueSupervisorRepair(audited, 'shot_1')).toThrow('chỉnh thủ công');
+  });
+
+  it('hủy hàng sửa sẽ mở lại lỗi và hoàn ngân sách cam kết', () => {
+    const audited = runLocalSupervisorAudit(fixture());
+    const queued = queueSupervisorRepair(audited, 'shot_2');
+    expect(queued.aiSupervisor!.repairCommittedCostUsd).toBeGreaterThan(0);
+    const cancelled = cancelSupervisorRepair(queued, 'shot_2');
+    expect(cancelled.aiSupervisor!.repairCommittedCostUsd).toBe(0);
+    expect(cancelled.aiSupervisor!.reports.find((report) => report.shotId === 'shot_2')!.issues.some((issue) => issue.status === 'queued')).toBe(false);
+    expect(cancelled.workflow!.jobs.find((job) => job.kind === 'ai-supervisor')!.status).toBe('cancelled');
+  });
+
+  it('entry point thực thi đúng kế hoạch đã xếp và hoàn tất production job', async () => {
+    const queued = queueSupervisorRepair(runLocalSupervisorAudit(fixture()), 'shot_2');
+    const called: string[] = [];
+    const completed = await executeSupervisorRepair(queued, 'shot_2', {
+      executeAction: async (current, action) => {
+        called.push(action.tool);
+        return {
+          ...current,
+          shots: current.shots.map((shot) => shot.id !== 'shot_2' ? shot : {
+            ...shot,
+            keyframes: shot.keyframes.map((frame) => action.tool === 'generate-start-keyframe' && frame.type === 'start'
+              ? { ...frame, imageUrl: 'data:image/png;base64,repaired', status: 'completed' as const }
+              : frame),
+            interval: action.tool === 'generate-video'
+              ? { ...shot.interval!, videoUrl: 'data:video/mp4;base64,repaired', status: 'completed' as const }
+              : shot.interval,
+            workflow: { ...shot.workflow, keyframesStale: false, videoStale: false },
+          }),
+        };
+      },
+    });
+    expect(called).toEqual(['generate-start-keyframe', 'generate-video']);
+    expect(completed.shots[1].keyframes[0].imageUrl).toContain('repaired');
+    expect(completed.shots[1].interval?.videoUrl).toContain('repaired');
+    expect(completed.workflow!.jobs.find((job) => job.kind === 'ai-supervisor')!.status).toBe('completed');
+    expect(completed.aiSupervisor!.reports.find((report) => report.shotId === 'shot_2')!.issues.some((issue) => issue.status === 'queued')).toBe(false);
+  });
+
+  it('release gate chặn báo cáo cũ và Vision bắt buộc, nhưng cho qua dự án sạch', () => {
+    const initial = cleanFixture();
+    expect(getAISupervisorGate(initial).status).toBe('blocked');
+    let audited = runLocalSupervisorAudit(initial);
+    expect(getAISupervisorGate(audited).status).toBe('ready');
+    audited = updateAISupervisorPolicy(audited, { ...audited.aiSupervisor!.policy, requireVisionForRelease: true });
+    expect(getAISupervisorGate(audited).reasons.join(' ')).toContain('chưa qua AI Vision');
+    const report = audited.aiSupervisor!.reports[0];
+    audited.aiSupervisor = { ...audited.aiSupervisor!, reports: [{ ...report, visionStatus: 'complete', visionAnalyzedAt: Date.now() }] };
+    expect(getAISupervisorGate(audited).status).toBe('ready');
+  });
+
+  it('chuẩn hóa ngưỡng Vision để ngưỡng chặn không thấp hơn ngưỡng lọc', () => {
+    const project = updateAISupervisorPolicy(cleanFixture(), {
+      ...createDefaultAISupervisorState().policy,
+      minimumVisionConfidence: 0.91,
+      criticalVisionConfidence: 0.4,
+    });
+    expect(project.aiSupervisor!.policy.minimumVisionConfidence).toBe(0.91);
+    expect(project.aiSupervisor!.policy.criticalVisionConfidence).toBe(0.91);
   });
 });

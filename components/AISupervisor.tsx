@@ -10,17 +10,23 @@ import {
   Gauge,
   ImageOff,
   Loader2,
+  Play,
   RotateCcw,
   ScanSearch,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   WandSparkles,
+  XCircle,
 } from 'lucide-react';
 import { AISupervisorIssue, AISupervisorShotReport, ProjectState } from '../types';
 import {
+  cancelSupervisorRepair,
+  executeSupervisorRepair,
   estimateVisionAuditCost,
+  getAISupervisorGate,
   getAISupervisorSummary,
+  getSupervisorRepairPlan,
   normalizeAISupervisorState,
   queueSupervisorRepair,
   runLocalSupervisorAudit,
@@ -68,10 +74,12 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
   const { showAlert } = useAlert();
   const state = useMemo(() => normalizeAISupervisorState(project.aiSupervisor), [project.aiSupervisor]);
   const summary = useMemo(() => getAISupervisorSummary(project), [project]);
+  const gate = useMemo(() => getAISupervisorGate(project), [project]);
   const [filter, setFilter] = useState<ReportFilter>('all');
   const [visionShotId, setVisionShotId] = useState<string | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  const [repairShotId, setRepairShotId] = useState<string | null>(null);
 
   const reports = useMemo(() => state.reports.filter((report) => {
     if (filter === 'all') return true;
@@ -107,6 +115,7 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
     const eligible = supervisor.reports
       .filter((report) => report.visionStatus !== 'complete')
       .filter((report) => working.shots.find((shot) => shot.id === report.shotId)?.keyframes.some((frame) => Boolean(frame.imageUrl)))
+      .sort((left, right) => ({ fail: 0, warning: 1, pass: 2 }[left.status] - { fail: 0, warning: 1, pass: 2 }[right.status]))
       .slice(0, supervisor.policy.maxVisionShotsPerRun);
     if (!eligible.length) {
       showAlert('Không còn shot có keyframe cần quét thị giác.', { type: 'info' });
@@ -140,11 +149,38 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
     }
   };
 
+  const runRepair = async (shotId: string) => {
+    if (repairShotId) return;
+    try {
+      const plan = getSupervisorRepairPlan(project, shotId, ['queued']);
+      if (state.policy.requireHumanApproval && !window.confirm(
+        `Chạy ${plan.actions.length} bước sửa cho đúng shot này? Dự toán đã khóa: ${formatUsd(plan.estimatedCostUsd)}.`,
+      )) return;
+      setRepairShotId(shotId);
+      const next = await executeSupervisorRepair(project, shotId, { onProjectUpdate: updateProject });
+      updateProject(next);
+      showAlert('Đã sửa chọn lọc và kiểm tra lại shot.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể thực thi kế hoạch sửa.', { type: 'error' });
+    } finally {
+      setRepairShotId(null);
+    }
+  };
+
+  const cancelRepair = (shotId: string) => {
+    try {
+      updateProject((current) => cancelSupervisorRepair(current, shotId));
+      showAlert('Đã hủy kế hoạch sửa và hoàn lại phần ngân sách cam kết.', { type: 'success' });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể hủy kế hoạch sửa.', { type: 'error' });
+    }
+  };
+
   const toggleIgnored = (shotId: string, issue: AISupervisorIssue) => {
     updateProject((current) => setSupervisorIssueStatus(current, shotId, issue.id, issue.status === 'ignored' ? 'open' : 'ignored'));
   };
 
-  const visionBusy = Boolean(visionShotId) || batchRunning;
+  const visionBusy = Boolean(visionShotId) || batchRunning || Boolean(repairShotId);
   const repairPercent = state.policy.repairBudgetUsd > 0
     ? Math.min(100, (state.repairCommittedCostUsd / state.policy.repairBudgetUsd) * 100)
     : state.repairCommittedCostUsd > 0 ? 100 : 0;
@@ -157,14 +193,14 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
               <span className="eg-chip border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100"><ShieldCheck className="h-3 w-3" /> Cổng chất lượng</span>
-              <span className="eg-chip border-white/[.08] bg-white/[.03] text-zinc-400">Không tự regenerate</span>
+              <span className="eg-chip border-white/[.08] bg-white/[.03] text-zinc-400">Sửa có kiểm soát ngân sách</span>
             </div>
             <h2 className="mt-5 text-2xl font-semibold tracking-[-.03em] text-white md:text-4xl">AI Supervisor</h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">Chấm từng shot, đối chiếu Brand Kit và continuity, phát hiện media lỗi thời, thoại quá dài và lỗi thị giác. Mọi lệnh sửa đều bị khóa theo shot và ngân sách.</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button type="button" onClick={localAudit} disabled={!project.shots.length || visionBusy} className="eg-button-secondary inline-flex min-h-12 items-center justify-center gap-2 px-5 text-xs font-semibold disabled:opacity-40"><ScanSearch className="h-4 w-4" /> Quét miễn phí</button>
-            <button type="button" onClick={() => void scanBatch()} disabled={!project.shots.length || visionBusy} className="eg-button-primary inline-flex min-h-12 items-center justify-center gap-2 px-5 text-xs font-bold disabled:opacity-40">
+            <button type="button" onClick={() => void scanBatch()} disabled={!project.shots.length || visionBusy} aria-live="polite" className="eg-button-primary inline-flex min-h-12 items-center justify-center gap-2 px-5 text-xs font-bold disabled:opacity-40">
               {batchRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
               {batchRunning ? `Đang quét ${batchProgress.current}/${batchProgress.total}` : 'Quét AI Vision'}
             </button>
@@ -184,6 +220,33 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
               <div className={`mt-2 text-xl font-semibold ${item.tone}`}>{item.value}</div>
             </div>
           ))}
+        </div>
+
+        <div
+          role="status"
+          aria-live="polite"
+          className={`relative mt-4 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+            gate.status === 'blocked'
+              ? 'border-rose-200/20 bg-rose-200/[.05]'
+              : gate.status === 'review'
+                ? 'border-amber-200/20 bg-amber-200/[.05]'
+                : 'border-emerald-200/20 bg-emerald-200/[.05]'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            {gate.status === 'blocked'
+              ? <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-200" />
+              : gate.status === 'review'
+                ? <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
+                : <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-200" />}
+            <div>
+              <h3 className="text-sm font-semibold text-white">Release Gate · {gate.label}</h3>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-400">{gate.reasons.join(' · ')}</p>
+            </div>
+          </div>
+          <span className={`eg-chip shrink-0 ${gate.canRelease ? 'border-emerald-200/20 bg-emerald-200/[.08] text-emerald-100' : 'border-rose-200/20 bg-rose-200/[.08] text-rose-100'}`}>
+            {gate.canRelease ? 'Cho phép chuyển duyệt' : 'Đang khóa đầu ra'}
+          </span>
         </div>
       </section>
 
@@ -209,12 +272,15 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
                 const Icon = meta.icon;
                 const preview = shot.keyframes.find((frame) => frame.type === 'start')?.imageUrl || shot.keyframes.find((frame) => frame.imageUrl)?.imageUrl;
                 const activeIssues = report.issues.filter((issue) => !['resolved'].includes(issue.status));
-                const actionable = report.issues.some((issue) => issue.status === 'open' && issue.repairTarget !== 'none');
+                const queuedIssues = report.issues.filter((issue) => issue.status === 'queued');
+                const automatedActionable = report.issues.some((issue) => issue.status === 'open' && ['voice', 'keyframes', 'video'].includes(issue.repairTarget));
+                const manualIssues = report.issues.filter((issue) => issue.status === 'open' && ['script', 'none'].includes(issue.repairTarget));
+                const targetedFrames = Array.from(new Set(report.issues.flatMap((issue) => issue.frameTargets || [])));
                 return (
                   <article key={report.shotId} className="rounded-2xl border border-white/[.075] bg-black/15 p-4 md:p-5">
                     <div className="grid gap-4 md:grid-cols-[152px_1fr]">
                       <div className="relative aspect-video overflow-hidden rounded-xl border border-white/[.08] bg-black/30">
-                        {preview ? <img src={preview} alt={`Keyframe ${shot.actionSummary}`} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><ImageOff className="h-7 w-7 text-zinc-700" /></div>}
+                        {preview ? <img src={preview} alt={`Keyframe ${shot.actionSummary}`} loading="lazy" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><ImageOff className="h-7 w-7 text-zinc-700" /></div>}
                         {shot.factory?.aspectRatio === '9:16' && <div className="pointer-events-none absolute inset-x-[8%] bottom-[14%] top-[7%] rounded border border-dashed border-cyan-200/60" aria-hidden="true" />}
                         <div className="absolute bottom-2 left-2 rounded-lg border border-white/10 bg-black/75 px-2 py-1 font-mono text-[9px] text-white">{shot.factory?.aspectRatio || 'master'}</div>
                       </div>
@@ -234,9 +300,25 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
                           )) : <div className="flex min-h-14 items-center gap-3 rounded-xl border border-emerald-200/15 bg-emerald-200/[.035] p-3 text-[11px] text-emerald-100"><CheckCircle2 className="h-4 w-4" /> Không có lỗi mở trong lần kiểm tra hiện tại.</div>}
                         </div>
 
+                        {(targetedFrames.length > 0 || manualIssues.length > 0) && (
+                          <div className="mt-4 flex flex-wrap items-center gap-2 text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
+                            {targetedFrames.map((frame) => <span key={frame} className="eg-chip border-cyan-200/15 bg-cyan-200/[.04] text-cyan-100">Sửa khung {frame === 'start' ? 'đầu' : 'cuối'}</span>)}
+                            {manualIssues.length > 0 && <span className="eg-chip border-amber-200/15 bg-amber-200/[.04] text-amber-100">{manualIssues.length} mục cần producer sửa tay</span>}
+                          </div>
+                        )}
+
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button type="button" onClick={() => void scanOne(shot.id)} disabled={!preview || visionBusy} className="eg-button-secondary inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-40">{visionShotId === shot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Quét Vision · {formatUsd(estimateVisionAuditCost(1))}</button>
-                          <button type="button" onClick={() => queueRepair(shot.id)} disabled={!actionable || visionBusy} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-200/[.06] px-4 text-xs font-semibold text-amber-100 disabled:opacity-35"><WandSparkles className="h-4 w-4" /> Xếp sửa · {formatUsd(report.repairEstimatedCostUsd || 0)}</button>
+                          {queuedIssues.length > 0 ? (
+                            <>
+                              <button type="button" onClick={() => void runRepair(shot.id)} disabled={Boolean(repairShotId)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-200/20 bg-emerald-200/[.07] px-4 text-xs font-semibold text-emerald-100 disabled:opacity-35">
+                                {repairShotId === shot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} {repairShotId === shot.id ? 'Đang sửa shot…' : `Chạy sửa · ${formatUsd(report.repairEstimatedCostUsd || 0)}`}
+                              </button>
+                              <button type="button" onClick={() => cancelRepair(shot.id)} disabled={Boolean(repairShotId)} aria-label="Hủy kế hoạch sửa" className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold disabled:opacity-35"><XCircle className="h-4 w-4" /> Hủy</button>
+                            </>
+                          ) : (
+                            <button type="button" onClick={() => queueRepair(shot.id)} disabled={!automatedActionable || visionBusy} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-200/[.06] px-4 text-xs font-semibold text-amber-100 disabled:opacity-35"><WandSparkles className="h-4 w-4" /> Xếp sửa · {formatUsd(report.repairEstimatedCostUsd || 0)}</button>
+                          )}
                           <button type="button" onClick={onOpenDirector} className="eg-button-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-bold"><Clapperboard className="h-4 w-4" /> Mở shot</button>
                         </div>
                       </div>
@@ -258,9 +340,15 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
           <section className="eg-panel p-5">
             <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-200/[.07] text-cyan-100"><CircleDollarSign className="h-4 w-4" /></div><div><div className="eg-kicker">Budget Guard</div><h3 className="mt-1 text-sm font-semibold text-white">Trần kiểm định & sửa</h3></div></div>
             <div className="mt-5 space-y-4">
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Ngân sách sửa USD<input type="number" min="0" step="0.1" value={state.policy.repairBudgetUsd} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, repairBudgetUsd: Number(event.target.value) }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></label>
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Ngân sách AI Vision USD<input type="number" min="0" step="0.05" value={state.policy.visionBudgetUsd} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, visionBudgetUsd: Number(event.target.value) }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></label>
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Tối đa shot mỗi batch<input type="number" min="1" max="30" value={state.policy.maxVisionShotsPerRun} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, maxVisionShotsPerRun: Number(event.target.value) }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></label>
+              <div><label htmlFor="supervisor-repair-budget" className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Ngân sách sửa USD</label><input id="supervisor-repair-budget" type="number" min="0" step="0.1" value={state.policy.repairBudgetUsd} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, repairBudgetUsd: Number(event.target.value) }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></div>
+              <div><label htmlFor="supervisor-vision-budget" className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Ngân sách AI Vision USD</label><input id="supervisor-vision-budget" type="number" min="0" step="0.05" value={state.policy.visionBudgetUsd} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, visionBudgetUsd: Number(event.target.value) }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></div>
+              <div><label htmlFor="supervisor-batch-size" className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Tối đa shot mỗi batch</label><input id="supervisor-batch-size" type="number" min="1" max="30" value={state.policy.maxVisionShotsPerRun} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, maxVisionShotsPerRun: Number(event.target.value) }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label htmlFor="supervisor-confidence" className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Tin cậy tối thiểu %</label><input id="supervisor-confidence" type="number" min="0" max="100" step="1" value={Math.round(state.policy.minimumVisionConfidence * 100)} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, minimumVisionConfidence: Number(event.target.value) / 100 }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></div>
+                <div><label htmlFor="supervisor-critical-confidence" className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Ngưỡng chặn %</label><input id="supervisor-critical-confidence" type="number" min="0" max="100" step="1" value={Math.round(state.policy.criticalVisionConfidence * 100)} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, criticalVisionConfidence: Number(event.target.value) / 100 }))} className="eg-input mt-2 min-h-11 px-3 font-mono text-xs normal-case tracking-normal" /></div>
+              </div>
+              <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/[.07] bg-black/20 px-3 text-[10px] font-semibold text-zinc-400"><span>Bắt buộc Vision trước khi release</span><input type="checkbox" checked={state.policy.requireVisionForRelease} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, requireVisionForRelease: event.target.checked }))} className="h-4 w-4 accent-cyan-300" /></label>
+              <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/[.07] bg-black/20 px-3 text-[10px] font-semibold text-zinc-400"><span>Xác nhận trước khi gọi API sửa</span><input type="checkbox" checked={state.policy.requireHumanApproval} onChange={(event) => updateProject((current) => updateAISupervisorPolicy(current, { ...state.policy, requireHumanApproval: event.target.checked }))} className="h-4 w-4 accent-cyan-300" /></label>
             </div>
             <div className="mt-5 rounded-xl border border-white/[.07] bg-black/20 p-4">
               <div className="flex justify-between text-[10px]"><span className="text-zinc-600">Đã cam kết sửa</span><strong className="font-mono text-white">{formatUsd(state.repairCommittedCostUsd)} / {formatUsd(state.policy.repairBudgetUsd)}</strong></div>
@@ -276,7 +364,9 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
             <div className="mt-4 space-y-3 text-[10px] leading-4 text-zinc-500">
               <p>• Local audit luôn miễn phí và không gửi media ra ngoài.</p>
               <p>• Vision chỉ chạy sau hộp xác nhận có dự toán.</p>
-              <p>• Xếp sửa chỉ đánh dấu đúng shot lỗi, tạo checkpoint và chưa gọi API.</p>
+              <p>• Xếp sửa chỉ khóa ngân sách; nút “Chạy sửa” mới gọi API.</p>
+              <p>• Chỉ tạo lại khung đầu/cuối bị lỗi rồi dựng lại đúng video đó.</p>
+              <p>• Lỗi thoại, Brand Kit hoặc cấu hình phải được producer sửa thủ công.</p>
               <p>• Lệnh bị chặn ngay khi vượt ngân sách còn lại.</p>
             </div>
           </section>
@@ -285,7 +375,7 @@ const AISupervisor: React.FC<Props> = ({ project, updateProject, onOpenDirector,
 
       <section className="grid gap-3 md:grid-cols-3">
         <div className="eg-card p-4"><Gauge className="h-4 w-4 text-cyan-100/70" /><h4 className="mt-3 text-xs font-semibold text-white">QC hai tầng</h4><p className="mt-2 text-[10px] leading-4 text-zinc-600">Rule engine bắt lỗi chắc chắn trước; AI Vision chỉ xử lý phần cần nhìn ảnh.</p></div>
-        <div className="eg-card p-4"><RotateCcw className="h-4 w-4 text-amber-100/70" /><h4 className="mt-3 text-xs font-semibold text-white">Selective regenerate</h4><p className="mt-2 text-[10px] leading-4 text-zinc-600">Không chạy lại campaign hay variant. Chỉ shot được producer chọn mới bị đánh dấu stale.</p></div>
+        <div className="eg-card p-4"><RotateCcw className="h-4 w-4 text-amber-100/70" /><h4 className="mt-3 text-xs font-semibold text-white">Selective regenerate</h4><p className="mt-2 text-[10px] leading-4 text-zinc-600">Không chạy lại campaign hay variant. Vision chỉ định đúng khung lỗi; Supervisor tạo lại khung đó rồi dựng lại video của shot.</p></div>
         <div className="eg-card p-4"><ShieldCheck className="h-4 w-4 text-emerald-100/70" /><h4 className="mt-3 text-xs font-semibold text-white">Media-aware</h4><p className="mt-2 text-[10px] leading-4 text-zinc-600">Khi keyframe/video đổi, kết quả Vision cũ tự mất hiệu lực để tránh duyệt nhầm.</p></div>
       </section>
     </div>
