@@ -4,6 +4,8 @@ import {
   AutoEditorOutput,
   AutoEditorOutputStatus,
   AutoEditorPacingOverride,
+  AutoEditorReframeFocus,
+  AutoEditorReframeOverride,
   AutoEditorSettings,
   AutoEditorState,
   AutoEditorTimelineClip,
@@ -23,7 +25,9 @@ import {
   analyzeTimeline,
   recommendTransition,
   snapToBeats,
+  suggestReframe,
 } from './editingIntelligenceService';
+import { assertAISupervisorCanRelease } from './aiSupervisorService';
 
 const createId = (prefix: string): string => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -43,6 +47,18 @@ export interface AutoEditorPreflightIssue {
   label: string;
   detail: string;
   shotId?: string;
+}
+
+export interface AutoEditorReframeItem {
+  clipId: string;
+  shotId: string;
+  aspectRatio: AspectRatio;
+  sourceAspectRatio: AspectRatio;
+  focus: AutoEditorReframeFocus;
+  recommendedFocus: AutoEditorReframeFocus;
+  reason: string;
+  warning?: string;
+  overridden: boolean;
 }
 
 export const createDefaultAutoEditorState = (project?: ProjectState): AutoEditorState => {
@@ -82,6 +98,15 @@ export const normalizeAutoEditorState = (
   const settings = { ...defaults.settings, ...(value.settings || {}) };
   const ratios = (Array.isArray(settings.aspectRatios) ? settings.aspectRatios : defaults.settings.aspectRatios)
     .filter((ratio): ratio is AspectRatio => ['9:16', '1:1', '16:9'].includes(ratio));
+  const reframeByKey = new Map<string, AutoEditorReframeOverride>();
+  if (Array.isArray(value.reframeOverrides)) {
+    value.reframeOverrides.forEach((item) => {
+      if (!item || typeof item.shotId !== 'string') return;
+      if (!['9:16', '1:1', '16:9'].includes(item.aspectRatio)) return;
+      if (!['center', 'left', 'right', 'top'].includes(item.focus)) return;
+      reframeByKey.set(`${item.aspectRatio}:${item.shotId}`, item as AutoEditorReframeOverride);
+    });
+  }
   return {
     ...defaults,
     ...value,
@@ -97,6 +122,7 @@ export const normalizeAutoEditorState = (
     captions: Array.isArray(value.captions) ? value.captions : [],
     outputs: Array.isArray(value.outputs) ? value.outputs : [],
     pacing: Array.isArray(value.pacing) ? value.pacing : undefined,
+    reframeOverrides: Array.from(reframeByKey.values()),
     updatedAt: Number(value.updatedAt) || now(),
   };
 };
@@ -180,6 +206,77 @@ const buildTimeline = (
   });
 };
 
+/**
+ * Kế hoạch crop hiệu lực cho một đầu ra. Đề xuất được tính từ shot, override
+ * chỉ thay đúng quyết định mà editor đã chủ động chỉnh.
+ */
+export const getAutoEditorReframePlan = (
+  project: ProjectState,
+  aspectRatio: AspectRatio,
+): AutoEditorReframeItem[] => {
+  const state = normalizeAutoEditorState(project.autoEditor, project);
+  const timeline = state.timeline.length ? state.timeline : buildTimeline(project, state.settings, state.pacing);
+  const shots = new Map(project.shots.map((shot) => [shot.id, shot]));
+  const overrides = new Map((state.reframeOverrides || [])
+    .filter((item) => item.aspectRatio === aspectRatio)
+    .map((item) => [item.shotId, item.focus]));
+
+  return timeline.map((clip) => {
+    const shot = shots.get(clip.shotId);
+    const sourceAspectRatio = shot?.factory?.aspectRatio || '16:9';
+    const recommendation = suggestReframe(shot, sourceAspectRatio, aspectRatio);
+    const override = overrides.get(clip.shotId);
+    return {
+      clipId: clip.id,
+      shotId: clip.shotId,
+      aspectRatio,
+      sourceAspectRatio,
+      focus: override || recommendation.focus,
+      recommendedFocus: recommendation.focus,
+      reason: recommendation.reason,
+      warning: recommendation.warning,
+      overridden: Boolean(override),
+    };
+  });
+};
+
+export const updateAutoEditorReframeFocus = (
+  project: ProjectState,
+  aspectRatio: AspectRatio,
+  shotId: string,
+  focus?: AutoEditorReframeFocus,
+): ProjectState => {
+  if (!project.shots.some((shot) => shot.id === shotId)) throw new Error('Không tìm thấy shot cần căn lại khung.');
+  const state = normalizeAutoEditorState(project.autoEditor, project);
+  const remaining = (state.reframeOverrides || [])
+    .filter((item) => !(item.aspectRatio === aspectRatio && item.shotId === shotId));
+  return {
+    ...project,
+    autoEditor: {
+      ...state,
+      reframeOverrides: focus ? [...remaining, { shotId, aspectRatio, focus }] : remaining,
+      updatedAt: now(),
+    },
+  };
+};
+
+export const clearAutoEditorReframeOverrides = (
+  project: ProjectState,
+  aspectRatio?: AspectRatio,
+): ProjectState => {
+  const state = normalizeAutoEditorState(project.autoEditor, project);
+  return {
+    ...project,
+    autoEditor: {
+      ...state,
+      reframeOverrides: aspectRatio
+        ? (state.reframeOverrides || []).filter((item) => item.aspectRatio !== aspectRatio)
+        : [],
+      updatedAt: now(),
+    },
+  };
+};
+
 const splitCaptionText = (text: string): string[] => {
   const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
   if (!words.length) return [];
@@ -234,11 +331,14 @@ const editorSignature = (
   settings: AutoEditorSettings,
   timeline?: AutoEditorTimelineClip[],
   pacing?: AutoEditorPacingOverride[],
+  reframeOverrides?: AutoEditorReframeOverride[],
 ): string => {
   const clips = timeline || buildTimeline(project, settings, pacing);
   const data = JSON.stringify({
     settings,
     logo: getLogoUrl(project, settings),
+    reframeOverrides: [...(reframeOverrides || [])]
+      .sort((left, right) => `${left.aspectRatio}:${left.shotId}`.localeCompare(`${right.aspectRatio}:${right.shotId}`)),
     clips: clips.map((clip) => ({
       shotId: clip.shotId,
       duration: clip.duration,
@@ -278,7 +378,7 @@ export const createAutoEditorPlan = (project: ProjectState): ProjectState => {
   const timeline = buildTimeline(project, state.settings, state.pacing);
   if (!timeline.length) throw new Error('Nguồn đã chọn chưa có shot để dựng.');
   const captions = state.settings.captionsEnabled ? buildCaptions(timeline) : [];
-  const signature = editorSignature(project, state.settings, timeline);
+  const signature = editorSignature(project, state.settings, timeline, undefined, state.reframeOverrides);
   const totalDuration = timeline.reduce((sum, clip) => sum + clip.duration, 0);
   const timestamp = now();
   const outputs = state.settings.aspectRatios.map((aspectRatio, index): AutoEditorOutput => {
@@ -337,6 +437,18 @@ export const getAutoEditorPreflight = (project: ProjectState): AutoEditorPreflig
     else if (shot?.workflow?.videoStale) issues.push({ id: `stale-${clip.shotId}`, severity: 'warning', label: `Cảnh ${index + 1} đang dùng video cũ`, detail: 'Nội dung nguồn đã thay đổi sau lần tạo video gần nhất.', shotId: clip.shotId });
     if (state.settings.includeVoice && clip.dialogue && !clip.voiceTakeId) issues.push({ id: `voice-${clip.shotId}`, severity: 'warning', label: `Cảnh ${index + 1} chưa có voice được chọn`, detail: 'Video vẫn render được nhưng đoạn này sẽ không có lời đọc.', shotId: clip.shotId });
   });
+  state.settings.aspectRatios.forEach((aspectRatio) => {
+    getAutoEditorReframePlan(project, aspectRatio).forEach((item, index) => {
+      if (!item.warning) return;
+      issues.push({
+        id: `reframe-${aspectRatio}-${item.shotId}`,
+        severity: 'warning',
+        label: `Cảnh ${index + 1} có nguy cơ bị cắt chủ thể`,
+        detail: `${aspectRatio}: ${item.warning}`,
+        shotId: item.shotId,
+      });
+    });
+  });
   if (state.settings.logoEnabled && !getLogoUrl(project, state.settings)) issues.push({ id: 'logo', severity: 'blocked', label: 'Chưa có logo hợp lệ', detail: 'Chọn logo trong Brand Kit hoặc tắt lớp logo.' });
   if (state.settings.musicEnabled && !state.settings.musicUrl) issues.push({ id: 'music', severity: 'blocked', label: 'Chưa có nhạc nền', detail: 'Tải tệp nhạc lên hoặc tắt nhạc nền.' });
   return issues;
@@ -344,7 +456,7 @@ export const getAutoEditorPreflight = (project: ProjectState): AutoEditorPreflig
 
 export const getAutoEditorSummary = (project: ProjectState) => {
   const state = normalizeAutoEditorState(project.autoEditor, project);
-  const currentSignature = editorSignature(project, state.settings, undefined, state.pacing);
+  const currentSignature = editorSignature(project, state.settings, undefined, state.pacing, state.reframeOverrides);
   const issues = getAutoEditorPreflight(project);
   const totalDuration = state.timeline.reduce((sum, clip) => sum + clip.duration, 0);
   return {
@@ -449,6 +561,7 @@ export const startAutoEditorRender = (project: ProjectState, outputId: string): 
   if (summary.blocked) throw new Error(`Còn ${summary.blocked} lỗi chặn render. Hãy xử lý phần kiểm tra đầu vào.`);
   const output = summary.state.outputs.find((item) => item.id === outputId);
   if (!output) throw new Error('Không tìm thấy đầu ra Auto Editor.');
+  assertAISupervisorCanRelease(project);
   const checkpointed = createProjectCheckpoint(project, `Trước khi render ${output.name}`);
   const job = createProductionJob({
     kind: 'auto-editor',

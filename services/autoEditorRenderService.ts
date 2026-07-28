@@ -6,12 +6,13 @@ import {
   AutoEditorCaptionStyle,
   AutoEditorColorPreset,
   AutoEditorLogoPosition,
+  AutoEditorReframeFocus,
   AutoEditorTimelineClip,
   ProjectState,
   Shot,
   VoiceTake,
 } from '../types';
-import { getAutoEditorLogoUrl, normalizeAutoEditorState } from './autoEditorService';
+import { getAutoEditorLogoUrl, getAutoEditorReframePlan, normalizeAutoEditorState } from './autoEditorService';
 import { recordUsage } from './usageService';
 
 const CORE_VERSION = '0.12.10';
@@ -38,6 +39,17 @@ const dimensionsForRatio = (ratio: AspectRatio): { width: number; height: number
   if (ratio === '9:16') return { width: 720, height: 1280 };
   if (ratio === '1:1') return { width: 720, height: 720 };
   return { width: 1280, height: 720 };
+};
+
+/** Crop FFmpeg theo vùng mà editor muốn giữ lại sau bước scale-cover. */
+export const buildAutoEditorCropFilter = (
+  width: number,
+  height: number,
+  focus: AutoEditorReframeFocus,
+): string => {
+  const horizontal = focus === 'left' ? '0' : focus === 'right' ? 'in_w-out_w' : '(in_w-out_w)/2';
+  const vertical = focus === 'top' ? '0' : '(in_h-out_h)/2';
+  return `crop=${width}:${height}:${horizontal}:${vertical}`;
 };
 
 const safeName = (value: string): string => value
@@ -189,6 +201,8 @@ export const renderAutoEditorOutputInBrowser = async (
   if (!state.timeline.length) throw new Error('Hãy lập timeline trước khi render.');
   const clips = clipsFromTimeline(project, state.timeline);
   const { width, height } = dimensionsForRatio(output.aspectRatio);
+  const reframeByShot = new Map(getAutoEditorReframePlan(project, output.aspectRatio)
+    .map((item) => [item.shotId, item.focus]));
   const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0);
   const startedAt = Date.now();
   const files: string[] = [];
@@ -216,7 +230,7 @@ export const renderAutoEditorOutputInBrowser = async (
       const duration = clip.duration.toFixed(3);
       const filters = [
         `scale=${width}:${height}:force_original_aspect_ratio=increase`,
-        `crop=${width}:${height}`,
+        buildAutoEditorCropFilter(width, height, reframeByShot.get(clip.shot.id) || 'center'),
         `fps=${state.settings.fps}`,
         'format=yuv420p',
         'setsar=1',

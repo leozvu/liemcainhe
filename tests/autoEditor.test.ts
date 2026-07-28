@@ -4,16 +4,22 @@ import { createNewProjectState } from '../services/storageService';
 import {
   applyEditingRecommendations,
   buildAutoEditorSrt,
+  clearAutoEditorReframeOverrides,
   clearEditingRecommendations,
   createAutoEditorPlan,
   finishAutoEditorRender,
   getAutoEditorEditingReport,
   getAutoEditorPreflight,
+  getAutoEditorReframePlan,
   getAutoEditorSummary,
+  normalizeAutoEditorState,
   startAutoEditorRender,
+  updateAutoEditorReframeFocus,
   updateAutoEditorSettings,
 } from '../services/autoEditorService';
 import { speechDuration } from '../services/editingIntelligenceService';
+import { buildAutoEditorCropFilter } from '../services/autoEditorRenderService';
+import { runLocalSupervisorAudit } from '../services/aiSupervisorService';
 
 const storage = new Map<string, string>();
 
@@ -100,7 +106,7 @@ describe('Auto Editor', () => {
   });
 
   it('tạo checkpoint và job render cục bộ rồi hoàn tất đúng đầu ra', () => {
-    const planned = createAutoEditorPlan(fixture());
+    const planned = runLocalSupervisorAudit(createAutoEditorPlan(fixture()));
     const output = planned.autoEditor!.outputs[0];
     const started = startAutoEditorRender(planned, output.id);
     expect(started.autoEditor?.outputs[0].status).toBe('rendering');
@@ -110,6 +116,60 @@ describe('Auto Editor', () => {
     const finished = finishAutoEditorRender(started, output.id);
     expect(finished.autoEditor?.outputs[0].status).toBe('ready');
     expect(finished.workflow?.jobs[0].status).toBe('completed');
+  });
+
+  it('khóa đường render master cho tới khi AI Supervisor đã quét', () => {
+    const planned = createAutoEditorPlan(fixture());
+    expect(() => startAutoEditorRender(planned, planned.autoEditor!.outputs[0].id)).toThrow('AI Supervisor đang khóa đầu ra');
+    const audited = runLocalSupervisorAudit(planned);
+    expect(() => startAutoEditorRender(audited, audited.autoEditor!.outputs[0].id)).not.toThrow();
+  });
+});
+
+describe('Auto Editor · Smart Reframe', () => {
+  it('đề xuất giữ giữa khi crop hai bên và cảnh báo shot nhiều nhân vật', () => {
+    const project = fixture();
+    project.shots[0].shotSize = 'Toàn cảnh';
+    project.shots[1].characters = ['talent_1', 'talent_2'];
+    const planned = createAutoEditorPlan(project);
+    const reframes = getAutoEditorReframePlan(planned, '9:16');
+    expect(reframes.find((item) => item.shotId === 'shot_1')?.focus).toBe('center');
+    expect(reframes.find((item) => item.shotId === 'shot_2')?.warning).toContain('2 nhân vật');
+    expect(getAutoEditorPreflight(planned).some((issue) => issue.id === 'reframe-9:16-shot_2')).toBe(true);
+  });
+
+  it('lưu override theo shot+tỷ lệ, làm kế hoạch cũ và có thể trả về đề xuất', () => {
+    const planned = createAutoEditorPlan(fixture());
+    const changed = updateAutoEditorReframeFocus(planned, '9:16', 'shot_1', 'right');
+    expect(getAutoEditorSummary(changed).stale).toBe(true);
+    expect(getAutoEditorReframePlan(changed, '9:16').find((item) => item.shotId === 'shot_1')).toMatchObject({ focus: 'right', overridden: true });
+    expect(getAutoEditorReframePlan(changed, '1:1').find((item) => item.shotId === 'shot_1')).toMatchObject({ focus: 'center', overridden: false });
+
+    const replanned = createAutoEditorPlan(changed);
+    expect(getAutoEditorSummary(replanned).stale).toBe(false);
+    const cleared = clearAutoEditorReframeOverrides(replanned, '9:16');
+    expect(getAutoEditorSummary(cleared).stale).toBe(true);
+    expect(getAutoEditorReframePlan(cleared, '9:16').find((item) => item.shotId === 'shot_1')?.overridden).toBe(false);
+  });
+
+  it('chuẩn hóa override cũ, bỏ bản ghi sai và quyết định cuối cùng thắng', () => {
+    const project = fixture();
+    const normalized = normalizeAutoEditorState({
+      reframeOverrides: [
+        { shotId: 'shot_1', aspectRatio: '9:16', focus: 'left' },
+        { shotId: 'shot_1', aspectRatio: '9:16', focus: 'right' },
+        { shotId: 'shot_2', aspectRatio: '4:3', focus: 'center' },
+        { shotId: 'shot_2', aspectRatio: '1:1', focus: 'bottom' },
+      ] as never,
+    }, project);
+    expect(normalized.reframeOverrides).toEqual([{ shotId: 'shot_1', aspectRatio: '9:16', focus: 'right' }]);
+  });
+
+  it('tạo đúng biểu thức crop FFmpeg cho bốn vùng giữ khung', () => {
+    expect(buildAutoEditorCropFilter(720, 1280, 'left')).toBe('crop=720:1280:0:(in_h-out_h)/2');
+    expect(buildAutoEditorCropFilter(720, 1280, 'center')).toBe('crop=720:1280:(in_w-out_w)/2:(in_h-out_h)/2');
+    expect(buildAutoEditorCropFilter(720, 1280, 'right')).toBe('crop=720:1280:in_w-out_w:(in_h-out_h)/2');
+    expect(buildAutoEditorCropFilter(720, 1280, 'top')).toBe('crop=720:1280:(in_w-out_w)/2:0');
   });
 });
 
