@@ -23,6 +23,7 @@ export interface PublishClientReviewInput {
   versionNote?: string;
   expiresInDays: number;
   internalRoundId: string;
+  masterOutputId?: string;
 }
 
 export interface PublicReviewCommentInput {
@@ -37,6 +38,7 @@ export interface PublicReviewCommentInput {
 export interface PublicReviewDecisionInput {
   decision: Exclude<ClientReviewDecisionStatus, 'pending'>;
   versionId: string;
+  artifactSignature?: string;
   reviewerName: string;
   reviewerEmail?: string;
   note?: string;
@@ -132,13 +134,27 @@ export const formatReviewTimecode = (seconds: number, fps = 25): string => {
 export const getClientReviewSummary = (portal?: ClientReviewPortal) => {
   const comments = portal?.comments || [];
   const versions = portal?.versions || [];
+  const decisionVersion = versions.find((version) => version.id === portal?.decisionVersionId);
+  const decisionMatchesArtifact = !portal?.decisionArtifactSignature
+    || !decisionVersion?.artifactSignature
+    || portal.decisionArtifactSignature === decisionVersion.artifactSignature;
   return {
     versionCount: versions.length,
     latestVersion: versions.at(-1),
     openComments: comments.filter((comment) => comment.status === 'open').length,
     resolvedComments: comments.filter((comment) => comment.status === 'resolved').length,
     isLocked: portal?.decision === 'approved' || portal?.status === 'closed',
+    decisionVersion,
+    decisionMatchesArtifact,
+    approvalFingerprint: portal?.decisionArtifactSignature || decisionVersion?.artifactSignature,
   };
+};
+
+export const formatArtifactFingerprint = (value?: string): string => {
+  if (!value) return 'Chưa có chữ ký artifact';
+  const normalized = value.replace(/^master:/, '').replace(/^shots:/, '');
+  if (normalized.length <= 24) return normalized;
+  return `${normalized.slice(0, 12)}…${normalized.slice(-8)}`;
 };
 
 export const syncClientReviewDecisionToCampaign = async (
@@ -146,15 +162,19 @@ export const syncClientReviewDecisionToCampaign = async (
   portal?: ClientReviewPortal,
 ): Promise<void> => {
   if (!portal || !project.campaignId || !project.deliverableId) return;
+  const summary = getClientReviewSummary(portal);
+  const effectiveDecision = portal.decision === 'approved' && !summary.decisionMatchesArtifact
+    ? 'changes-requested'
+    : portal.decision;
   const campaign = (await getAllAgencyCampaigns()).find((item) => item.id === project.campaignId);
   if (!campaign) return;
-  const deliverableStatus = portal.decision === 'approved'
+  const deliverableStatus = effectiveDecision === 'approved'
     ? 'approved' as const
-    : portal.decision === 'changes-requested'
+    : effectiveDecision === 'changes-requested'
       ? 'in-progress' as const
       : 'review' as const;
   const deliverable = campaign.deliverables.find((item) => item.id === project.deliverableId);
-  const campaignStatus = portal.decision === 'changes-requested' ? 'production' as const : 'review' as const;
+  const campaignStatus = effectiveDecision === 'changes-requested' ? 'production' as const : 'review' as const;
   if (deliverable?.status === deliverableStatus && campaign.status === campaignStatus) return;
   const next = updateCampaignStatus(
     updateCampaignDeliverable(campaign, project.deliverableId, { status: deliverableStatus }),

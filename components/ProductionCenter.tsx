@@ -385,6 +385,7 @@ const ProductionCenter: React.FC<Props> = ({
                 project={project}
                 updateProject={updateProject}
                 onOpenExport={() => goToStage('export')}
+                onOpenReview={() => setActiveTab('review')}
               />
             )}
 

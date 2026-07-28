@@ -53,11 +53,11 @@ Workbench **Master Library** nằm sau Smart Reframe trong Auto Editor:
 - có entry point mở master cloud;
 - empty state chỉ người dùng render ở hàng đợi bên phải.
 
-## Chưa làm trong Sprint 1D
+## Trạng thái sau Sprint 1E
 
 - chưa gửi video lên TikTok, YouTube hoặc Facebook Reels;
-- chưa đưa master vào version của cổng duyệt khách hàng;
+- chưa có retry nền cho upload master sau khi tab đóng;
 - chưa có background render; FFmpeg vẫn chạy trong tab;
-- chưa có retry nền cho upload master sau khi tab đóng.
+- master đã được nối vào version và chữ ký nghiệm thu trong [MASTER_REVIEW.vi.md](MASTER_REVIEW.vi.md).
 
 Các adapter phân phối phải đọc `AutoEditorOutput.videoUrl` và checksum này, không được tự chọn một file khác ngoài version đã duyệt.

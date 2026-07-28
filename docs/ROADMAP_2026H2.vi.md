@@ -104,6 +104,8 @@ Một lần chạy thật cho biết nhiều hơn ba epic nữa.
 
 > Tiến độ nền tảng: Sprint 1D đã thêm [Master Library](MASTER_LIBRARY.vi.md). MP4 không còn biến mất khỏi app sau thao tác tải xuống; bản hosted lưu artifact và checksum lên R2. Adapter TikTok/YouTube/Reels vẫn chưa được coi là hoàn tất cho tới khi dùng chính master đã duyệt này và poll được trạng thái nền tảng.
 
+> Tiến độ review: Sprint 1E đã nối [Master Review](MASTER_REVIEW.vi.md). Vòng Director → Editor → Account và quyết định khách hàng đều khóa đúng `masterOutputId + checksum`; version cũ không thể ký nhầm artifact mới. Bước kế tiếp là Distribution Gateway chỉ nhận master có chữ ký nghiệm thu hợp lệ.
+
 Mở rộng đúng đường ống đã có, không xây mới:
 
 - `PublishChannelId` thêm `tiktok`, `youtube`, `facebook-reels`.

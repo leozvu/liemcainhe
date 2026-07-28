@@ -388,6 +388,7 @@ export interface ProjectWorkflowState {
 export type ClientReviewPortalStatus = 'active' | 'closed';
 export type ClientReviewDecisionStatus = 'pending' | 'changes-requested' | 'approved';
 export type ClientReviewCommentStatus = 'open' | 'resolved';
+export type ClientReviewSourceKind = 'master' | 'shots';
 
 export interface ClientReviewClip {
   id: string;
@@ -407,6 +408,13 @@ export interface ClientReviewVersion {
   duration: number;
   clips: ClientReviewClip[];
   internalRoundId?: string;
+  /** Định danh bất biến của đúng media khách đang xem và ký duyệt. */
+  artifactSignature?: string;
+  sourceKind?: ClientReviewSourceKind;
+  masterOutputId?: string;
+  artifactChecksum?: string;
+  artifactBytes?: number;
+  aspectRatio?: AspectRatio;
   createdAt: number;
 }
 
@@ -433,6 +441,8 @@ export interface ClientReviewPortal {
   status: ClientReviewPortalStatus;
   decision: ClientReviewDecisionStatus;
   decisionVersionId?: string;
+  /** Snapshot chữ ký artifact tại thời điểm khách bấm duyệt/yêu cầu sửa. */
+  decisionArtifactSignature?: string;
   decisionNote?: string;
   reviewerName?: string;
   reviewerEmail?: string;
@@ -906,6 +916,8 @@ export interface AgencyReviewRound {
   status: AgencyReviewRoundStatus;
   sourceSignature: string;
   shotIds: string[];
+  masterOutputId?: string;
+  masterChecksum?: string;
   gates: AgencyReviewGate[];
   portalId?: string;
   versionId?: string;
@@ -917,6 +929,7 @@ export interface AgencyReviewRound {
 export interface AgencyReviewState {
   rounds: AgencyReviewRound[];
   activeRoundId?: string;
+  preferredMasterOutputId?: string;
   updatedAt: number;
 }
 

@@ -62,6 +62,7 @@ import {
 import { cancelAutoEditorRender, downloadAutoEditorArtifact, renderAutoEditorOutputInBrowser } from '../services/autoEditorRenderService';
 import { describeEditingReport } from '../services/editingIntelligenceService';
 import { getAISupervisorGate } from '../services/aiSupervisorService';
+import { selectAgencyReviewMaster } from '../services/agencyReviewService';
 import { createBlobChecksum, uploadProjectMediaBlob } from '../services/cloudSyncService';
 import { useAlert } from './GlobalAlert';
 
@@ -69,6 +70,7 @@ interface Props {
   project: ProjectState;
   updateProject: (updates: Partial<ProjectState> | ((previous: ProjectState) => ProjectState)) => void;
   onOpenExport: () => void;
+  onOpenReview: () => void;
 }
 
 const RATIO_OPTIONS: Array<{ id: AspectRatio; label: string; detail: string }> = [
@@ -143,7 +145,7 @@ const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, rej
   reader.readAsDataURL(file);
 });
 
-const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) => {
+const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport, onOpenReview }) => {
   const { showAlert } = useAlert();
   const state = useMemo(() => normalizeAutoEditorState(project.autoEditor, project), [project.autoEditor, project.brandKitSnapshot]);
   const summary = useMemo(() => getAutoEditorSummary(project), [project]);
@@ -331,6 +333,15 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
       showAlert('Đã tải phụ đề tiếng Việt dạng SRT.', { type: 'success' });
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Không thể tải phụ đề.', { type: 'error' });
+    }
+  };
+
+  const sendMasterToReview = (outputId: string) => {
+    try {
+      updateProject((previous) => selectAgencyReviewMaster(previous, outputId));
+      onOpenReview();
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Không thể chuyển master sang phòng duyệt.', { type: 'error' });
     }
   };
 
@@ -541,7 +552,7 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
                     <div className="border-t border-white/[.07] p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h4 className="truncate text-sm font-semibold text-white">{output.name}</h4><p className="mt-1 truncate font-mono text-[9px] text-zinc-600">{output.fileName}</p></div><span className={`eg-chip ${output.storage === 'cloud' ? 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' : 'border-amber-200/20 bg-amber-200/[.07] text-amber-100'}`}>{output.storage === 'cloud' ? <Cloud className="h-3 w-3" /> : <Download className="h-3 w-3" />}{output.storage === 'cloud' ? 'Đã lưu cloud' : 'Chỉ trên máy'}</span></div>
                       <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-white/[.06] bg-white/[.025] p-2"><span className="block font-mono text-[9px] text-zinc-600">Tỷ lệ</span><strong className="mt-1 block text-xs text-zinc-300">{output.aspectRatio}</strong></div><div className="rounded-xl border border-white/[.06] bg-white/[.025] p-2"><span className="block font-mono text-[9px] text-zinc-600">Dung lượng</span><strong className="mt-1 block text-xs text-zinc-300">{formatBytes(output.bytes)}</strong></div><div className="rounded-xl border border-white/[.06] bg-white/[.025] p-2"><span className="block font-mono text-[9px] text-zinc-600">Lưu lúc</span><strong className="mt-1 block text-[10px] text-zinc-300">{formatMasterTime(output.archivedAt || output.renderedAt)}</strong></div></div>
-                      {output.videoUrl && <a href={output.videoUrl} target="_blank" rel="noreferrer" className="eg-button-secondary mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold"><ExternalLink className="h-4 w-4" /> Mở master cloud</a>}
+                      {output.videoUrl && output.storage === 'cloud' && <div className="mt-4 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => sendMasterToReview(output.id)} className="eg-button-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-bold"><ShieldCheck className="h-4 w-4" /> Gửi sang duyệt</button><a href={output.videoUrl} target="_blank" rel="noreferrer" className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold"><ExternalLink className="h-4 w-4" /> Mở master</a></div>}
                       {output.archiveError && <p role="status" className="mt-3 text-[10px] leading-4 text-amber-100/65">{output.archiveError}</p>}
                     </div>
                   </article>

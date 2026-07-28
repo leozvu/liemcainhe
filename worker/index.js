@@ -723,7 +723,7 @@ async function handleAccountApi(request, env, url) {
       env.DB.prepare('SELECT project_id, path, content_type, bytes, checksum, etag, created_at, updated_at FROM egoric_media WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_review_notes WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_stage_approvals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 5000').bind(email).all(),
-      env.DB.prepare('SELECT id, project_id, title, client_name, campaign_name, deliverable_title, status, decision, decision_version_id, decision_note, reviewer_name, reviewer_email, decided_at, expires_at, payload_json, created_at, updated_at FROM egoric_client_review_portals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
+      env.DB.prepare('SELECT id, project_id, title, client_name, campaign_name, deliverable_title, status, decision, decision_version_id, decision_artifact_signature, decision_note, reviewer_name, reviewer_email, decided_at, expires_at, payload_json, created_at, updated_at FROM egoric_client_review_portals WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?) ORDER BY updated_at DESC LIMIT 10000').bind(email).all(),
       env.DB.prepare('SELECT * FROM egoric_campaign_financials WHERE owner_email = ? ORDER BY updated_at DESC LIMIT 1000').bind(email).all(),
     ]);
@@ -1101,6 +1101,12 @@ const hydrateClientReviewPortal = (row, comments, requestUrl) => {
     note: version.note || undefined,
     duration: Number(version.duration || 0),
     internalRoundId: version.internalRoundId || undefined,
+    artifactSignature: version.artifactSignature || undefined,
+    sourceKind: version.sourceKind === 'master' ? 'master' : 'shots',
+    masterOutputId: version.masterOutputId || undefined,
+    artifactChecksum: version.artifactChecksum || undefined,
+    artifactBytes: Number(version.artifactBytes || 0) || undefined,
+    aspectRatio: version.aspectRatio || undefined,
     createdAt: Number(version.createdAt || row.created_at),
     clips: Array.isArray(version.clips) ? version.clips.map((clip) => ({
       id: clip.id,
@@ -1122,6 +1128,7 @@ const hydrateClientReviewPortal = (row, comments, requestUrl) => {
     status: row.status,
     decision: row.decision,
     decisionVersionId: row.decision_version_id || undefined,
+    decisionArtifactSignature: row.decision_artifact_signature || undefined,
     decisionNote: row.decision_note || undefined,
     reviewerName: row.reviewer_name || undefined,
     reviewerEmail: row.reviewer_email || undefined,
@@ -1145,12 +1152,30 @@ const loadClientReviewPortal = async (env, row, requestUrl) => {
   return hydrateClientReviewPortal(row, comments.results || [], requestUrl);
 };
 
-const reviewSourceSignature = (project, shotIds) => {
+const reviewSourceSignature = (project, shotIds, masterOutputId) => {
   const shots = new Map((Array.isArray(project.shots) ? project.shots : []).map((shot) => [shot.id, shot]));
+  const master = masterOutputId
+    ? (project.autoEditor?.outputs || []).find((output) => output?.id === masterOutputId
+      && output?.status === 'ready'
+      && output?.storage === 'cloud'
+      && output?.videoUrl
+      && output?.checksum)
+    : undefined;
   const payload = {
     shotIds,
     planSignature: project.autoEditor?.planSignature,
     editorSettings: project.autoEditor?.settings,
+    master: master ? {
+      id: master.id,
+      status: master.status,
+      storage: master.storage,
+      videoUrl: master.videoUrl,
+      checksum: master.checksum,
+      bytes: master.bytes,
+      aspectRatio: master.aspectRatio,
+      renderedAt: master.renderedAt,
+      archivedAt: master.archivedAt,
+    } : undefined,
     clips: shotIds.map((shotId) => {
       const shot = shots.get(shotId);
       const voiceTakeId = project.voiceStudio?.selectedTakeByShot?.[shotId];
@@ -1174,6 +1199,39 @@ const reviewSourceSignature = (project, shotIds) => {
 
 const buildReviewVersion = (project, reviewRound, label, note, number) => {
   const versionId = `version_${crypto.randomUUID()}`;
+  const master = reviewRound.masterOutputId
+    ? (project.autoEditor?.outputs || []).find((output) => output?.id === reviewRound.masterOutputId)
+    : undefined;
+  if (master?.status === 'ready' && master?.storage === 'cloud' && master?.videoUrl && master?.checksum) {
+    const mediaPath = getCloudMediaPath(project.id, master.videoUrl);
+    const externalUrl = mediaPath ? null : getExternalMediaUrl(master.videoUrl);
+    const duration = Math.max(1, Math.min(7200, (project.autoEditor?.timeline || []).reduce((sum, clip) => sum + (Number(clip?.duration) || 0), 0) || 10));
+    const artifactSignature = `master:${master.id}:${master.checksum}`;
+    return {
+      id: versionId,
+      number,
+      label: cleanText(label, 120) || `Phiên bản ${number}`,
+      note: cleanText(note, 1000) || undefined,
+      duration,
+      clips: mediaPath || externalUrl ? [{
+        id: `clip_${versionId}_master`,
+        shotId: master.id,
+        title: `Master ${master.aspectRatio || ''}`.trim(),
+        actionSummary: 'Bản dựng hoàn chỉnh đã khóa checksum để khách hàng nghiệm thu.',
+        duration,
+        mediaPath: mediaPath || undefined,
+        externalUrl: externalUrl || undefined,
+      }] : [],
+      internalRoundId: reviewRound.id,
+      artifactSignature,
+      sourceKind: 'master',
+      masterOutputId: master.id,
+      artifactChecksum: master.checksum,
+      artifactBytes: Number(master.bytes || 0) || undefined,
+      aspectRatio: master.aspectRatio,
+      createdAt: Date.now(),
+    };
+  }
   const allowedShotIds = new Set(reviewRound.shotIds);
   const clips = (Array.isArray(project.shots) ? project.shots : []).flatMap((shot, index) => {
     if (!allowedShotIds.has(shot?.id)) return [];
@@ -1197,6 +1255,7 @@ const buildReviewVersion = (project, reviewRound, label, note, number) => {
       posterExternalUrl: posterExternalUrl || undefined,
     }];
   });
+  const artifactSignature = `shots:${reviewSourceSignature(project, reviewRound.shotIds)}`;
   return {
     id: versionId,
     number,
@@ -1205,6 +1264,8 @@ const buildReviewVersion = (project, reviewRound, label, note, number) => {
     duration: clips.reduce((sum, clip) => sum + clip.duration, 0),
     clips,
     internalRoundId: reviewRound.id,
+    artifactSignature,
+    sourceKind: 'shots',
     createdAt: Date.now(),
   };
 };
@@ -1242,8 +1303,12 @@ async function handleClientReviewsApi(request, env, url) {
     if (!reviewRound || reviewRound.status !== 'ready-client' || !allGatesApproved) {
       return json({ error: 'Phiên bản chưa hoàn tất vòng duyệt Director → Editor → Account.' }, 409);
     }
-    if (!Array.isArray(reviewRound.shotIds) || !reviewRound.shotIds.length || reviewRound.sourceSignature !== reviewSourceSignature(project, reviewRound.shotIds)) {
+    if (!Array.isArray(reviewRound.shotIds) || !reviewRound.shotIds.length || reviewRound.sourceSignature !== reviewSourceSignature(project, reviewRound.shotIds, reviewRound.masterOutputId)) {
       return json({ error: 'Media đã thay đổi sau vòng duyệt nội bộ. Hãy mở vòng duyệt mới.' }, 409);
+    }
+    const requestedMasterId = safeReviewId(body?.masterOutputId);
+    if ((reviewRound.masterOutputId || null) !== (requestedMasterId || null)) {
+      return json({ error: 'Master gửi duyệt không trùng với bản đã được duyệt nội bộ.' }, 409);
     }
 
     const existing = await env.DB.prepare(
@@ -1271,7 +1336,7 @@ async function handleClientReviewsApi(request, env, url) {
       portalId = existing.id;
       await env.DB.prepare(
         `UPDATE egoric_client_review_portals SET title = ?, client_name = ?, campaign_name = ?, deliverable_title = ?,
-          status = 'active', decision = 'pending', decision_version_id = NULL, decision_note = NULL, reviewer_name = NULL, reviewer_email = NULL,
+          status = 'active', decision = 'pending', decision_version_id = NULL, decision_artifact_signature = NULL, decision_note = NULL, reviewer_name = NULL, reviewer_email = NULL,
           decided_at = NULL, expires_at = ?, payload_json = ?, updated_at = ?
          WHERE id = ? AND owner_email = ? AND project_id = ?`
       ).bind(title, clientName, campaignName, deliverableTitle, expiresAt, nextPayload, now, portalId, email, projectId).run();
@@ -1304,7 +1369,7 @@ async function handleClientReviewsApi(request, env, url) {
     }
     if (body?.resetDecision === true) {
       statements.push(env.DB.prepare(
-        `UPDATE egoric_client_review_portals SET status = 'active', decision = 'pending', decision_version_id = NULL, decision_note = NULL,
+        `UPDATE egoric_client_review_portals SET status = 'active', decision = 'pending', decision_version_id = NULL, decision_artifact_signature = NULL, decision_note = NULL,
           reviewer_name = NULL, reviewer_email = NULL, decided_at = NULL, updated_at = ? WHERE id = ? AND owner_email = ?`
       ).bind(Date.now(), portalId, email));
     }
@@ -1418,11 +1483,16 @@ async function handlePublicClientReviewApi(request, env, url) {
     const note = cleanText(body?.note, 1000) || null;
     if (!decision || !version || reviewerName.length < 2) return json({ error: 'Hãy nhập tên người duyệt và chọn đúng phiên bản.' }, 400);
     if (version.id !== latestVersion?.id) return json({ error: 'Chỉ phiên bản mới nhất mới được phê duyệt hoặc yêu cầu chỉnh sửa.' }, 409);
+    const artifactSignature = cleanText(body?.artifactSignature, 300);
+    if (version.artifactSignature && artifactSignature !== version.artifactSignature) {
+      return json({ error: 'Artifact đã thay đổi sau khi trang được mở. Hãy tải lại trước khi xác nhận.' }, 409);
+    }
+    const decisionArtifactSignature = version.artifactSignature || `version:${version.id}`;
     const now = Date.now();
     await env.DB.prepare(
-      `UPDATE egoric_client_review_portals SET decision = ?, decision_version_id = ?, decision_note = ?, reviewer_name = ?, reviewer_email = ?,
+      `UPDATE egoric_client_review_portals SET decision = ?, decision_version_id = ?, decision_artifact_signature = ?, decision_note = ?, reviewer_name = ?, reviewer_email = ?,
         decided_at = ?, updated_at = ? WHERE id = ?`
-    ).bind(decision, version.id, note, reviewerName, reviewerEmail, now, now, row.id).run();
+    ).bind(decision, version.id, decisionArtifactSignature, note, reviewerName, reviewerEmail, now, now, row.id).run();
     const updated = await env.DB.prepare('SELECT * FROM egoric_client_review_portals WHERE id = ?').bind(row.id).first();
     return json({ portal: await loadClientReviewPortal(env, updated, request.url) });
   }
