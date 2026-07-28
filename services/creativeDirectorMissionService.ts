@@ -10,7 +10,7 @@ import {
   VoiceProfile,
   VoiceTake,
 } from '../types';
-import { generateImage, generateImageWithModel, generateVideoWithModel } from './modelService';
+import { generateImageWithModel, generateVideoWithModel } from './modelService';
 import { getActiveImageModel, getDefaultAspectRatio, getDefaultVideoDuration } from './modelRegistry';
 import { DEFAULT_IMAGE_MODEL_ID, MediaExecutionContext } from '../types/model';
 import { getUsagePolicy } from './usageService';
@@ -30,9 +30,10 @@ import {
 } from './workflowService';
 import { checkMissionBudget, computeBudget } from './directorBriefingService';
 import {
-  buildShotReferenceImages,
+  buildShotReferencePack,
   pickReferences,
   resolveGenerationParams,
+  withShotConsistencyPrompt,
 } from './consistencyService';
 import { saveProjectToDB } from './storageService';
 
@@ -467,7 +468,9 @@ const getBrandAssetReferences = (
   types: Array<'logo' | 'product' | 'character' | 'reference'>,
   context = '',
 ): string[] => {
-  const assets = project.brandKitSnapshot?.assets.filter((asset) => types.includes(asset.type)) || [];
+  const lockedIds = project.consistency?.lockedBrandAssetIds;
+  const assets = project.brandKitSnapshot?.assets.filter((asset) =>
+    types.includes(asset.type) && (lockedIds === undefined || lockedIds.includes(asset.id))) || [];
   const normalizedContext = context.toLocaleLowerCase('vi');
   const matched = assets.filter((asset) => normalizedContext.includes(asset.name.toLocaleLowerCase('vi')));
   const preferred = matched.length ? matched : assets.length === 1 ? assets : assets.filter((asset) => asset.type === 'reference');
@@ -481,16 +484,11 @@ const getFactoryModelId = (project: ProjectState, shot: Shot, type: 'image' | 'v
   return type === 'image' ? policy.draftImageModelId : policy.draftVideoModelId;
 };
 
-const getReferenceImages = (project: ProjectState, shot: Shot): string[] => {
-  if (!project.scriptData) return [];
-  const brandContext = [shot.actionSummary, shot.dialogue || '', ...shot.characters.map((id) => (
-    project.scriptData?.characters.find((item) => sameId(item.id, id))?.name || ''
-  ))].join(' ');
-  return buildShotReferenceImages(
-    shot,
-    project.scriptData,
-    getBrandAssetReferences(project, ['product', 'character', 'reference'], brandContext),
-  );
+const getReferenceImages = (project: ProjectState, shot: Shot, frameType?: 'start' | 'end'): string[] => {
+  const startFrame = frameType === 'end'
+    ? shot.keyframes.find((frame) => frame.type === 'start')?.imageUrl
+    : undefined;
+  return buildShotReferencePack(project, shot, startFrame ? [startFrame] : []).images;
 };
 
 const buildKeyframePrompt = (project: ProjectState, shot: Shot, frameType: 'start' | 'end'): string => {
@@ -500,7 +498,7 @@ const buildKeyframePrompt = (project: ProjectState, shot: Shot, frameType: 'star
     .filter(Boolean)
     .map((character) => `${character!.name}: ${character!.coreFeatures || character!.visualPrompt || character!.personality}`)
     .join('; ');
-  return [
+  return withShotConsistencyPrompt([
     existing || shot.actionSummary,
     frameType === 'start'
       ? 'Khung đầu: trạng thái ngay trước hành động, tư thế và vị trí ban đầu rõ ràng.'
@@ -511,17 +509,17 @@ const buildKeyframePrompt = (project: ProjectState, shot: Shot, frameType: 'star
     `Phong cách: ${project.visualStyle || project.scriptData?.visualStyle || 'điện ảnh chân thực'}.`,
     buildBrandVisualGuardrails(project.brandKitSnapshot),
     'Bố cục điện ảnh, ánh sáng hợp lý, không chữ, không watermark.',
-  ].filter(Boolean).join(' ');
+  ].filter(Boolean).join(' '), project, shot);
 };
 
-const buildVideoPrompt = (project: ProjectState, shot: Shot): string => shot.interval?.videoPrompt?.trim() || [
+const buildVideoPrompt = (project: ProjectState, shot: Shot): string => withShotConsistencyPrompt(shot.interval?.videoPrompt?.trim() || [
   shot.actionSummary,
   `Máy quay: ${shot.cameraMovement}.`,
   `Cỡ cảnh: ${shot.shotSize || 'cinematic'}.`,
   `Phong cách: ${project.visualStyle || project.scriptData?.visualStyle || 'điện ảnh chân thực'}.`,
   buildBrandVisualGuardrails(project.brandKitSnapshot),
   'Chuyển động tự nhiên, vật lý nhất quán, giữ nguyên khuôn mặt và trang phục, không morphing, không chữ, không watermark.',
-].join(' ');
+].join(' '), project, shot);
 
 const patchAsset = (
   project: ProjectState,
@@ -641,10 +639,16 @@ export const executeCreativeDirectorAction = async (
     const scene = project.scriptData?.scenes.find((item) => sameId(item.id, action.resourceId));
     if (!scene) throw new Error('Không tìm thấy bối cảnh cần tạo ảnh.');
     const prompt = buildScenePrompt(project, scene);
-    await generateImage({
+    const generation = resolveGenerationParams(
+      [],
+      getActiveImageModel()?.id || DEFAULT_IMAGE_MODEL_ID,
+      aspectRatio,
+      [{ name: scene.location, lock: scene.lock }],
+    );
+    await generateImageWithModel({
       prompt,
       referenceImages: getBrandAssetReferences(project, ['product', 'reference'], `${scene.location} ${scene.atmosphere}`),
-      aspectRatio,
+      aspectRatio: generation.aspectRatio || aspectRatio,
       usageResourceId: `asset:scene:${action.resourceId}`,
       execution: execution(
         'asset-image',
@@ -653,7 +657,7 @@ export const executeCreativeDirectorAction = async (
         scene.referenceImage,
         (imageUrl) => patchAsset(project, 'scene', action.resourceId, imageUrl, prompt),
       ),
-    });
+    }, generation.modelId);
     return project;
   }
 
@@ -672,6 +676,9 @@ export const executeCreativeDirectorAction = async (
       shotCharacters,
       getFactoryModelId(project, shot, 'image') || getActiveImageModel()?.id || DEFAULT_IMAGE_MODEL_ID,
       factoryAspectRatio,
+      project.scriptData?.scenes
+        .filter((scene) => sameId(scene.id, shot.sceneId))
+        .map((scene) => ({ name: scene.location, lock: scene.lock })) || [],
     );
     const previousFrame = shot.keyframes.find((item) => item.type === frameType)?.imageUrl;
     const commitKeyframe = (imageUrl: string): ProjectState => {
@@ -707,7 +714,7 @@ export const executeCreativeDirectorAction = async (
     await generateImageWithModel(
       {
         prompt,
-        referenceImages: getReferenceImages(project, shot),
+        referenceImages: getReferenceImages(project, shot, frameType),
         aspectRatio: generation.aspectRatio || factoryAspectRatio,
         usageResourceId: `${shot.id}:keyframe:${frameType}`,
         execution: execution(

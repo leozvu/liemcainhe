@@ -47,6 +47,44 @@ export interface GenerationLock {
   sourceShotId?: string;
 }
 
+/** Vai trò nghiệp vụ của một ảnh trong gói tham chiếu gửi sang model. */
+export type ConsistencyReferenceRole = 'character' | 'wardrobe' | 'continuity' | 'scene' | 'product' | 'logo' | 'brand';
+
+/** Ảnh tham chiếu đã được gắn nhãn để không vô tình bỏ sản phẩm hoặc bối cảnh. */
+export interface ConsistencyReference {
+  id: string;
+  imageUrl: string;
+  role: ConsistencyReferenceRole;
+  label: string;
+  priority: number;
+  source: 'project' | 'brand-kit' | 'additional';
+  entityId?: string;
+  approved?: boolean;
+  notes?: string;
+}
+
+/** Gói đầu vào nhất quán thực sự dùng cho một shot. */
+export interface ShotReferencePack {
+  items: ConsistencyReference[];
+  images: string[];
+  promptContext: string[];
+  warnings: string[];
+  coverage: {
+    characters: number;
+    charactersWithImage: number;
+    scene: boolean;
+    product: boolean;
+    brand: boolean;
+  };
+}
+
+/** Cấu hình khoá hình ảnh dùng chung cho toàn dự án. */
+export interface ProjectConsistencyState {
+  /** Mảng tồn tại nhưng rỗng nghĩa là người dùng chủ động tắt toàn bộ asset Brand Kit. */
+  lockedBrandAssetIds: string[];
+  updatedAt: number;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -74,6 +112,8 @@ export interface Scene {
   negativePrompt?: string;
   referenceImage?: string;
   status?: 'pending' | 'generating' | 'completed' | 'failed';
+  /** Giữ cùng model/tỷ lệ cho mọi shot dùng bối cảnh này. */
+  lock?: GenerationLock;
 }
 
 export type AssetLibraryItemType = 'character' | 'scene';
@@ -925,6 +965,7 @@ export interface ProjectState {
   clientId?: string;
   deliverableId?: string;
   brandKitSnapshot?: BrandKit;
+  consistency?: ProjectConsistencyState;
   videoFactory?: VideoFactoryState;
   aiSupervisor?: AISupervisorState;
   autoEditor?: AutoEditorState;

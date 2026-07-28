@@ -69,6 +69,25 @@ Khoá chỉ áp khi người dùng chủ động khoá, nên không cản trở 
 
 `assessCharacterReadiness` chấm độ sẵn sàng của nhân vật: bao nhiêu ảnh, đủ góc chưa, đã khoá model chưa. Dùng để cảnh báo **trước khi** chạy Video Factory, thay vì phát hiện lệch mặt sau khi đã dựng xong hai mươi shot.
 
+## Reference Pack cấp shot
+
+Mảng URL cũ không biết ảnh nào là người, trang phục hay sản phẩm nên khi chạm
+giới hạn 3 ảnh, một sản phẩm bắt buộc có thể bị rơi khỏi request. Contract mới
+`buildShotReferencePack` gắn vai trò, nhãn, nguồn và độ ưu tiên cho từng ảnh:
+
+1. neo nhận dạng hoặc trang phục của từng nhân vật;
+2. sản phẩm Brand Kit đang khóa;
+3. khung nối shot trước hoặc khung đầu của chính shot;
+4. bối cảnh, logo và hình mẫu còn lại.
+
+Ảnh không lọt vào giới hạn vẫn được chuyển thành ràng buộc prompt. Nếu nhân vật
+hoặc bối cảnh chưa có ảnh, hệ thống **không chặn sinh**: nó dùng `visualPrompt`,
+đặc điểm cốt lõi, địa điểm, thời gian, không khí và ghi chú Brand Kit làm fallback.
+
+Khung cuối của shot liền trước tự trở thành một neo continuity cho shot sau.
+Khung đầu cũng được gửi khi tạo khung cuối. Video chỉ từ văn bản nhận cùng ràng
+buộc, còn video I2V tiếp tục nhận khung đầu/khung cuối đã khóa.
+
 ## Đã nối vào workflow thật
 
 Entry point nằm tại **Nhân vật & bối cảnh → thẻ nhân vật → Nhất quán nhân vật**.
@@ -78,6 +97,14 @@ Tại đây người dùng có thể:
 - duyệt hoặc xóa từng ảnh phụ;
 - xem các lỗ hổng trước khi sinh hàng loạt;
 - khóa model và tỷ lệ đang dùng, hoặc chủ động mở khóa.
+
+Phía trên màn hình này nay có **Khóa nhất quán** để chọn logo, sản phẩm, đại
+diện và hình mẫu bắt buộc từ Brand Kit. Mỗi thẻ bối cảnh có khóa model/tỷ lệ
+riêng. Thay đổi bất kỳ khóa nào đều đánh dấu các shot liên quan là cần xem lại.
+
+Trong **Xưởng AI → Chi tiết cảnh quay**, bảng **Reference Pack đang dùng** cho
+team thấy đúng ảnh nào sẽ được gửi, vai trò của ảnh và mọi fallback trước khi
+tiêu credit. Đây là entry point kiểm chứng đầu-cuối, không còn service bị chôn.
 
 Stage Director và nhiệm vụ tự động của Trợ lý Đạo diễn nay gọi `pickReferences`
 trước khi sinh keyframe, đưa đúng reference pack vào request và áp model/tỷ lệ
@@ -92,7 +119,10 @@ gói ZIP nguồn; ảnh nhiều góc không còn bị mắc kẹt trên một th
 npx vitest run tests/consistency.test.ts
 ```
 
-34 test. Nhóm quan trọng nhất là *"chữ ký nguồn — lỗ hổng chính Epic 4 bịt"*, khẳng định mọi thay đổi ở nguồn đều làm chữ ký đổi: ảnh định trang, prompt nhân vật, prompt bối cảnh, và khoá model.
+45 test. Ngoài nhóm *"chữ ký nguồn — lỗ hổng chính Epic 4 bịt"*, test mới khẳng
+định gói 3 ảnh vẫn giữ được nhân vật + sản phẩm + bối cảnh, prompt fallback hoạt
+động khi không có ảnh, lựa chọn bỏ khóa sản phẩm được tôn trọng và khóa bối cảnh
+được áp ngay tại entry point sinh ảnh.
 
 Test cũ `aiSupervisor.test.ts` đã cập nhật để so với `getShotFullSignature` thay vì dựng chuỗi bằng tay — test nên đối chiếu với chính hàm mà code dùng.
 

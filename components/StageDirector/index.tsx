@@ -4,7 +4,6 @@ import { ProjectState, Shot, Keyframe, AspectRatio, VideoDuration, Character } f
 import { DEFAULT_IMAGE_MODEL_ID, migrateDeprecatedChatModelId, migrateDeprecatedVideoModelId } from '../../types/model';
 import { generateImage, generateVideo, generateActionSuggestion, optimizeKeyframePrompt, optimizeBothKeyframes, enhanceKeyframePrompt, splitShotIntoSubShots, rewritePromptForModeration } from '../../services/geminiService';
 import { 
-  getRefImagesForShot, 
   buildKeyframePrompt,
   buildKeyframePromptWithAI,
   buildVideoPrompt,
@@ -26,7 +25,7 @@ import ImagePreviewModal from './ImagePreviewModal';
 import { useAlert } from '../GlobalAlert';
 import { getActiveImageModel, getDefaultAspectRatio } from '../../services/modelRegistry';
 import { createProjectMediaExecutionContext } from '../../services/mediaExecutionService';
-import { assessCharacterReadiness, resolveGenerationParams } from '../../services/consistencyService';
+import { assessCharacterReadiness, buildShotReferencePack, resolveGenerationParams, withShotConsistencyPrompt } from '../../services/consistencyService';
 import {
   addProductionJob,
   clearShotStaleFlag,
@@ -129,9 +128,17 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     } else {
       prompt = buildKeyframePrompt(basePrompt, visualStyle, shot.cameraMovement, type);
     }
+    prompt = withShotConsistencyPrompt(prompt, project, shot);
     
     try {
-      const referenceImages = getRefImagesForShot(shot, project.scriptData);
+      const startFrameForContinuity = type === 'end'
+        ? shot.keyframes.find((frame) => frame.type === 'start')?.imageUrl
+        : undefined;
+      const referenceImages = buildShotReferencePack(
+        project,
+        shot,
+        startFrameForContinuity ? [startFrameForContinuity] : [],
+      ).images;
       const shotCharacters = (shot.characters ?? [])
         .map((id) => project.scriptData?.characters.find((character) => String(character.id) === String(id)))
         .filter((character): character is Character => Boolean(character));
@@ -139,6 +146,9 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
         shotCharacters,
         getActiveImageModel()?.id || DEFAULT_IMAGE_MODEL_ID,
         keyframeAspectRatio,
+        project.scriptData?.scenes
+          .filter((scene) => String(scene.id) === String(shot.sceneId))
+          .map((scene) => ({ name: scene.location, lock: scene.lock })) || [],
       );
       await generateImage(
         prompt,
@@ -258,12 +268,13 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
     );
     
     const projectLanguage = project.language || project.scriptData?.language || 'Vietnamese';
-    const videoPrompt = shot.interval?.videoPrompt || buildVideoPrompt(
+    const baseVideoPrompt = shot.interval?.videoPrompt || buildVideoPrompt(
       shot.actionSummary,
       shot.cameraMovement,
       selectedModel,
       projectLanguage
     );
+    const videoPrompt = withShotConsistencyPrompt(baseVideoPrompt, project, shot);
     
     const intervalId = shot.interval?.id || generateId(`int-${shot.id}`);
     updateShot(shot.id, (s) => ({
@@ -423,10 +434,17 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
       .filter((character) => usedCharacterIds.has(String(character.id)))
       .map(assessCharacterReadiness)
       .filter((item) => item.gaps.length > 0);
-    if (atRisk.length) {
+    const riskyShots = project.shots.filter((shot) => buildShotReferencePack(project, shot).warnings.length > 0);
+    if (atRisk.length || riskyShots.length) {
       const names = atRisk.slice(0, 3).map((item) => item.name).join(', ');
       showAlert(
-        `${atRisk.length} nhân vật chưa đủ reference hoặc chưa khóa model (${names}${atRisk.length > 3 ? ', …' : ''}). Tạo hàng loạt lúc này có nguy cơ lệch mặt và tốn lượt sinh lại.`,
+        [
+          atRisk.length
+            ? `${atRisk.length} nhân vật chưa đủ reference hoặc chưa khóa model (${names}${atRisk.length > 3 ? ', …' : ''}).`
+            : '',
+          riskyShots.length ? `${riskyShots.length} shot đang dùng prompt dự phòng hoặc có reference bị giới hạn.` : '',
+          'Tạo hàng loạt lúc này có nguy cơ lệch hình và tốn lượt sinh lại.',
+        ].filter(Boolean).join(' '),
         {
           type: 'warning',
           showCancel: true,
@@ -834,6 +852,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError 
             shotIndex={activeShotIndex}
             totalShots={project.shots.length}
             scriptData={project.scriptData}
+            referencePack={buildShotReferencePack(project, activeShot)}
             nextShotHasStartFrame={!!project.shots[activeShotIndex + 1]?.keyframes?.find(k => k.type === 'start')?.imageUrl}
             isAIOptimizing={isAIGenerating}
             isSplittingShot={isSplittingShot}

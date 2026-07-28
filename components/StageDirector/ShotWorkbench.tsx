@@ -1,15 +1,26 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, X, Film, Edit2, MessageSquare, Sparkles, Loader2, Scissors } from 'lucide-react';
-import { Shot, Character, Scene, ProjectState, AspectRatio, VideoDuration } from '../../types';
+import { ChevronLeft, ChevronRight, X, Film, Edit2, MessageSquare, Sparkles, Loader2, Scissors, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Shot, Character, Scene, ProjectState, AspectRatio, VideoDuration, ShotReferencePack } from '../../types';
 import SceneContext from './SceneContext';
 import KeyframeEditor from './KeyframeEditor';
 import VideoGenerator from './VideoGenerator';
+
+const REFERENCE_ROLE_LABELS: Record<ShotReferencePack['items'][number]['role'], string> = {
+  character: 'Nhân vật',
+  wardrobe: 'Trang phục',
+  continuity: 'Khung nối',
+  scene: 'Bối cảnh',
+  product: 'Sản phẩm',
+  logo: 'Logo',
+  brand: 'Hình mẫu',
+};
 
 interface ShotWorkbenchProps {
   shot: Shot;
   shotIndex: number;
   totalShots: number;
   scriptData?: ProjectState['scriptData'];
+  referencePack: ShotReferencePack;
   nextShotHasStartFrame?: boolean;
   isAIOptimizing?: boolean;
   isSplittingShot?: boolean;
@@ -44,6 +55,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
   shotIndex,
   totalShots,
   scriptData,
+  referencePack,
   nextShotHasStartFrame = false,
   isAIOptimizing = false,
   isSplittingShot = false,
@@ -145,6 +157,47 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
             onSceneChange={onSceneChange}
           />
         )}
+
+        <section className="rounded-2xl border border-cyan-200/15 bg-cyan-300/[0.035] p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-cyan-300" />
+            <div>
+              <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-widest">Reference Pack đang dùng</h4>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                {referencePack.items.length} ảnh gửi model · {referencePack.coverage.charactersWithImage}/{referencePack.coverage.characters} nhân vật có neo ảnh
+              </p>
+            </div>
+          </div>
+
+          {referencePack.items.length ? (
+            <div className="grid grid-cols-3 gap-2">
+              {referencePack.items.map((item) => (
+                <div key={item.id} className="min-w-0 rounded-xl overflow-hidden border border-white/10 bg-slate-950/60">
+                  <img src={item.imageUrl} alt={item.label} loading="lazy" className="w-full aspect-square object-cover" />
+                  <div className="px-2 py-1.5">
+                    <p className="text-[9px] font-bold text-zinc-300 truncate">{item.label}</p>
+                    <p className="text-[8px] text-cyan-200/60 uppercase tracking-wider">{REFERENCE_ROLE_LABELS[item.role]}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-amber-200/75 rounded-xl border border-amber-300/15 bg-amber-300/5 px-3 py-2">
+              Chưa có ảnh reference. Shot vẫn chạy bằng mô tả nhân vật, bối cảnh và Brand Kit trong prompt.
+            </p>
+          )}
+
+          {referencePack.warnings.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              {referencePack.warnings.slice(0, 3).map((warning) => (
+                <p key={warning} className="flex gap-2 text-[9px] leading-relaxed text-amber-100/65">
+                  <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-amber-300/70" />
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div className="space-y-4">
           <div className="flex items-center gap-2 border-b border-white/10 pb-2">

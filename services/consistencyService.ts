@@ -2,10 +2,12 @@ import {
   AspectRatio,
   Character,
   CharacterReference,
+  ConsistencyReference,
   GenerationLock,
   ProjectState,
   ReferenceAngle,
   Shot,
+  ShotReferencePack,
 } from '../types';
 
 /**
@@ -170,6 +172,210 @@ export const buildShotReferenceImages = (
   return urls.slice(0, Math.max(1, limit));
 };
 
+const roleForBrandAsset = (type: 'logo' | 'product' | 'character' | 'reference'): ConsistencyReference['role'] => {
+  if (type === 'reference') return 'brand';
+  return type;
+};
+
+const referencePriority = (role: ConsistencyReference['role']): number => ({
+  wardrobe: 120,
+  character: 110,
+  continuity: 105,
+  product: 100,
+  scene: 90,
+  logo: 80,
+  brand: 70,
+})[role];
+
+/**
+ * Dựng Reference Pack có vai trò rõ ràng cho một shot.
+ *
+ * Khác contract URL[] cũ, hàm này biết ảnh nào là nhân vật, trang phục, sản
+ * phẩm và bối cảnh. Khi provider chỉ nhận ít ảnh, bộ chọn luôn giữ neo nhận
+ * dạng nhân vật trước, sau đó giữ sản phẩm đã khoá rồi mới dùng phần còn lại.
+ * Mọi thực thể thiếu ảnh vẫn được đưa vào `promptContext`, nên text-to-image
+ * và text-to-video không còn phụ thuộc bắt buộc vào ảnh reference.
+ */
+export const buildShotReferencePack = (
+  project: ProjectState,
+  shot: Shot,
+  additionalImages: string[] = [],
+  limit = MAX_REFERENCES_PER_CALL,
+): ShotReferencePack => {
+  const candidates: ConsistencyReference[] = [];
+  const promptContext: string[] = [];
+  const warnings: string[] = [];
+  const scriptData = project.scriptData;
+  const add = (item: ConsistencyReference) => {
+    if (!item.imageUrl || candidates.some((candidate) => candidate.imageUrl === item.imageUrl)) return;
+    candidates.push(item);
+  };
+
+  const shotCharacters = (shot.characters ?? [])
+    .map((characterId) => scriptData?.characters.find((item) => String(item.id) === String(characterId)))
+    .filter((character): character is Character => Boolean(character));
+
+  for (const character of shotCharacters) {
+    const variationId = shot.characterVariations?.[character.id];
+    const variation = character.variations.find((item) => String(item.id) === String(variationId));
+    const description = character.coreFeatures || character.visualPrompt || character.personality;
+    promptContext.push(`Nhân vật ${character.name}: ${description || 'giữ nguyên nhận dạng và tạo hình đã mô tả trong kịch bản'}.`);
+
+    if (variation) {
+      promptContext.push(`Trang phục của ${character.name}: ${variation.visualPrompt || variation.name}.`);
+      if (variation.referenceImage) {
+        add({
+          id: `wardrobe:${character.id}:${variation.id}`,
+          imageUrl: variation.referenceImage,
+          role: 'wardrobe',
+          label: `${character.name} · ${variation.name}`,
+          priority: referencePriority('wardrobe'),
+          source: 'project',
+          entityId: character.id,
+          approved: true,
+        });
+      }
+    }
+
+    const selected = pickReferences(character, shot, 2);
+    selected.forEach((reference, index) => add({
+      id: `character:${character.id}:${reference.id}`,
+      imageUrl: reference.imageUrl,
+      role: 'character',
+      label: `${character.name}${index ? ` · góc ${reference.angle}` : ''}`,
+      priority: referencePriority('character') - index,
+      source: 'project',
+      entityId: character.id,
+      approved: reference.approved,
+    }));
+    if (!selected.length) warnings.push(`${character.name} chưa có ảnh; hệ thống sẽ giữ nhân vật bằng mô tả prompt.`);
+  }
+
+  const scene = scriptData?.scenes.find((item) => String(item.id) === String(shot.sceneId));
+  if (scene) {
+    promptContext.push(`Bối cảnh ${scene.location}, ${scene.time}, không khí ${scene.atmosphere}${scene.visualPrompt ? `. Mô tả hình ảnh: ${scene.visualPrompt}` : ''}.`);
+    if (scene.referenceImage) {
+      add({
+        id: `scene:${scene.id}`,
+        imageUrl: scene.referenceImage,
+        role: 'scene',
+        label: scene.location,
+        priority: referencePriority('scene'),
+        source: 'project',
+        entityId: scene.id,
+        approved: true,
+      });
+    } else {
+      warnings.push(`Bối cảnh ${scene.location} chưa có ảnh; hệ thống sẽ dựng từ mô tả bối cảnh.`);
+    }
+  }
+
+  const brandAssets = project.brandKitSnapshot?.assets ?? [];
+  const configuredLocks = project.consistency?.lockedBrandAssetIds;
+  const effectiveBrandAssets = configuredLocks === undefined
+    ? brandAssets.filter((asset) => ['product', 'logo', 'character', 'reference'].includes(asset.type))
+    : brandAssets.filter((asset) => configuredLocks.includes(asset.id));
+
+  effectiveBrandAssets.forEach((asset) => {
+    const role = roleForBrandAsset(asset.type);
+    promptContext.push(`${role === 'product' ? 'Sản phẩm bắt buộc' : 'Tài sản thương hiệu'} ${asset.name}${asset.notes ? `: ${asset.notes}` : ''}.`);
+    add({
+      id: `brand:${asset.id}`,
+      imageUrl: asset.url,
+      role,
+      label: asset.name,
+      priority: referencePriority(role),
+      source: 'brand-kit',
+      entityId: asset.id,
+      approved: true,
+      notes: asset.notes,
+    });
+  });
+
+  const shotIndex = project.shots.findIndex((item) => String(item.id) === String(shot.id));
+  const previousEndFrame = shotIndex > 0
+    ? project.shots[shotIndex - 1].keyframes.find((frame) => frame.type === 'end' && frame.imageUrl)
+    : undefined;
+  if (previousEndFrame?.imageUrl) {
+    promptContext.push('Khớp vị trí, ánh sáng và trạng thái hành động với khung cuối của shot liền trước.');
+    add({
+      id: `continuity:${project.shots[shotIndex - 1].id}`,
+      imageUrl: previousEndFrame.imageUrl,
+      role: 'continuity',
+      label: 'Khung nối shot trước',
+      priority: referencePriority('continuity'),
+      source: 'project',
+      entityId: project.shots[shotIndex - 1].id,
+      approved: true,
+    });
+  }
+
+  additionalImages.forEach((imageUrl, index) => add({
+    id: `additional:${index}`,
+    imageUrl,
+    role: 'continuity',
+    label: `Khung nối bổ sung ${index + 1}`,
+    priority: referencePriority('continuity') - index,
+    source: 'additional',
+  }));
+
+  const productCandidates = candidates.filter((item) => item.role === 'product');
+  const selected: ConsistencyReference[] = [];
+  const take = (item?: ConsistencyReference) => {
+    if (item && selected.length < Math.max(1, limit) && !selected.some((candidate) => candidate.imageUrl === item.imageUrl)) selected.push(item);
+  };
+  // Một neo cho từng nhân vật; nếu có ảnh trang phục thì ảnh đó đã chứa cả mặt và quần áo.
+  shotCharacters.forEach((character) => take(
+    candidates.find((item) => item.entityId === character.id && item.role === 'wardrobe')
+      || candidates.find((item) => item.entityId === character.id && item.role === 'character'),
+  ));
+  take(productCandidates[0]);
+  take(candidates.find((item) => item.role === 'continuity' || item.source === 'additional'));
+  take(candidates.find((item) => item.role === 'scene'));
+  candidates.sort((left, right) => right.priority - left.priority).forEach(take);
+
+  if (brandAssets.some((asset) => asset.type === 'product') && !effectiveBrandAssets.some((asset) => asset.type === 'product')) {
+    warnings.push('Chưa khoá sản phẩm Brand Kit cho shot này.');
+  }
+  if (candidates.length > selected.length) {
+    warnings.push(`${candidates.length - selected.length} ảnh phụ không gửi do giới hạn ${Math.max(1, limit)} ảnh của model; mô tả prompt vẫn được giữ.`);
+  }
+
+  return {
+    items: selected,
+    images: selected.map((item) => item.imageUrl),
+    promptContext,
+    warnings,
+    coverage: {
+      characters: shotCharacters.length,
+      charactersWithImage: shotCharacters.filter((character) => selected.some((item) => item.entityId === character.id && (item.role === 'character' || item.role === 'wardrobe'))).length,
+      scene: selected.some((item) => item.role === 'scene'),
+      product: selected.some((item) => item.role === 'product'),
+      brand: selected.some((item) => item.source === 'brand-kit'),
+    },
+  };
+};
+
+/** Ràng buộc prompt dùng chung cho cả sinh keyframe và sinh video trực tiếp. */
+export const buildShotConsistencyPrompt = (project: ProjectState, shot: Shot): string => {
+  const pack = buildShotReferencePack(project, shot);
+  const lines = [
+    '[RÀNG BUỘC LIÊN TỤC HÌNH ẢNH — BẮT BUỘC]',
+    ...pack.promptContext,
+    pack.items.length
+      ? 'Khớp đúng nhận dạng, bao bì, logo, màu sắc và bối cảnh theo từng ảnh tham chiếu; không trộn đặc điểm giữa các ảnh.'
+      : 'Không có ảnh tham chiếu: dựng đúng các mô tả trên và giữ nguyên các đặc điểm đó ở mọi khung hình.',
+    'Không tự đổi khuôn mặt, kiểu tóc, trang phục, hình dáng sản phẩm, chữ trên bao bì, bảng màu hoặc thời điểm bối cảnh.',
+  ];
+  return lines.filter(Boolean).join('\n');
+};
+
+export const withShotConsistencyPrompt = (basePrompt: string, project: ProjectState, shot: Shot): string => {
+  const marker = '[RÀNG BUỘC LIÊN TỤC HÌNH ẢNH — BẮT BUỘC]';
+  const clean = basePrompt.includes(marker) ? basePrompt.slice(0, basePrompt.indexOf(marker)).trim() : basePrompt.trim();
+  return `${clean}\n\n${buildShotConsistencyPrompt(project, shot)}`.trim();
+};
+
 /* ─────────────────────────  Khoá tham số sinh  ───────────────────────── */
 
 /**
@@ -210,18 +416,22 @@ export const resolveGenerationParams = (
   characters: Character[],
   requestedModelId: string,
   requestedAspectRatio?: AspectRatio,
+  additionalEntities: Array<{ name: string; lock?: GenerationLock }> = [],
 ): { modelId: string; aspectRatio?: AspectRatio; seed?: number; lockedBy?: string } => {
-  const lockedCharacters = characters.filter((character) => character.lock?.modelId);
-  const signatures = new Set(lockedCharacters.map((character) => [
-    character.lock!.modelId,
-    character.lock!.aspectRatio ?? '',
-    character.lock!.seed ?? '',
+  const lockedEntities = [
+    ...characters.map((character) => ({ name: character.name, lock: character.lock })),
+    ...additionalEntities,
+  ].filter((entity) => entity.lock?.modelId);
+  const signatures = new Set(lockedEntities.map((entity) => [
+    entity.lock!.modelId,
+    entity.lock!.aspectRatio ?? '',
+    entity.lock!.seed ?? '',
   ].join('|')));
   if (signatures.size > 1) {
-    throw new Error(`Các nhân vật ${lockedCharacters.map((character) => character.name).join(', ')} đang khóa tham số khác nhau. Hãy dùng cùng model/tỷ lệ hoặc mở khóa trước khi sinh.`);
+    throw new Error(`${lockedEntities.map((entity) => entity.name).join(', ')} đang khóa tham số khác nhau. Hãy dùng cùng model/tỷ lệ hoặc mở khóa trước khi sinh.`);
   }
 
-  const locked = lockedCharacters[0];
+  const locked = lockedEntities[0];
   if (!locked?.lock) return { modelId: requestedModelId, aspectRatio: requestedAspectRatio };
   return {
     modelId: locked.lock.modelId,
@@ -323,10 +533,19 @@ export const getShotUpstreamSignature = (project: ProjectState, shot: Shot): str
 
   const scene = scenes.find((item) => item.id === shot.sceneId);
   const scenePart = scene
-    ? `${scene.id}:${fingerprint(scene.visualPrompt)}:${fingerprint(scene.referenceImage)}`
+    ? `${scene.id}:${fingerprint(scene.visualPrompt)}:${fingerprint(scene.referenceImage)}:${scene.lock?.modelId ?? 'no-lock'}`
     : `${shot.sceneId ?? 'no-scene'}:missing`;
 
-  return `${characterPart}#${scenePart}`;
+  const lockedBrandIds = project.consistency?.lockedBrandAssetIds;
+  const brandPart = (project.brandKitSnapshot?.assets ?? [])
+    .filter((asset) => lockedBrandIds === undefined
+      ? ['product', 'logo', 'character', 'reference'].includes(asset.type)
+      : lockedBrandIds.includes(asset.id))
+    .map((asset) => `${asset.id}:${asset.type}:${fingerprint(asset.url)}:${fingerprint(asset.notes)}`)
+    .sort()
+    .join('|') || 'no-brand-ref';
+
+  return `${characterPart}#${scenePart}#${brandPart}`;
 };
 
 export type RegenerationScope = 'none' | 'video-only' | 'keyframes-and-video';

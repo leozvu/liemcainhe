@@ -15,6 +15,7 @@ import { DEFAULTS, STYLES, GRID_LAYOUTS } from './constants';
 import ImagePreviewModal from './ImagePreviewModal';
 import CharacterCard from './CharacterCard';
 import SceneCard from './SceneCard';
+import ConsistencyWorkbench from './ConsistencyWorkbench';
 import WardrobeModal from './WardrobeModal';
 import { useAlert } from '../GlobalAlert';
 import { getAllAssetLibraryItems, saveAssetToLibrary, deleteAssetFromLibrary } from '../../services/storageService';
@@ -70,6 +71,13 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   const language = getProjectLanguage(project.language, project.scriptData?.language);
   const visualStyle = getProjectVisualStyle(project.visualStyle, project.scriptData?.visualStyle);
   const genre = project.scriptData?.genre || DEFAULTS.genre;
+
+  const getLockedBrandAssets = (types: Array<'logo' | 'product' | 'character' | 'reference'>) => {
+    const configuredIds = project.consistency?.lockedBrandAssetIds;
+    return (project.brandKitSnapshot?.assets || []).filter((asset) =>
+      types.includes(asset.type) && Boolean(asset.url) && (configuredIds === undefined || configuredIds.includes(asset.id)),
+    );
+  };
 
   const markDependentShotsStale = (state: ProjectState, type: 'character' | 'scene', id: string): ProjectState => ({
     ...state,
@@ -164,6 +172,49 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
 
   const handleUnlockCharacterGeneration = (characterId: string) => {
     updateCharacterConsistency(characterId, unlockGenerationParams);
+  };
+
+  const updateSceneLock = (sceneId: string, locked: boolean) => {
+    updateProject((previous) => {
+      if (!previous.scriptData) return previous;
+      const next = {
+        ...previous,
+        scriptData: {
+          ...previous.scriptData,
+          scenes: previous.scriptData.scenes.map((scene) => {
+            if (!compareIds(scene.id, sceneId)) return scene;
+            if (!locked) {
+              const { lock: _removed, ...rest } = scene;
+              return rest;
+            }
+            return {
+              ...scene,
+              lock: {
+                modelId: selectedImageModelId,
+                aspectRatio,
+                lockedAt: Date.now(),
+              },
+            };
+          }),
+        },
+      };
+      return markDependentShotsStale(next, 'scene', sceneId);
+    });
+  };
+
+  const handleToggleBrandAsset = (assetId: string) => {
+    updateProject((previous) => {
+      const availableIds = (previous.brandKitSnapshot?.assets || []).filter((asset) => asset.url).map((asset) => asset.id);
+      const current = previous.consistency?.lockedBrandAssetIds ?? availableIds;
+      const nextIds = current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current, assetId];
+      return {
+        ...previous,
+        consistency: { lockedBrandAssetIds: nextIds, updatedAt: Date.now() },
+        shots: previous.shots.map((shot) => markShotWorkflowStale(shot, 'visual')),
+      };
+    });
   };
 
   // Khôi phục tác vụ bị gián đoạn để người dùng có thể tạo lại sau khi mở trang.
@@ -266,16 +317,26 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       }
 
       const regionalPrefix = getRegionalPrefix(language, type);
-      const enhancedPrompt = regionalPrefix + prompt;
+      const lockedBrandAssets = type === 'scene'
+        ? getLockedBrandAssets(['product', 'logo', 'reference'])
+        : getLockedBrandAssets(['character', 'reference']);
+      const brandPrompt = lockedBrandAssets.length
+        ? ` Tài sản thương hiệu bắt buộc: ${lockedBrandAssets.map((asset) => `${asset.name}${asset.notes ? ` (${asset.notes})` : ''}`).join('; ')}. Không thay đổi logo, bao bì hoặc màu sắc.`
+        : '';
+      const enhancedPrompt = regionalPrefix + prompt + brandPrompt;
       const character = type === 'character' ? currentAsset as Character | undefined : undefined;
       const generation = resolveGenerationParams(
         character ? [character] : [],
         selectedImageModelId,
         aspectRatio,
+        type === 'scene' && currentAsset
+          ? [{ name: (currentAsset as Scene).location, lock: (currentAsset as Scene).lock }]
+          : [],
       );
-      const referenceImages = character
-        ? pickReferences(character).map((reference) => reference.imageUrl)
-        : [];
+      const referenceImages = Array.from(new Set([
+        ...(character ? pickReferences(character).map((reference) => reference.imageUrl) : []),
+        ...lockedBrandAssets.map((asset) => asset.url),
+      ])).slice(0, 3);
 
       await generateImage(
         enhancedPrompt,
@@ -991,6 +1052,8 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       </div>
 
       <div className={STYLES.content}>
+        <ConsistencyWorkbench project={project} onToggleBrandAsset={handleToggleBrandAsset} />
+
         <section>
           <div className="flex items-end justify-between mb-6 border-b border-white/10 pb-4">
             <div>
@@ -1105,6 +1168,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 onDelete={() => handleDeleteScene(scene.id)}
                 onUpdateInfo={(updates) => handleUpdateSceneInfo(scene.id, updates)}
                 onAddToLibrary={() => handleAddSceneToLibrary(scene)}
+                currentModelId={selectedImageModelId}
+                currentAspectRatio={aspectRatio}
+                onLockGeneration={() => updateSceneLock(scene.id, true)}
+                onUnlockGeneration={() => updateSceneLock(scene.id, false)}
               />
             ))}
           </div>

@@ -1,11 +1,6 @@
 import { Shot, ProjectState, Keyframe } from '../../types';
 import { VISUAL_STYLE_PROMPTS, VIDEO_PROMPT_TEMPLATES } from './constants';
 import { getCameraMovementCompositionGuide } from './cameraMovementGuides';
-import { buildShotReferenceImages } from '../../services/consistencyService';
-
-export const getRefImagesForShot = (shot: Shot, scriptData: ProjectState['scriptData']): string[] => {
-  return buildShotReferenceImages(shot, scriptData);
-};
 
 export const buildKeyframePrompt = (
   basePrompt: string,
@@ -91,6 +86,8 @@ export const buildVideoPrompt = (
 };
 
 export const extractBasePrompt = (fullPrompt: string, fallback: string): string => {
+  const consistencyIndex = fullPrompt.indexOf('[RÀNG BUỘC LIÊN TỤC HÌNH ẢNH — BẮT BUỘC]');
+  if (consistencyIndex > 0) return fullPrompt.substring(0, consistencyIndex).trim();
   const vietnameseIndex = fullPrompt.indexOf('\n\nPhong cách hình ảnh:');
   const legacyIndex = fullPrompt.indexOf(atob('CgpWaXN1YWwgU3R5bGU6'));
   const visualStyleIndex = vietnameseIndex > 0 ? vietnameseIndex : legacyIndex;
