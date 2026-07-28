@@ -45,7 +45,7 @@ const ModelList: React.FC<ModelListProps> = ({ type, onRefresh }) => {
   useEffect(() => {
     loadModels();
     setQuery('');
-    setProviderFilter(type === 'chat' ? 'all' : 'kie-ai');
+    setProviderFilter('all');
   }, [type]);
 
   const providerOptions = Array.from(new Set<string>(models.map((model) => model.providerId)))

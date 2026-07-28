@@ -6,6 +6,7 @@ import { resolveSoraVideoDownloadId, downloadSoraCompletedVideo, encodeVideoPath
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
 import { callReplicateVideoApi } from './replicateAdapter';
 import { callKieVideoApi } from './kieAdapter';
+import { callShopAIKeyVideoApi } from './shopAIKeyAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
 import { createConfirmedBillableFailure, submitPaidTaskSafely } from '../mediaExecutionService';
 
@@ -292,6 +293,9 @@ const callVideoApiOnce = async (
   }
   if (provider?.protocol === 'kie') {
     return callKieVideoApi(options, activeModel, apiKey, apiBase);
+  }
+  if (provider?.protocol === 'shopaikey' && activeModel.endpoint?.includes('/v1/video/generations')) {
+    return callShopAIKeyVideoApi(options, activeModel, apiKey, apiBase);
   }
   const mode = activeModel.params.mode;
 

@@ -15,7 +15,7 @@ const DEFAULT_POLICY: ModelRoutingPolicy = {
   enabled: true,
   maxAttempts: 3,
   fallbackModelIds: {
-    chat: ['openrouter-auto', 'openrouter-gpt-5.2', 'google-gemini-flash'],
+    chat: ['shopaikey-grok-fast', 'shopaikey-qwen3.5-plus', 'shopaikey-gpt-4.1'],
     image: [],
     video: [],
   },
@@ -61,7 +61,13 @@ export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition
   const models = getModels(type).filter((model) => model.isEnabled);
   // Một lần tạo media có thể bị tính phí ngay cả khi kết quả không dùng được.
   // Ảnh/video tuyệt đối không tự gọi model thứ hai nếu người dùng chưa chủ động chọn.
-  const allowFallback = type === 'chat' && preferred.providerId !== 'kie-ai';
+  // ShopAIKey là một cổng gom nhiều model nhưng dùng chung một số dư. Tự đổi
+  // model sau lỗi có thể biến một thao tác của người dùng thành nhiều lượt tính
+  // phí, trong khi lỗi hạ tầng vẫn nằm ở cùng nhà cung cấp. Chế độ nội bộ vì vậy
+  // luôn dừng sau model đã chọn; người dùng có thể chủ động thử lại sau.
+  const allowFallback = type === 'chat'
+    && preferred.providerId !== 'kie-ai'
+    && preferred.providerId !== 'shopaikey';
   const orderedIds = [preferred.id, ...(policy.enabled && allowFallback ? policy.fallbackModelIds[type] : [])];
   const seen = new Set<string>();
   const ordered = orderedIds

@@ -13,3 +13,4 @@ export {
   isDurationSupported,
 } from './videoAdapter';
 export { callReplicateImageApi, callReplicateVideoApi } from './replicateAdapter';
+export { callShopAIKeyImageApi, callShopAIKeyVideoApi } from './shopAIKeyAdapter';

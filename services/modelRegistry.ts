@@ -24,6 +24,7 @@ import {
   GOOGLE_PROVIDER_ID,
   REPLICATE_PROVIDER_ID,
   KIE_PROVIDER_ID,
+  SHOPAIKEY_PROVIDER_ID,
 } from '../types/model';
 import {
   clearModelCredentials,
@@ -43,6 +44,12 @@ const LEGACY_API_HOST = atob('YXBpLmdpdGNjLmNvbQ==');
 const normalizeBaseUrl = (url: string): string => url.trim().replace(/\/+$/, '').toLowerCase();
 
 let registryState: ModelRegistryState | null = null;
+
+// Chế độ vận hành nội bộ: chỉ ShopAIKey có entry point runtime. Định nghĩa và
+// adapter cũ vẫn nằm trong mã nguồn để có thể phục hồi có kiểm soát sau này.
+const ACTIVE_PROVIDER_IDS = new Set([SHOPAIKEY_PROVIDER_ID]);
+const ACTIVE_BUILTIN_PROVIDERS = BUILTIN_PROVIDERS.filter((provider) => ACTIVE_PROVIDER_IDS.has(provider.id));
+const ACTIVE_BUILTIN_MODELS = ALL_BUILTIN_MODELS.filter((model) => ACTIVE_PROVIDER_IDS.has(model.providerId));
 
 const readFirstStoredValue = (keys: string[]): string | null => {
   for (const key of keys) {
@@ -66,10 +73,10 @@ const isLegacyProvider = (provider: Partial<ModelProvider>): boolean => {
 };
 
 const cloneBuiltInProviders = (): ModelProvider[] =>
-  BUILTIN_PROVIDERS.map((provider) => ({ ...provider, apiKey: getProviderSecret(provider.id) }));
+  ACTIVE_BUILTIN_PROVIDERS.map((provider) => ({ ...provider, apiKey: getProviderSecret(provider.id) }));
 
 const cloneBuiltInModels = (): ModelDefinition[] =>
-  ALL_BUILTIN_MODELS.map((model) => ({ ...model, apiKey: getModelSecret(model.id), params: { ...model.params } } as ModelDefinition));
+  ACTIVE_BUILTIN_MODELS.map((model) => ({ ...model, apiKey: getModelSecret(model.id), params: { ...model.params } } as ModelDefinition));
 
 const getDefaultState = (): ModelRegistryState => ({
   providers: cloneBuiltInProviders(),
@@ -94,6 +101,7 @@ export const loadRegistry = (): ModelRegistryState => {
 
       parsed.providers = (parsed.providers || [])
         .filter((provider) => !isLegacyProvider(provider))
+        .filter((provider) => ACTIVE_PROVIDER_IDS.has(provider.id))
         .map((provider) => {
           if (provider.apiKey) setProviderSecret(provider.id, provider.apiKey);
           return {
@@ -106,11 +114,11 @@ export const loadRegistry = (): ModelRegistryState => {
           };
         });
       parsed.models = (parsed.models || []).filter(
-        (model) => !legacyProviderIds.has(model.providerId)
+        (model) => !legacyProviderIds.has(model.providerId) && ACTIVE_PROVIDER_IDS.has(model.providerId)
       );
       parsed.activeModels = parsed.activeModels || { ...DEFAULT_ACTIVE_MODELS };
       // Đồng bộ toàn bộ metadata nhà cung cấp tích hợp nhưng giữ khóa người dùng đã nhập.
-      BUILTIN_PROVIDERS.forEach(bp => {
+      ACTIVE_BUILTIN_PROVIDERS.forEach(bp => {
         const idx = parsed.providers.findIndex(p => p.id === bp.id);
         if (idx === -1) {
           parsed.providers.unshift({ ...bp });
@@ -130,7 +138,7 @@ export const loadRegistry = (): ModelRegistryState => {
       });
       
       // Hợp nhất mô hình tích hợp và đồng bộ tham số với mã nguồn.
-      ALL_BUILTIN_MODELS.forEach(bm => {
+      ACTIVE_BUILTIN_MODELS.forEach(bm => {
         const existingIndex = parsed.models.findIndex(m => m.id === bm.id);
         if (existingIndex === -1) {
           // Thêm mô hình tích hợp còn thiếu.
@@ -155,19 +163,6 @@ export const loadRegistry = (): ModelRegistryState => {
         }
         return { ...m, apiKey, apiModel: m.id };
       });
-
-      // KIE đang là tuyến media chính; vô hiệu hóa catalog Replicate cũ để tránh chọn nhầm và phát sinh phí.
-      parsed.models = parsed.models.map((model) =>
-        model.isBuiltIn && model.providerId === REPLICATE_PROVIDER_ID
-          ? { ...model, isEnabled: false }
-          : model
-      );
-      if (parsed.activeModels.image?.startsWith('replicate-')) {
-        parsed.activeModels.image = DEFAULT_IMAGE_MODEL_ID;
-      }
-      if (parsed.activeModels.video?.startsWith('replicate-')) {
-        parsed.activeModels.video = DEFAULT_VIDEO_MODEL_ID;
-      }
 
       parsed.models = parsed.models.filter(
         (m) =>
@@ -303,7 +298,7 @@ export const getProviderById = (id: string): ModelProvider | undefined => {
  * Lấy nhà cung cấp mặc định.
  */
 export const getDefaultProvider = (): ModelProvider => {
-  return getProviders().find(p => p.isDefault) || BUILTIN_PROVIDERS[0];
+  return getProviders().find(p => p.isDefault) || ACTIVE_BUILTIN_PROVIDERS[0];
 };
 
 /**
@@ -540,16 +535,16 @@ export const toggleModelEnabled = (id: string, enabled: boolean): boolean => {
 // ============================================
 
 /**
- * Tương thích ngược: khóa "toàn cục" nay là khóa OpenRouter.
+ * Tương thích ngược: khóa "toàn cục" nay là khóa ShopAIKey.
  * Mã mới nên dùng getProviderApiKey/setProviderApiKey.
  */
 export const getGlobalApiKey = (): string | undefined => {
-  return getProviderApiKey(OPENROUTER_PROVIDER_ID);
+  return getProviderApiKey(SHOPAIKEY_PROVIDER_ID);
 };
 
 /** Tương thích ngược với màn hình cũ; không phát tán khóa sang nhà cung cấp khác. */
 export const setGlobalApiKey = (apiKey: string): void => {
-  setProviderApiKey(OPENROUTER_PROVIDER_ID, apiKey);
+  setProviderApiKey(SHOPAIKEY_PROVIDER_ID, apiKey);
 };
 
 /** Lấy khóa đã lưu cho đúng nhà cung cấp. */
@@ -585,6 +580,7 @@ export const getApiKeyForModel = (modelId: string): string | undefined => {
 };
 
 const BUILTIN_PROVIDER_PROXY_BASES: Record<string, string> = {
+  [SHOPAIKEY_PROVIDER_ID]: '/api-proxy/shopaikey',
   [OPENROUTER_PROVIDER_ID]: '/api-proxy/openrouter/api',
   [GOOGLE_PROVIDER_ID]: '/api-proxy/google/v1beta/openai',
   [REPLICATE_PROVIDER_ID]: '/api-proxy/replicate',
@@ -607,7 +603,7 @@ export const getApiBaseUrlForProvider = (providerId: string): string => {
  */
 export const getApiBaseUrlForModel = (modelId: string): string => {
   const model = getModelById(modelId);
-  const provider = model ? getProviderById(model.providerId) : BUILTIN_PROVIDERS[0];
+  const provider = model ? getProviderById(model.providerId) : ACTIVE_BUILTIN_PROVIDERS[0];
   return getApiBaseUrlForProvider(provider?.id || DEFAULT_PROVIDER_ID);
 };
 

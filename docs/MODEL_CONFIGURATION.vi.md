@@ -1,36 +1,32 @@
-# Cấu hình mô hình trong Egoric Film Studio
+# Cấu hình mô hình ShopAIKey
 
-## Kết nối nhà cung cấp
+## Kết nối
 
-1. Mở **Cấu hình mô hình** từ dashboard hoặc thanh bên.
-2. Chọn **Cấu hình chung**.
-3. Chọn nhà cung cấp, nhấn **Lấy khóa API** nếu chưa có khóa.
-4. Dán khóa vào đúng thẻ nhà cung cấp.
-5. Nhấn **Kiểm tra và lưu**.
+1. Mở **Cổng AI nội bộ**.
+2. Ở **Cấu hình chung**, dán khóa ShopAIKey.
+3. Nhấn **Kiểm tra và dùng trong phiên**.
+4. App kiểm tra khóa bằng `/v1/models`; không gọi model trả phí.
 
-Khóa của OpenRouter, Google AI Studio và Replicate được lưu tách biệt trong trình duyệt. Khóa của dịch vụ này không được gửi sang dịch vụ khác.
+Cùng khóa này được dùng cho hội thoại, ảnh, video và Gemini TTS. Khóa chỉ tồn
+tại trong phiên trình duyệt và tự mất khi đóng phiên.
 
-## Chọn mô hình hoạt động
+## Model mặc định
 
-Egoric Film Studio chia mô hình thành ba nhóm:
+- Hội thoại: Grok 4.1 Fast Reasoning; có Qwen 3.5 Plus, GPT-5.2 và GPT-4.1.
+- Hình ảnh: Nano Banana 2; có Nano Banana Pro, GPT Image 1 và Grok Imagine.
+- Video: Veo 3 Fast; có Veo 3.1 Fast, Grok Video 3 và Sora 2.
+- Giọng: Gemini TTS với Kore, Aoede, Leda, Orus và Puck.
 
-- **Hội thoại**: phân tích kịch bản, tạo bảng phân cảnh và tối ưu câu lệnh.
-- **Hình ảnh**: tạo ý tưởng nhân vật, bối cảnh và khung hình chính.
-- **Video**: tạo video từ văn bản, khung đầu hoặc khung cuối.
+Ảnh/video không tự chuyển model khi lỗi. Team phải đối soát request/task ID rồi
+mới chủ động chạy lại để tránh trừ phí hai lần.
 
-Nhấn **Sử dụng** trên thẻ mô hình để đặt mô hình hoạt động cho nhóm đó.
+## Model hội thoại khác
 
-## Thêm mô hình tùy chỉnh
+Sau khi xác thực khóa, danh sách `/v1/models` xuất hiện trong thẻ ShopAIKey.
+Có thể nhập model hội thoại từ danh sách đó. Model ảnh/video mới phải được thêm
+vào catalog bằng adapter đúng contract; không gán bừa model media vào chat API.
 
-1. Chọn nhóm mô hình phù hợp.
-2. Nhấn **Thêm mô hình tùy chỉnh**.
-3. Chọn nhà cung cấp hỗ trợ nhóm đó.
-4. Nhập tên hiển thị và chính xác giá trị `model` mà API mong đợi.
-5. Chỉ nhập endpoint khi cần ghi đè đường dẫn mặc định.
-6. Để trống khóa riêng của mô hình để dùng khóa đã lưu trên thẻ nhà cung cấp.
+## Quyền riêng tư
 
-Với Replicate, dùng tên dạng `chủ-sở-hữu/tên-mô-hình`; Egoric Film Studio tự tạo endpoint dự đoán và kiểm tra trạng thái đến khi hoàn tất.
-
-## Dữ liệu và quyền riêng tư
-
-Cấu hình danh mục mô hình được lưu trong trình duyệt, nhưng khóa API chỉ nằm trong phiên hiện tại và tự mất khi đóng phiên. Xóa dữ liệu trang web sẽ xóa cấu hình cùng dự án cục bộ; hãy xuất bản sao trước khi dọn bộ nhớ.
+ShopAIKey là reverse proxy bên thứ ba. Không gửi dữ liệu cá nhân, hợp đồng, brief
+mật, tài sản chưa công bố hoặc credential của khách hàng qua cổng này.

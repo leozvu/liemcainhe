@@ -1,40 +1,36 @@
-# Kiến trúc kết nối API
+# Kiến trúc cổng AI nội bộ
 
-Egoric Film Studio hỗ trợ nhiều nhà cung cấp và giữ khóa riêng biệt cho từng dịch vụ:
+Egoric Film Studio đang chạy chế độ **ShopAIKey-only** cho vận hành nội bộ.
+Một khóa ShopAIKey phục vụ bốn nhóm tác vụ:
 
-- **OpenRouter**: mô hình hội thoại tương thích OpenAI.
-- **Google AI Studio**: mô hình Gemini qua giao thức tương thích OpenAI.
-- **Replicate**: mô hình tạo hình ảnh và video.
-- **ElevenLabs**: Eleven v3, thư viện Voice ID và tổng hợp giọng tiếng Việt.
+- Hội thoại qua giao thức OpenAI-compatible.
+- Ảnh qua OpenAI Images hoặc `/images/google/generations`.
+- Video qua `/v1/videos` hoặc hàng đợi `/v1/video/generations`.
+- Giọng nói qua `/tts/google/generations`.
 
-Trình duyệt gửi yêu cầu đến một tiền tố cùng miền nằm trong danh sách cho phép:
+Mọi yêu cầu đi qua tiền tố cùng miền `/api-proxy/shopaikey`. Worker và desktop
+không còn entry point cho OpenRouter, Google AI Studio, Replicate, KIE, FPT,
+Viettel hoặc ElevenLabs. Nginx trả HTTP 410 cho các tiền tố AI cũ.
 
-- `/api-proxy/openrouter`
-- `/api-proxy/google`
-- `/api-proxy/replicate`
-- `/api-proxy/elevenlabs`
+Adapter cũ vẫn được giữ trong mã nguồn để có thể phục hồi sau một quyết định
+kiến trúc có chủ đích; registry và giao diện không thể chọn chúng ở chế độ này.
 
-Vite, Electron, Cloudflare Worker hoặc Nginx chuyển tiếp yêu cầu đến đúng tên miền đã được khai báo cứng. Proxy không nhận URL đích từ người dùng. Bản Sites còn yêu cầu danh tính đã đăng nhập, lọc danh sách header, giới hạn kích thước, rate-limit theo nhà cung cấp và đặt phản hồi ở chế độ `no-store`.
+## Nguyên tắc an toàn
 
-## Các vị trí cấu hình
+- Khóa chỉ nằm trong `sessionStorage`, không đi vào project, localStorage, D1,
+  R2 hoặc Git.
+- Không tự fallback ảnh/video sang model thứ hai.
+- Task video phải có task ID và được poll đúng task; mất kết nối không tạo lại.
+- Chỉ nhập động model trả từ `/v1/models` vào nhóm hội thoại. Media dùng catalog
+  đã kiểm contract để tránh gửi sai endpoint và phát sinh phí.
+- Không dùng DNS resolver hoặc script cài đặt cấp hệ thống của bên thứ ba.
 
-- `types/model.ts`: metadata nhà cung cấp và mô hình tích hợp.
-- `services/credentialVault.ts`: giữ khóa BYOK trong `sessionStorage`, tách khỏi dữ liệu lâu dài.
-- `services/modelRegistry.ts`: quản lý danh mục, lấy khóa từ vault và ánh xạ proxy.
-- `services/providerService.ts`: kiểm tra khóa bằng điểm cuối miễn phí.
-- `services/adapters/`: bộ điều hợp hội thoại, hình ảnh, video và Replicate.
-- `services/voiceRegistry.ts`: metadata giọng, khóa và cấu hình nhà cung cấp âm thanh.
-- `services/voiceService.ts`: kiểm tra khóa, tải My Voices và tổng hợp giọng ElevenLabs.
-- `vite.config.ts`: proxy khi phát triển và xem thử.
-- `electron/main.cjs`: proxy trong bản máy tính.
-- `worker/index.js`: proxy khi triển khai Sites/Cloudflare.
-- `nginx.conf`: proxy trong Docker.
+## Vị trí chính
 
-## Kiểm tra nhanh
-
-```powershell
-rg -n "/api-proxy/(openrouter|google|replicate|elevenlabs)" vite.config.ts worker electron nginx.conf services
-npm run build
-```
+- `types/model.ts`: provider và catalog mặc định.
+- `services/modelRegistry.ts`: policy ShopAIKey-only, vault và active model.
+- `services/adapters/shopAIKeyAdapter.ts`: ảnh Nano Banana và video Veo/Grok.
+- `services/voiceService.ts`: Gemini TTS qua ShopAIKey.
+- `vite.config.ts`, `electron/main.cjs`, `worker/index.js`, `nginx.conf`: proxy.
 
 Không commit khóa API, token hoặc thông tin đăng nhập vào repository.

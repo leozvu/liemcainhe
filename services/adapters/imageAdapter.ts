@@ -10,6 +10,7 @@ import {
 } from '../imageGenerationHelpers';
 import { callReplicateImageApi } from './replicateAdapter';
 import { callKieImageApi } from './kieAdapter';
+import { callShopAIKeyImageApi } from './shopAIKeyAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
 import { createBillableHttpError, submitPaidTaskSafely } from '../mediaExecutionService';
 
@@ -34,6 +35,9 @@ const callImageApiOnce = async (
   }
   if (provider?.protocol === 'kie') {
     return callKieImageApi(options, activeModel, apiKey, apiBase);
+  }
+  if (provider?.protocol === 'shopaikey' && activeModel.endpoint?.includes('/images/google/generations')) {
+    return callShopAIKeyImageApi(options, activeModel, apiKey, apiBase);
   }
   const apiModel = activeModel.apiModel || activeModel.id;
   const customEndpoint = activeModel.endpoint;

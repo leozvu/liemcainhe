@@ -1,5 +1,7 @@
 import { VoiceProviderId, VoiceRegion } from '../types';
 import { clearVoiceSecret, getVoiceSecret, setVoiceSecret } from './credentialVault';
+import { SHOPAIKEY_PROVIDER_ID } from '../types/model';
+import { getProviderApiKey, setProviderApiKey } from './modelRegistry';
 
 export interface VoiceOption {
   id: string;
@@ -31,6 +33,21 @@ export interface VoiceProviderCredentials {
 const STORAGE_KEY = 'egoric_voice_provider_credentials';
 
 const ALL_VOICE_PROVIDERS: VoiceProviderDefinition[] = [
+  {
+    id: 'shopaikey',
+    name: 'ShopAIKey · Gemini TTS',
+    shortName: 'ShopAIKey TTS',
+    description: 'Giọng Gemini qua cùng khóa ShopAIKey đang dùng cho hội thoại, ảnh và video.',
+    keyUrl: 'https://shopaikey.com/en',
+    supportsGeneration: true,
+    voices: [
+      { id: 'Kore', name: 'Kore', region: 'international', gender: 'female', description: 'Giọng nữ cân bằng, phù hợp bản nháp tiếng Việt.' },
+      { id: 'Aoede', name: 'Aoede', region: 'international', gender: 'female', description: 'Giọng nữ sáng và giàu năng lượng.' },
+      { id: 'Leda', name: 'Leda', region: 'international', gender: 'female', description: 'Giọng nữ nhẹ, hợp nội dung lifestyle.' },
+      { id: 'Orus', name: 'Orus', region: 'international', gender: 'male', description: 'Giọng nam vững và rõ.' },
+      { id: 'Puck', name: 'Puck', region: 'international', gender: 'male', description: 'Giọng nam trẻ và linh hoạt.' },
+    ],
+  },
   {
     id: 'fpt',
     name: 'FPT.AI Voice Maker',
@@ -97,9 +114,9 @@ const ALL_VOICE_PROVIDERS: VoiceProviderDefinition[] = [
   },
 ];
 
-const VISIBLE_VOICE_PROVIDER_IDS = new Set<VoiceProviderId>(['elevenlabs', 'human']);
+const VISIBLE_VOICE_PROVIDER_IDS = new Set<VoiceProviderId>(['shopaikey', 'human']);
 
-// Chỉ ElevenLabs và bản thu người thật được đưa lên giao diện production.
+// Chỉ ShopAIKey và bản thu người thật được đưa lên giao diện production.
 // Các định nghĩa cũ vẫn được giữ nội bộ để đọc được project/take đã tạo trước đây.
 export const VOICE_PROVIDERS: VoiceProviderDefinition[] = ALL_VOICE_PROVIDERS.filter((provider) =>
   VISIBLE_VOICE_PROVIDER_IDS.has(provider.id),
@@ -107,10 +124,10 @@ export const VOICE_PROVIDERS: VoiceProviderDefinition[] = ALL_VOICE_PROVIDERS.fi
 
 export const getVoiceProvider = (id: VoiceProviderId): VoiceProviderDefinition =>
   ALL_VOICE_PROVIDERS.find((provider) => provider.id === id)
-  || ALL_VOICE_PROVIDERS.find((provider) => provider.id === 'elevenlabs')!;
+  || ALL_VOICE_PROVIDERS.find((provider) => provider.id === 'shopaikey')!;
 
 export const normalizeProductionVoiceProviderId = (id?: VoiceProviderId): VoiceProviderId =>
-  id === 'human' ? 'human' : 'elevenlabs';
+  id === 'human' ? 'human' : 'shopaikey';
 
 let legacyCredentialsMigrated = false;
 
@@ -129,8 +146,11 @@ const migrateLegacyCredentials = (): void => {
   }
 };
 
-export const getVoiceCredentials = (providerId: VoiceProviderId): VoiceProviderCredentials =>
-  (migrateLegacyCredentials(), getVoiceSecret(providerId));
+export const getVoiceCredentials = (providerId: VoiceProviderId): VoiceProviderCredentials => {
+  migrateLegacyCredentials();
+  if (providerId === 'shopaikey') return { apiKey: getProviderApiKey(SHOPAIKEY_PROVIDER_ID) };
+  return getVoiceSecret(providerId);
+};
 
 export const setVoiceCredentials = (
   providerId: VoiceProviderId,
@@ -141,10 +161,18 @@ export const setVoiceCredentials = (
     appId: credentials.appId?.trim() || undefined,
     callbackUrl: credentials.callbackUrl?.trim() || undefined,
   };
+  if (providerId === 'shopaikey') {
+    setProviderApiKey(SHOPAIKEY_PROVIDER_ID, normalized.apiKey || '');
+    return;
+  }
   setVoiceSecret(providerId, normalized);
 };
 
 export const clearVoiceCredentials = (providerId: VoiceProviderId): void => {
+  if (providerId === 'shopaikey') {
+    setProviderApiKey(SHOPAIKEY_PROVIDER_ID, '');
+    return;
+  }
   clearVoiceSecret(providerId);
 };
 

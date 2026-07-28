@@ -19,7 +19,8 @@ import {
   getVoiceProvider,
   setVoiceCredentials,
 } from '../../services/voiceRegistry';
-import { fetchElevenLabsVoices } from '../../services/voiceService';
+import { verifyProviderApiKey } from '../../services/providerService';
+import { SHOPAIKEY_PROVIDER_ID } from '../../types/model';
 
 interface Props {
   isOpen: boolean;
@@ -30,7 +31,7 @@ interface Props {
 type SaveState = 'idle' | 'checking' | 'saved' | 'warning' | 'error';
 
 const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
-  const provider = getVoiceProvider('elevenlabs');
+  const provider = getVoiceProvider('shopaikey');
   const [draft, setDraft] = useState<VoiceProviderCredentials>({});
   const [visible, setVisible] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -38,7 +39,7 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
 
   useEffect(() => {
     if (!isOpen) return;
-    setDraft(getVoiceCredentials('elevenlabs'));
+    setDraft(getVoiceCredentials('shopaikey'));
     setVisible(false);
     setSaveState('idle');
     setFeedback('');
@@ -50,17 +51,18 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
     const apiKey = draft.apiKey?.trim();
     if (!apiKey) return;
     setSaveState('checking');
-    setFeedback('Đang xác thực khóa và tải thư viện giọng…');
-    setVoiceCredentials('elevenlabs', { apiKey });
+    setFeedback('Đang xác thực cổng ShopAIKey…');
     try {
-      const voices = await fetchElevenLabsVoices(apiKey, true);
+      const result = await verifyProviderApiKey(SHOPAIKEY_PROVIDER_ID, apiKey);
+      if (!result.success) throw new Error(result.message);
+      setVoiceCredentials('shopaikey', { apiKey });
       setSaveState('saved');
-      setFeedback(`Kết nối thành công · tìm thấy ${voices.length} giọng trong tài khoản.`);
+      setFeedback(`${result.message} · giọng nói dùng cùng khóa này.`);
       onSaved?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể kiểm tra khóa ElevenLabs.';
+      const message = error instanceof Error ? error.message : 'Không thể kiểm tra khóa ShopAIKey.';
       if (message.includes('không hợp lệ') || message.includes('hết hiệu lực')) {
-        clearVoiceCredentials('elevenlabs');
+        clearVoiceCredentials('shopaikey');
         setSaveState('error');
       } else {
         setSaveState('warning');
@@ -80,17 +82,17 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 id="voice-settings-title" className="text-lg font-semibold text-white">Kết nối ElevenLabs</h2>
-                {getVoiceCredentials('elevenlabs').apiKey && saveState !== 'error' && (
+                <h2 id="voice-settings-title" className="text-lg font-semibold text-white">Kết nối ShopAIKey</h2>
+                {getVoiceCredentials('shopaikey').apiKey && saveState !== 'error' && (
                   <span className="eg-chip border-emerald-300/20 bg-emerald-300/10 text-emerald-200">
                     <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> Đã có khóa
                   </span>
                 )}
               </div>
-              <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">Eleven v3 tạo giọng biểu cảm và hỗ trợ tiếng Việt trực tiếp.</p>
+              <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">Gemini TTS dùng chung một khóa với cổng AI nội bộ Egoric.</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng cấu hình ElevenLabs">
+          <button type="button" onClick={onClose} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng cấu hình ShopAIKey">
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -107,7 +109,7 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
 
           <div className="mt-6">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <label htmlFor="voice-key-elevenlabs" className="text-xs font-semibold text-zinc-300">Khóa API ElevenLabs</label>
+              <label htmlFor="voice-key-shopaikey" className="text-xs font-semibold text-zinc-300">Khóa API ShopAIKey</label>
               <a href={provider.keyUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 px-2 text-xs font-medium text-cyan-200 hover:text-cyan-100">
                 Mở trang lấy khóa <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               </a>
@@ -115,26 +117,26 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
             <div className="relative">
               <KeyRound className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-zinc-600" aria-hidden="true" />
               <input
-                id="voice-key-elevenlabs"
+                id="voice-key-shopaikey"
                 type={visible ? 'text' : 'password'}
                 value={draft.apiKey || ''}
                 onChange={(event) => { setDraft({ apiKey: event.target.value }); setSaveState('idle'); setFeedback(''); }}
                 className="eg-input px-10 pr-12 font-mono text-sm"
-                placeholder="Dán khóa ElevenLabs"
+                placeholder="Dán khóa ShopAIKey"
                 autoComplete="off"
                 spellCheck={false}
-                aria-describedby="elevenlabs-key-help elevenlabs-key-feedback"
+                aria-describedby="shopaikey-key-help shopaikey-key-feedback"
               />
               <button type="button" onClick={() => setVisible((value) => !value)} className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-lg text-zinc-500 hover:bg-white/[.06] hover:text-white" aria-label={visible ? 'Ẩn khóa' : 'Hiện khóa'}>
                 {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <p id="elevenlabs-key-help" className="mt-2 text-[11px] leading-5 text-zinc-600">
-              Nếu khóa có giới hạn quyền, hãy bật ít nhất <span className="text-zinc-400">Text to Speech</span> và <span className="text-zinc-400">Voices</span>. Không bật giới hạn IP cho bản web này.
+            <p id="shopaikey-key-help" className="mt-2 text-[11px] leading-5 text-zinc-600">
+              Khóa này đồng thời mở model hội thoại, ảnh, video và Gemini TTS. Chỉ nạp số dư nhỏ đủ cho một ca sản xuất.
             </p>
 
             {feedback && (
-              <div id="elevenlabs-key-feedback" role={saveState === 'error' ? 'alert' : 'status'} className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs leading-5 ${
+              <div id="shopaikey-key-feedback" role={saveState === 'error' ? 'alert' : 'status'} className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs leading-5 ${
                 saveState === 'saved'
                   ? 'border-emerald-300/15 bg-emerald-300/[.05] text-emerald-200'
                   : saveState === 'error'
@@ -151,7 +153,7 @@ const VoiceSettingsModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) => {
         </div>
 
         <footer className="flex flex-col-reverse gap-3 border-t eg-divider bg-black/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-7">
-          <p className="text-[11px] text-zinc-600">Voice ID sẽ được tải tự động sau khi kết nối.</p>
+          <p className="text-[11px] text-zinc-600">Kore, Aoede, Leda, Orus và Puck có sẵn trong hồ sơ casting.</p>
           <button type="button" onClick={() => void save()} disabled={!draft.apiKey?.trim() || saveState === 'checking'} className="eg-button-primary inline-flex items-center justify-center gap-2 px-5 text-xs font-bold">
             {saveState === 'checking' ? <Loader2 className="h-4 w-4 animate-spin" /> : saveState === 'saved' ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
             {saveState === 'checking' ? 'Đang kiểm tra…' : saveState === 'saved' ? 'Đã kết nối' : 'Kiểm tra và sử dụng'}

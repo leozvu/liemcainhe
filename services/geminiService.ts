@@ -947,7 +947,7 @@ const generateImageOnce = async (
     const imageProvider = activeImageModel
       ? getProviderById(activeImageModel.providerId)
       : undefined;
-    if (activeImageModel && (imageProvider?.protocol === 'replicate' || imageProvider?.protocol === 'kie')) {
+    if (activeImageModel && (imageProvider?.protocol === 'replicate' || imageProvider?.protocol === 'kie' || imageProvider?.protocol === 'shopaikey')) {
       const providerPrompt = referenceImages.length
         ? isVariation
           ? `${prompt}\n\nYêu cầu bắt buộc: giữ nguyên khuôn mặt, mái tóc, màu tóc, tông da và tỷ lệ cơ thể từ ảnh tham chiếu; thay toàn bộ trang phục theo mô tả mới và thể hiện trang phục rõ ràng.`
@@ -1442,7 +1442,7 @@ const generateVideoOnce = async (
   const videoProvider = resolvedVideoModel
     ? getProviderById(resolvedVideoModel.providerId)
     : undefined;
-  if (resolvedVideoModel && (videoProvider?.protocol === 'replicate' || videoProvider?.protocol === 'kie')) {
+  if (resolvedVideoModel && (videoProvider?.protocol === 'replicate' || videoProvider?.protocol === 'kie' || videoProvider?.protocol === 'shopaikey')) {
     const outputUrl = await callVideoApi(
       {
         prompt,

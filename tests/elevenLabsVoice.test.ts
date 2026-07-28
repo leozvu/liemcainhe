@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildElevenLabsRequestBody, parseElevenLabsVoiceCatalog } from '../services/voiceService';
+import { buildElevenLabsRequestBody, buildShopAIKeyTtsRequestBody, parseElevenLabsVoiceCatalog } from '../services/voiceService';
 import { VOICE_PROVIDERS } from '../services/voiceRegistry';
 import { createNewProjectState } from '../services/storageService';
 import { normalizeWorkflowState } from '../services/workflowService';
@@ -26,8 +26,8 @@ describe('ElevenLabs voice integration', () => {
     expect(voices[1]).toMatchObject({ id: 'voice_b', accent: 'Vietnamese', gender: 'male' });
   });
 
-  it('chỉ hiển thị ElevenLabs/người thật và chuyển hồ sơ FPT cũ sang ElevenLabs', () => {
-    expect(VOICE_PROVIDERS.map((provider) => provider.id)).toEqual(['elevenlabs', 'human']);
+  it('chỉ hiển thị ShopAIKey/người thật và chuyển hồ sơ cũ sang ShopAIKey', () => {
+    expect(VOICE_PROVIDERS.map((provider) => provider.id)).toEqual(['shopaikey', 'human']);
     const project = createNewProjectState();
     project.voiceStudio = {
       ...project.voiceStudio!,
@@ -52,12 +52,20 @@ describe('ElevenLabs voice integration', () => {
       }],
     };
     const normalized = normalizeWorkflowState(project);
-    expect(normalized.voiceStudio?.defaultProviderId).toBe('elevenlabs');
+    expect(normalized.voiceStudio?.defaultProviderId).toBe('shopaikey');
     expect(normalized.voiceStudio?.profiles[0]).toMatchObject({
-      providerId: 'elevenlabs',
+      providerId: 'shopaikey',
       voiceId: '',
-      voiceName: 'Chọn giọng ElevenLabs',
+      voiceName: 'Kore',
     });
     expect(normalized.voiceStudio?.previewTake).toMatchObject({ fileName: 'preview.mp3', sourceHash: 'preview_hash' });
+  });
+
+  it('tạo payload Gemini TTS đúng contract ShopAIKey', () => {
+    expect(buildShopAIKeyTtsRequestBody({ text: 'Xin chào Egoric', voiceId: 'Kore' })).toEqual({
+      text: 'Xin chào Egoric',
+      model: 'gemini-2.5-flash-preview-tts',
+      voice: 'Kore',
+    });
   });
 });

@@ -173,7 +173,7 @@ export interface ShotWorkflowState {
   updatedAt?: number;
 }
 
-export type VoiceProviderId = 'fpt' | 'viettel' | 'elevenlabs' | 'vbee' | 'human';
+export type VoiceProviderId = 'shopaikey' | 'fpt' | 'viettel' | 'elevenlabs' | 'vbee' | 'human';
 export type VoiceRegion = 'north' | 'central' | 'south' | 'international';
 export type VoiceTakeStatus = 'draft' | 'generating' | 'processing' | 'ready' | 'error';
 export type VoiceEmotion = 'neutral' | 'warm' | 'confident' | 'dramatic' | 'energetic' | 'intimate';

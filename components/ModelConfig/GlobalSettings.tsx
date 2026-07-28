@@ -153,10 +153,13 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
             <ShieldCheck className="h-6 w-6 text-slate-950" aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Kết nối nhà cung cấp AI</h3>
+            <h3 className="text-base font-bold text-white">Cổng AI nội bộ Egoric</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
-          Mỗi nhà cung cấp dùng khóa riêng. Egoric Film Studio chỉ giữ khóa trong phiên trình duyệt
-          hiện tại và gửi đến đúng dịch vụ bạn chọn; khóa không đi vào dự án hoặc cloud.
+              Tạm thời chỉ ShopAIKey được bật cho hội thoại, hình ảnh và video. Khóa chỉ ở trong
+              phiên trình duyệt; không được ghi vào dự án hoặc cloud của Egoric.
+            </p>
+            <p className="mt-2 max-w-2xl text-[10px] leading-4 text-amber-100/70">
+              Đây là reverse proxy bên thứ ba, không phải API chính chủ. Chỉ dùng nội bộ với số dư nhỏ và dữ liệu đã loại bỏ thông tin nhạy cảm.
             </p>
           </div>
         </div>

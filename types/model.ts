@@ -8,7 +8,7 @@ export type VideoDuration = number;
 
 export type VideoMode = 'sync' | 'async';
 
-export type ProviderProtocol = 'openai-compatible' | 'google-openai' | 'replicate' | 'kie';
+export type ProviderProtocol = 'openai-compatible' | 'google-openai' | 'replicate' | 'kie' | 'shopaikey';
 
 import {
   KIE_BUILTIN_CHAT_MODELS,
@@ -23,8 +23,9 @@ export { KIE_PROVIDER_ID } from './kieCatalog';
 export const OPENROUTER_PROVIDER_ID = 'openrouter';
 export const GOOGLE_PROVIDER_ID = 'google-ai-studio';
 export const REPLICATE_PROVIDER_ID = 'replicate';
-export const DEFAULT_PROVIDER_ID = OPENROUTER_PROVIDER_ID;
-export const DEFAULT_PROVIDER_BASE_URL = 'https://openrouter.ai/api';
+export const SHOPAIKEY_PROVIDER_ID = 'shopaikey';
+export const DEFAULT_PROVIDER_ID = SHOPAIKEY_PROVIDER_ID;
+export const DEFAULT_PROVIDER_BASE_URL = 'https://api.shopaikey.com';
 
 export interface ChatModelParams {
   temperature: number;
@@ -188,7 +189,7 @@ export const DEFAULT_VIDEO_PARAMS_SORA: VideoModelParams = {
 };
 
 /** Mã mô hình văn bản mặc định. */
-export const DEFAULT_CHAT_MODEL_ID = 'openrouter-auto';
+export const DEFAULT_CHAT_MODEL_ID = 'shopaikey-grok-fast';
 
 /** Mô hình văn bản tích hợp đã ngừng dùng; cấu hình cũ sẽ chuyển sang mô hình mặc định. */
 export const DEPRECATED_BUILTIN_CHAT_MODEL_IDS = [
@@ -209,6 +210,54 @@ export const migrateDeprecatedChatModelId = (modelId?: string): string => {
 };
 
 export const BUILTIN_CHAT_MODELS: ChatModelDefinition[] = [
+  {
+    id: 'shopaikey-grok-fast',
+    name: 'Grok 4.1 Fast Reasoning',
+    apiModel: 'grok-4-1-fast-reasoning',
+    type: 'chat',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/chat/completions',
+    description: 'Tuyến nháp nội bộ chi phí thấp cho brief, hook, kịch bản và storyboard.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_CHAT_PARAMS },
+  },
+  {
+    id: 'shopaikey-qwen3.5-plus',
+    name: 'Qwen 3.5 Plus',
+    apiModel: 'qwen3.5-plus',
+    type: 'chat',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/chat/completions',
+    description: 'Ngữ cảnh dài, phù hợp phân tích brief và tài liệu chiến dịch.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_CHAT_PARAMS },
+  },
+  {
+    id: 'shopaikey-gpt-5.2',
+    name: 'GPT-5.2',
+    apiModel: 'gpt-5.2-2025-12-11',
+    type: 'chat',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/chat/completions',
+    description: 'Tuyến chất lượng cao cho bản kịch bản và quyết định sáng tạo đã duyệt.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_CHAT_PARAMS },
+  },
+  {
+    id: 'shopaikey-gpt-4.1',
+    name: 'GPT-4.1',
+    apiModel: 'gpt-4.1',
+    type: 'chat',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/chat/completions',
+    description: 'Tuyến ổn định có vision cho Supervisor và kiểm tra hình ảnh.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_CHAT_PARAMS },
+  },
   {
     id: 'openrouter-gpt-5.2',
     name: 'GPT-5.2',
@@ -248,9 +297,57 @@ export const BUILTIN_CHAT_MODELS: ChatModelDefinition[] = [
 ];
 
 /** Mã mô hình hình ảnh mặc định. */
-export const DEFAULT_IMAGE_MODEL_ID = 'kie-nano-banana-2-lite';
+export const DEFAULT_IMAGE_MODEL_ID = 'shopaikey-nano-banana-2';
 
 export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
+  {
+    id: 'shopaikey-nano-banana-2',
+    name: 'Nano Banana 2',
+    apiModel: 'nano-banana-2',
+    type: 'image',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/images/google/generations',
+    description: 'Tuyến ảnh mặc định, hỗ trợ tối đa 5 ảnh tham chiếu và đầu ra 2K.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_IMAGE_PARAMS, supportedAspectRatios: ['16:9', '9:16', '1:1'] },
+  },
+  {
+    id: 'shopaikey-nano-banana-pro',
+    name: 'Nano Banana Pro',
+    apiModel: 'nano-banana-pro',
+    type: 'image',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/images/google/generations',
+    description: 'Tuyến ảnh chất lượng cao cho key visual và shot đã được duyệt.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_IMAGE_PARAMS, supportedAspectRatios: ['16:9', '9:16', '1:1'] },
+  },
+  {
+    id: 'shopaikey-gpt-image-1',
+    name: 'GPT Image 1',
+    apiModel: 'gpt-image-1',
+    type: 'image',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/images/generations',
+    description: 'Tuyến OpenAI Images cho hình quảng cáo và biến thể thiết kế.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_IMAGE_PARAMS, supportedAspectRatios: ['16:9', '9:16', '1:1'] },
+  },
+  {
+    id: 'shopaikey-grok-image',
+    name: 'Grok Imagine Image',
+    apiModel: 'grok-imagine-image',
+    type: 'image',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/chat/completions',
+    description: 'Tuyến thử ý tưởng hình nhanh qua giao thức OpenAI của ShopAIKey.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_IMAGE_PARAMS, supportedAspectRatios: ['16:9', '9:16', '1:1'] },
+  },
   {
     id: 'replicate-nano-banana',
     name: 'Nano Banana',
@@ -279,7 +376,7 @@ export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
 export const DEPRECATED_BUILTIN_IMAGE_MODEL_IDS = ['gemini-3-pro-image-preview', 'qwen-image-2.0'] as const;
 
 /** Mã mô hình video mặc định. */
-export const DEFAULT_VIDEO_MODEL_ID = 'kie-bytedance-seedance-2-fast';
+export const DEFAULT_VIDEO_MODEL_ID = 'shopaikey-veo3-fast';
 
 /** Mô hình video tích hợp đã ngừng dùng; cấu hình cũ sẽ chuyển sang mặc định. */
 export const DEPRECATED_BUILTIN_VIDEO_MODEL_IDS = [
@@ -308,6 +405,54 @@ export const migrateDeprecatedVideoModelId = (modelId?: string): string => {
 
 export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
   {
+    id: 'shopaikey-veo3-fast',
+    name: 'Veo 3 Fast',
+    type: 'video',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    apiModel: 'veo3-fast',
+    endpoint: '/v1/video/generations',
+    description: 'Tuyến video mặc định cho bản nháp và shot social.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedDurations: [5, 8] },
+  },
+  {
+    id: 'shopaikey-veo31-fast',
+    name: 'Veo 3.1 Fast',
+    type: 'video',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    apiModel: 'veo3.1-fast',
+    endpoint: '/v1/video/generations',
+    description: 'Tuyến Veo mới hơn cho shot đã duyệt và chuyển động phức tạp.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedDurations: [5, 8] },
+  },
+  {
+    id: 'shopaikey-grok-video-3',
+    name: 'Grok Video 3',
+    type: 'video',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    apiModel: 'grok-video-3',
+    endpoint: '/v1/video/generations',
+    description: 'Tuyến video ngắn có lựa chọn thời lượng và độ phân giải.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedDurations: [5, 8, 10] },
+  },
+  {
+    id: 'shopaikey-sora-2',
+    name: 'Sora 2',
+    type: 'video',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    apiModel: 'sora-2',
+    endpoint: '/v1/videos',
+    description: 'Tuyến OpenAI Videos cho shot cao cấp; chỉ dùng sau khi duyệt ngân sách.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA },
+  },
+  {
     id: 'replicate-seedance-1-pro',
     name: 'Seedance 1 Pro',
     type: 'video',
@@ -333,6 +478,17 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
 
 export const BUILTIN_PROVIDERS: ModelProvider[] = [
   {
+    id: SHOPAIKEY_PROVIDER_ID,
+    name: 'ShopAIKey · nội bộ Egoric',
+    baseUrl: DEFAULT_PROVIDER_BASE_URL,
+    protocol: 'shopaikey',
+    supportedModelTypes: ['chat', 'image', 'video'],
+    description: 'Cổng reverse proxy tạm thời cho vận hành nội bộ. Không dùng cho dữ liệu khách hàng nhạy cảm.',
+    keyUrl: 'https://shopaikey.com/en',
+    isBuiltIn: true,
+    isDefault: true,
+  },
+  {
     id: KIE_PROVIDER_ID,
     name: 'KIE AI',
     baseUrl: 'https://api.kie.ai',
@@ -346,13 +502,13 @@ export const BUILTIN_PROVIDERS: ModelProvider[] = [
   {
     id: OPENROUTER_PROVIDER_ID,
     name: 'OpenRouter',
-    baseUrl: DEFAULT_PROVIDER_BASE_URL,
+    baseUrl: 'https://openrouter.ai/api',
     protocol: 'openai-compatible',
     supportedModelTypes: ['chat'],
     description: 'Kết nối nhiều mô hình hội thoại như GPT, Claude, Gemini, Qwen và DeepSeek.',
     keyUrl: 'https://openrouter.ai/settings/keys',
     isBuiltIn: true,
-    isDefault: true,
+    isDefault: false,
   },
   {
     id: GOOGLE_PROVIDER_ID,

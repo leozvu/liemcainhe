@@ -1,5 +1,5 @@
 import React from 'react';
-import { AudioLines, ExternalLink, Image, KeyRound, MessageSquareText, Video } from 'lucide-react';
+import { ExternalLink, KeyRound, Layers3 } from 'lucide-react';
 
 interface ApiKeyPageProps {
   onNext: () => void;
@@ -8,28 +8,10 @@ interface ApiKeyPageProps {
 
 const providers = [
   {
-    name: 'OpenRouter',
-    description: 'Nhiều mô hình hội thoại từ GPT, Claude, Gemini, Qwen và DeepSeek.',
-    href: 'https://openrouter.ai/settings/keys',
-    icon: MessageSquareText,
-  },
-  {
-    name: 'KIE AI',
-    description: 'Một khóa cho toàn bộ catalog ảnh, video và các mô hình cao cấp trong ứng dụng.',
-    href: 'https://kie.ai/api-key',
-    icon: Video,
-  },
-  {
-    name: 'Google AI Studio',
-    description: 'Kết nối trực tiếp Gemini khi bạn muốn dùng khóa Google riêng.',
-    href: 'https://aistudio.google.com/apikey',
-    icon: Image,
-  },
-  {
-    name: 'ElevenLabs',
-    description: 'Eleven v3 cho giọng thoại tiếng Việt biểu cảm và tự nhiên.',
-    href: 'https://elevenlabs.io/app/settings/api-keys',
-    icon: AudioLines,
+    name: 'ShopAIKey · cổng nội bộ',
+    description: 'Một khóa tạm thời cho hội thoại, ảnh, video và giọng nói của team Egoric.',
+    href: 'https://shopaikey.com/en',
+    icon: Layers3,
   },
 ];
 
@@ -39,9 +21,9 @@ const ApiKeyPage: React.FC<ApiKeyPageProps> = ({ onNext, onSkip }) => (
       <KeyRound className="h-8 w-8 text-cyan-300" aria-hidden="true" />
     </div>
 
-    <h2 className="text-2xl font-bold text-white">Chọn dịch vụ AI của bạn</h2>
+    <h2 className="text-2xl font-bold text-white">Kết nối cổng AI nội bộ</h2>
     <p className="mb-5 mt-2 max-w-md text-sm leading-relaxed text-zinc-500">
-      Egoric Film Studio không khóa bạn vào một cổng duy nhất. Bạn có thể cấu hình một hoặc nhiều nhà cung cấp sau khi hoàn tất hướng dẫn.
+      Bản vận hành nội bộ hiện chỉ bật ShopAIKey. Không đưa brief mật, dữ liệu cá nhân hoặc tài sản chưa công bố qua cổng trung gian này.
     </p>
 
     <div className="grid w-full gap-2 text-left">

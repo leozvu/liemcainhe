@@ -54,6 +54,6 @@ Ngôn ngữ lời thoại: {language}`
 };
 
 export const DEFAULTS = {
-  videoModel: 'replicate-seedance-1-pro' as const,
+  videoModel: 'shopaikey-veo3-fast' as const,
   batchGenerateDelay: 3000,
 };

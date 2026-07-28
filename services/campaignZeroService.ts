@@ -451,7 +451,7 @@ export const buildCampaignZeroPaidPreflight = (input: {
     {
       id: 'voice-provider',
       label: 'Có provider voice trả phí đã cấu hình',
-      detail: input.hasConfiguredVoiceProvider ? 'Khóa voice đã sẵn sàng trên thiết bị này.' : 'Cần cấu hình FPT.AI, Viettel AI hoặc ElevenLabs.',
+      detail: input.hasConfiguredVoiceProvider ? 'Khóa voice đã sẵn sàng trên thiết bị này.' : 'Cần cấu hình khóa ShopAIKey cho Gemini TTS.',
       complete: input.hasConfiguredVoiceProvider,
     },
     {

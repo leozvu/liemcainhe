@@ -511,7 +511,7 @@ export const savePublishLedgerEntry = async <T extends { fingerprint: string }>(
 };
 
 export const createDefaultVoiceStudioState = () => ({
-  defaultProviderId: 'elevenlabs' as const,
+  defaultProviderId: 'shopaikey' as const,
   profiles: [],
   takes: [],
   selectedTakeByShot: {},

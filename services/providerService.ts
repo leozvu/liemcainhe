@@ -3,6 +3,7 @@ import {
   OPENROUTER_PROVIDER_ID,
   REPLICATE_PROVIDER_ID,
   KIE_PROVIDER_ID,
+  SHOPAIKEY_PROVIDER_ID,
 } from '../types/model';
 import {
   getApiBaseUrlForProvider,
@@ -57,6 +58,8 @@ export const verifyProviderApiKey = async (
     url = `${baseUrl}/v1/account`;
   } else if (providerId === KIE_PROVIDER_ID) {
     url = `${baseUrl}/api/v1/chat/credit`;
+  } else if (providerId === SHOPAIKEY_PROVIDER_ID) {
+    url = `${baseUrl}/v1/models`;
   }
 
   try {
@@ -91,6 +94,16 @@ export const verifyProviderApiKey = async (
         message: `Khóa KIE hợp lệ · còn ${payload.data.toLocaleString('vi-VN')} credit · ${catalogSize} model đã nhập sẵn`,
         remaining: payload.data,
         discoveredModels: catalogSize,
+      };
+    }
+    if (providerId === SHOPAIKEY_PROVIDER_ID) {
+      const discoveredModels = Array.isArray(payload?.data) ? payload.data.length : 0;
+      return {
+        success: true,
+        message: discoveredModels
+          ? `Khóa ShopAIKey hợp lệ · phát hiện ${discoveredModels.toLocaleString('vi-VN')} model hội thoại`
+          : 'Khóa ShopAIKey hợp lệ',
+        discoveredModels,
       };
     }
     return { success: true, message: `Khóa ${provider.name} hợp lệ` };
@@ -131,5 +144,11 @@ export const discoverProviderModels = async (
       .filter((model: any) => (model.supportedGenerationMethods || []).includes('generateContent'))
       .map((model: any) => ({ id: String(model.name || '').replace(/^models\//, ''), name: model.displayName || model.name, type: 'chat' as const }));
   }
-  return (payload.data || []).map((model: any) => ({ id: model.id, name: model.name || model.id, type: 'chat' as const }));
+  return (payload.data || []).map((model: any) => ({
+    id: model.id,
+    name: model.name || model.display_name || model.id,
+    // /v1/models không công bố contract phân loại media. Ảnh/video đã có
+    // catalog riêng; model phát hiện động chỉ được nhập vào tuyến hội thoại.
+    type: 'chat' as const,
+  }));
 };

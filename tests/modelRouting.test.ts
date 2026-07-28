@@ -42,4 +42,27 @@ describe('model fallback policy', () => {
 
     expect(getRoutingCandidates(type, preferred).map((model) => model.id)).toEqual([preferred.id]);
   });
+
+  it('không tự đổi model hội thoại khi dùng chung số dư ShopAIKey', () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    const preferred = getModels('chat').find((model) => model.providerId === 'shopaikey');
+    expect(preferred).toBeTruthy();
+    const policy = getModelRoutingPolicy();
+    saveModelRoutingPolicy({
+      ...policy,
+      enabled: true,
+      maxAttempts: 3,
+      fallbackModelIds: {
+        ...policy.fallbackModelIds,
+        chat: getModels('chat').filter((model) => model.id !== preferred!.id).map((model) => model.id),
+      },
+    });
+
+    expect(getRoutingCandidates('chat', preferred!).map((model) => model.id)).toEqual([preferred!.id]);
+  });
 });

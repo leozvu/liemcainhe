@@ -1,12 +1,5 @@
 const API_TARGETS = {
-  '/api-proxy/openrouter': 'https://openrouter.ai',
-  '/api-proxy/google': 'https://generativelanguage.googleapis.com',
-  '/api-proxy/replicate': 'https://api.replicate.com',
-  '/api-proxy/kie-files': 'https://kieai.redpandaai.co',
-  '/api-proxy/kie': 'https://api.kie.ai',
-  '/api-proxy/fpt': 'https://api.fpt.ai',
-  '/api-proxy/viettel': 'https://viettelai.vn',
-  '/api-proxy/elevenlabs': 'https://api.elevenlabs.io',
+  '/api-proxy/shopaikey': 'https://api.shopaikey.com',
   '/api-proxy/facebook': 'https://graph.facebook.com',
   '/api-proxy/threads': 'https://graph.threads.net',
   '/api-proxy/zalo': 'https://openapi.zalo.me',
@@ -74,13 +67,6 @@ const ALLOWED_PROXY_HEADERS = new Set([
   'content-type',
   'http-referer',
   'x-title',
-  'x-goog-api-key',
-  'api-key',
-  'api_key',
-  'voice',
-  'speed',
-  'format',
-  'xi-api-key',
   // Zalo OA truyền token qua header tuỳ biến này thay vì Authorization.
   'access_token',
 ]);

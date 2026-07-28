@@ -68,8 +68,8 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({ isOpen, onClose }) 
               <Settings className="w-5 h-5 text-cyan-300" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Cấu hình mô hình</h2>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">THIẾT LẬP MÔ HÌNH</p>
+              <h2 className="text-lg font-bold text-white">Cổng AI nội bộ</h2>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">SHOPAIKEY MODE</p>
             </div>
           </div>
           <button

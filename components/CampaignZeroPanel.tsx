@@ -152,7 +152,7 @@ const CampaignZeroPanel: React.FC<Props> = ({ campaign, client, projects }) => {
     lifecycleEvents,
     now: clock,
   }), [campaign, client, clock, lifecycleEvents, projects, run, usageRecords]);
-  const hasConfiguredVoiceProvider = (['fpt', 'viettel', 'elevenlabs'] as const).some(isVoiceProviderConfigured);
+  const hasConfiguredVoiceProvider = isVoiceProviderConfigured('shopaikey');
   const paidPreflight = useMemo(() => buildCampaignZeroPaidPreflight({
     campaign,
     run,

@@ -290,6 +290,48 @@ const generateWithElevenLabs = async (
   };
 };
 
+export const buildShopAIKeyTtsRequestBody = (
+  input: Pick<GenerateVoiceInput, 'text' | 'voiceId'>,
+) => ({
+  text: input.text,
+  model: 'gemini-2.5-flash-preview-tts',
+  voice: input.voiceId || 'Kore',
+});
+
+const generateWithShopAIKey = async (
+  input: GenerateVoiceInput,
+  apiKey: string,
+  hooks: BillableOperationHooks,
+): Promise<GenerateVoiceResult> => {
+  const response = await submitPaidTaskSafely(async () => {
+    const next = await fetch('/api-proxy/shopaikey/tts/google/generations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(buildShopAIKeyTtsRequestBody(input)),
+    });
+    if (next.ok) return next;
+    const detail = await parseErrorMessage(next);
+    if (next.status === 401) throw createBillableHttpError('Khóa ShopAIKey không hợp lệ hoặc đã bị thu hồi.', next.status);
+    if (next.status === 402) throw createBillableHttpError('Khóa ShopAIKey không còn đủ credit để tạo giọng.', next.status);
+    throw createBillableHttpError(`ShopAIKey TTS không thể tạo giọng: ${detail}`, next.status);
+  });
+  await hooks.onProviderAccepted();
+  const payload = await response.json();
+  const audioUrl = String(payload?.url || payload?.data?.url || '').trim();
+  if (!audioUrl) {
+    throw new Error('ShopAIKey đã nhận tác vụ TTS nhưng không trả về URL âm thanh. Hãy đối soát request trước khi chạy lại.');
+  }
+  return {
+    audioUrl,
+    fileName: `shopaikey-${Date.now()}.${payload?.format || 'wav'}`,
+    remote: true,
+  };
+};
+
 export const generateVoice = async (input: GenerateVoiceInput): Promise<GenerateVoiceResult> => {
   const text = applyPronunciationDictionary(input.text.trim(), input.pronunciationDictionary);
   if (text.length < 3) throw new Error('Lời thoại phải có ít nhất 3 ký tự');
@@ -299,7 +341,9 @@ export const generateVoice = async (input: GenerateVoiceInput): Promise<Generate
 
   const credentials = getVoiceCredentials(input.providerId);
   if (!credentials.apiKey) {
-    throw new Error(input.providerId === 'elevenlabs'
+    throw new Error(input.providerId === 'shopaikey'
+      ? 'Chưa có khóa ShopAIKey. Hãy mở Cổng AI nội bộ và nhập khóa trước.'
+      : input.providerId === 'elevenlabs'
       ? 'Chưa có khóa ElevenLabs. Hãy mở Kết nối giọng nói và nhập khóa trước.'
       : 'Chưa cấu hình khóa API cho nhà cung cấp giọng nói');
   }
@@ -324,7 +368,8 @@ export const generateVoice = async (input: GenerateVoiceInput): Promise<Generate
     operation: async (hooks) => {
       try {
         let result: GenerateVoiceResult;
-        if (input.providerId === 'fpt') result = await generateWithFpt(preparedInput, credentials.apiKey, hooks);
+        if (input.providerId === 'shopaikey') result = await generateWithShopAIKey(preparedInput, credentials.apiKey, hooks);
+        else if (input.providerId === 'fpt') result = await generateWithFpt(preparedInput, credentials.apiKey, hooks);
         else if (input.providerId === 'viettel') result = await generateWithViettel(preparedInput, credentials.apiKey, hooks);
         else if (input.providerId === 'elevenlabs') result = await generateWithElevenLabs(preparedInput, credentials.apiKey, hooks);
         else if (input.providerId === 'vbee') {

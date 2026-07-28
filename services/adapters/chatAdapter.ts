@@ -150,7 +150,7 @@ const callChatApiOnce = async (
       }
       
       return res;
-    });
+    }, provider?.protocol === 'shopaikey' ? 1 : 3);
     
     clearTimeout(timeoutId);
     
