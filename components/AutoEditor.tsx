@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Archive,
   AudioLines,
   BadgeDollarSign,
   Captions,
@@ -9,10 +10,13 @@ import {
   ChevronRight,
   Clapperboard,
   Clock3,
+  Cloud,
   Crop,
   Download,
+  ExternalLink,
   Film,
   Image,
+  Library,
   Layers3,
   Loader2,
   Music2,
@@ -38,6 +42,7 @@ import {
   ProjectState,
 } from '../types';
 import {
+  AutoEditorMasterRecord,
   applyEditingRecommendations,
   clearAutoEditorReframeOverrides,
   clearEditingRecommendations,
@@ -54,9 +59,10 @@ import {
   updateAutoEditorReframeFocus,
   updateAutoEditorSettings,
 } from '../services/autoEditorService';
-import { cancelAutoEditorRender, renderAutoEditorOutputInBrowser } from '../services/autoEditorRenderService';
+import { cancelAutoEditorRender, downloadAutoEditorArtifact, renderAutoEditorOutputInBrowser } from '../services/autoEditorRenderService';
 import { describeEditingReport } from '../services/editingIntelligenceService';
 import { getAISupervisorGate } from '../services/aiSupervisorService';
+import { createBlobChecksum, uploadProjectMediaBlob } from '../services/cloudSyncService';
 import { useAlert } from './GlobalAlert';
 
 interface Props {
@@ -120,6 +126,16 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}:${String(remaining).padStart(2, '0')}`;
 };
 
+const formatBytes = (bytes?: number): string => {
+  if (!bytes) return 'Chưa có dung lượng';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+};
+
+const formatMasterTime = (timestamp?: number): string => timestamp
+  ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }).format(timestamp)
+  : 'Chưa lưu';
+
 const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(String(reader.result || ''));
@@ -134,11 +150,13 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
   const sources = useMemo(() => getAutoEditorSources(project), [project]);
   const editing = useMemo(() => getAutoEditorEditingReport(project), [project]);
   const releaseGate = useMemo(() => getAISupervisorGate(project), [project]);
+  const hosted = typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
   const logoAssets = project.brandKitSnapshot?.assets.filter((asset) => asset.type === 'logo' && asset.url) || [];
   const musicInputRef = useRef<HTMLInputElement>(null);
   const [renderingId, setRenderingId] = useState<string>();
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderPhase, setRenderPhase] = useState('');
+  const [archivingId, setArchivingId] = useState<string>();
   const [uploadingMusic, setUploadingMusic] = useState(false);
   const [reframeRatio, setReframeRatio] = useState<AspectRatio>(
     state.settings.aspectRatios.find((ratio) => ratio !== '16:9') || state.settings.aspectRatios[0] || '9:16',
@@ -151,6 +169,8 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
     () => getAutoEditorReframePlan(project, activeReframeRatio),
     [project, activeReframeRatio],
   );
+  const masterOutputs = state.outputs.filter((output) => output.status === 'ready');
+  const archivedMasterCount = masterOutputs.filter((output) => output.storage === 'cloud' && output.videoUrl).length;
 
   const patchSettings = (updates: Parameters<typeof updateAutoEditorSettings>[1]) => {
     updateProject((previous) => updateAutoEditorSettings(previous, updates));
@@ -230,25 +250,73 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
     setRenderProgress(0);
     setRenderPhase('Đang chuẩn bị…');
     try {
-      await renderAutoEditorOutputInBrowser(renderProject, outputId, ({ phase, progress }) => {
+      const artifact = await renderAutoEditorOutputInBrowser(renderProject, outputId, ({ phase, progress }) => {
         setRenderPhase(phase);
         setRenderProgress(progress);
       });
-      updateProject((previous) => finishAutoEditorRender(previous, outputId));
-      showAlert('Đã render và tải MP4. Chi phí API: $0.', { type: 'success' });
+      downloadAutoEditorArtifact(artifact);
+      let master: AutoEditorMasterRecord;
+
+      if (hosted) {
+        setArchivingId(outputId);
+        setRenderPhase('Đang lưu master lên cloud…');
+        setRenderProgress(93);
+        try {
+          const archived = await uploadProjectMediaBlob(
+            project.id,
+            `editor/masters/${outputId}.mp4`,
+            artifact.blob,
+            (progress) => setRenderProgress(93 + Math.round(progress * 0.07)),
+          );
+          master = {
+            storage: 'cloud' as const,
+            bytes: archived.bytes,
+            checksum: archived.checksum,
+            videoUrl: archived.url,
+            archiveError: undefined,
+          };
+        } catch (archiveError) {
+          master = {
+            storage: 'downloaded' as const,
+            bytes: artifact.bytes,
+            checksum: await createBlobChecksum(artifact.blob),
+            archiveError: archiveError instanceof Error ? archiveError.message : 'Không thể lưu master lên cloud.',
+          };
+        } finally {
+          setArchivingId(undefined);
+        }
+      } else {
+        master = {
+          storage: 'downloaded' as const,
+          bytes: artifact.bytes,
+          checksum: await createBlobChecksum(artifact.blob),
+          archiveError: 'Bản local chỉ tải file xuống thiết bị; mở bản Sites để lưu master bền vững.',
+        };
+      }
+
+      setRenderProgress(100);
+      setRenderPhase(master.storage === 'cloud' ? 'Đã lưu Master Library' : 'Đã tải MP4 về thiết bị');
+      updateProject((previous) => finishAutoEditorRender(previous, outputId, master));
+      showAlert(
+        master.storage === 'cloud'
+          ? 'Đã render, tải MP4 và lưu master bền vững lên cloud. Chi phí API: $0.'
+          : `Đã tải MP4 nhưng chưa lưu được cloud${master.archiveError ? `: ${master.archiveError}` : '.'}`,
+        { type: master.storage === 'cloud' ? 'success' : 'warning' },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Lỗi render không xác định.';
       updateProject((previous) => failAutoEditorRender(previous, outputId, message));
       showAlert(`Render thất bại: ${message}`, { type: 'error' });
     } finally {
       setRenderingId(undefined);
+      setArchivingId(undefined);
       setRenderProgress(0);
       setRenderPhase('');
     }
   };
 
   const handleCancel = () => {
-    if (!renderingId) return;
+    if (!renderingId || archivingId) return;
     cancelAutoEditorRender();
     updateProject((previous) => failAutoEditorRender(previous, renderingId, 'Đã hủy render theo yêu cầu.'));
     setRenderingId(undefined);
@@ -447,6 +515,42 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
           </section>
 
           <section className="eg-panel overflow-hidden">
+            <div className="border-b border-white/[.07] p-5 md:p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="eg-kicker">06 · Master Library</div>
+                  <h3 className="mt-1 text-lg font-semibold text-white">Kho bản dựng sẵn sàng duyệt và phân phối</h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">MP4 render trên bản Sites được tải xuống và lưu ngay lên R2. Không còn phụ thuộc Blob tạm trong tab.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className={`eg-chip ${archivedMasterCount ? 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' : 'border-white/10 bg-white/[.04] text-zinc-500'}`}><Cloud className="h-3 w-3" /> {archivedMasterCount} bản cloud</span>
+                  <span className="eg-chip border-cyan-200/20 bg-cyan-200/[.06] text-cyan-100"><Archive className="h-3 w-3" /> {masterOutputs.length} master</span>
+                </div>
+              </div>
+            </div>
+
+            {masterOutputs.length === 0 ? (
+              <div className="flex min-h-52 flex-col items-center justify-center p-8 text-center"><Library className="h-9 w-9 text-zinc-700" /><h4 className="mt-4 text-sm font-semibold text-zinc-300">Chưa có master</h4><p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Render một đầu ra ở hàng đợi bên phải. Master sẽ xuất hiện ở đây sau khi FFmpeg hoàn tất.</p></div>
+            ) : (
+              <div className="grid gap-4 p-5 md:grid-cols-2 md:p-6">
+                {masterOutputs.map((output) => (
+                  <article key={`master-${output.id}`} className="overflow-hidden rounded-2xl border border-white/[.08] bg-black/20">
+                    <div className={`relative ${output.aspectRatio === '9:16' ? 'mx-auto aspect-[9/16] max-h-72 w-40' : output.aspectRatio === '1:1' ? 'aspect-square max-h-72' : 'aspect-video'}`}>
+                      {output.videoUrl ? <video src={output.videoUrl} className="h-full w-full object-contain" controls playsInline preload="metadata" aria-label={`Master ${output.name}`} /> : <div className="flex h-full flex-col items-center justify-center bg-white/[.02] text-center"><Download className="h-7 w-7 text-zinc-700" /><span className="mt-3 text-[10px] text-zinc-600">Đã tải về thiết bị</span></div>}
+                    </div>
+                    <div className="border-t border-white/[.07] p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h4 className="truncate text-sm font-semibold text-white">{output.name}</h4><p className="mt-1 truncate font-mono text-[9px] text-zinc-600">{output.fileName}</p></div><span className={`eg-chip ${output.storage === 'cloud' ? 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' : 'border-amber-200/20 bg-amber-200/[.07] text-amber-100'}`}>{output.storage === 'cloud' ? <Cloud className="h-3 w-3" /> : <Download className="h-3 w-3" />}{output.storage === 'cloud' ? 'Đã lưu cloud' : 'Chỉ trên máy'}</span></div>
+                      <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-white/[.06] bg-white/[.025] p-2"><span className="block font-mono text-[9px] text-zinc-600">Tỷ lệ</span><strong className="mt-1 block text-xs text-zinc-300">{output.aspectRatio}</strong></div><div className="rounded-xl border border-white/[.06] bg-white/[.025] p-2"><span className="block font-mono text-[9px] text-zinc-600">Dung lượng</span><strong className="mt-1 block text-xs text-zinc-300">{formatBytes(output.bytes)}</strong></div><div className="rounded-xl border border-white/[.06] bg-white/[.025] p-2"><span className="block font-mono text-[9px] text-zinc-600">Lưu lúc</span><strong className="mt-1 block text-[10px] text-zinc-300">{formatMasterTime(output.archivedAt || output.renderedAt)}</strong></div></div>
+                      {output.videoUrl && <a href={output.videoUrl} target="_blank" rel="noreferrer" className="eg-button-secondary mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 text-xs font-semibold"><ExternalLink className="h-4 w-4" /> Mở master cloud</a>}
+                      {output.archiveError && <p role="status" className="mt-3 text-[10px] leading-4 text-amber-100/65">{output.archiveError}</p>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="eg-panel overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-white/[.07] p-5 md:flex-row md:items-end md:justify-between md:p-6"><div><div className="eg-kicker">Timeline</div><h3 className="mt-1 text-lg font-semibold text-white">Nhịp dựng theo storyboard</h3></div>{state.captions.length > 0 && <button type="button" onClick={handleDownloadSrt} className="eg-button-secondary inline-flex min-h-11 items-center justify-center gap-2 px-4 text-xs font-semibold"><Download className="h-4 w-4" /> Tải SRT</button>}</div>
             {state.timeline.length === 0 ? (
               <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Clapperboard className="h-10 w-10 text-zinc-700" /><h4 className="mt-4 text-sm font-semibold text-zinc-300">Timeline chưa được lập</h4><p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Chọn nguồn và định dạng, sau đó nhấn “Lập timeline tự động”.</p></div>
@@ -522,13 +626,14 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport }) =
                 const meta = OUTPUT_META[output.status];
                 const StatusIcon = meta.icon;
                 const active = renderingId === output.id;
+                const archiving = archivingId === output.id;
                 return (
                   <article key={output.id} className="rounded-2xl border border-white/[.07] bg-black/15 p-4">
                     <div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-semibold text-white">{output.name}</h4><p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600">{output.fileName}</p></div><span className={`eg-chip ${meta.className}`}><StatusIcon className={`h-3 w-3 ${active ? 'animate-spin' : ''}`} /> {meta.label}</span></div>
                     <div className="mt-4 flex items-center justify-between text-[10px] text-zinc-500"><span>Ước tính {output.estimatedRenderMinutes} phút</span><strong className="text-emerald-200">$0 API</strong></div>
                     {active && <div className="mt-4" aria-live="polite"><div className="flex items-center justify-between gap-3 text-[10px] text-cyan-100"><span className="truncate">{renderPhase}</span><span className="font-mono tabular-nums">{renderProgress}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-cyan-200 transition-[width] duration-300" style={{ width: `${renderProgress}%` }} /></div></div>}
                     {output.error && output.status === 'failed' && <p role="alert" className="mt-3 text-[10px] leading-4 text-rose-200/70">{output.error}</p>}
-                    <button type="button" onClick={active ? handleCancel : () => void handleRender(output.id)} disabled={Boolean(renderingId && !active) || summary.stale || summary.blocked > 0 || !releaseGate.canRelease} className={`mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${active ? 'border-rose-200/25 bg-rose-200/[.07] text-rose-100' : 'border-cyan-200/30 bg-cyan-200/[.09] text-cyan-50 hover:bg-cyan-200/[.14]'}`}>{active ? <><Pause className="h-4 w-4" /> Hủy render</> : <><Play className="h-4 w-4 fill-current" /> Render MP4</>}</button>
+                    <button type="button" onClick={active ? handleCancel : () => void handleRender(output.id)} disabled={archiving || Boolean(renderingId && !active) || summary.stale || summary.blocked > 0 || !releaseGate.canRelease} className={`mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${active && !archiving ? 'border-rose-200/25 bg-rose-200/[.07] text-rose-100' : 'border-cyan-200/30 bg-cyan-200/[.09] text-cyan-50 hover:bg-cyan-200/[.14]'}`}>{archiving ? <><Cloud className="h-4 w-4" /> Đang lưu master…</> : active ? <><Pause className="h-4 w-4" /> Hủy render</> : <><Play className="h-4 w-4 fill-current" /> Render MP4</>}</button>
                   </article>
                 );
               })}

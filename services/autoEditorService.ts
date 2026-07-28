@@ -2,6 +2,7 @@ import {
   AspectRatio,
   AutoEditorCaptionCue,
   AutoEditorOutput,
+  AutoEditorOutputStorage,
   AutoEditorOutputStatus,
   AutoEditorPacingOverride,
   AutoEditorReframeFocus,
@@ -59,6 +60,14 @@ export interface AutoEditorReframeItem {
   reason: string;
   warning?: string;
   overridden: boolean;
+}
+
+export interface AutoEditorMasterRecord {
+  storage: AutoEditorOutputStorage;
+  bytes: number;
+  checksum: string;
+  videoUrl?: string;
+  archiveError?: string;
 }
 
 export const createDefaultAutoEditorState = (project?: ProjectState): AutoEditorState => {
@@ -120,7 +129,16 @@ export const normalizeAutoEditorState = (
     },
     timeline: Array.isArray(value.timeline) ? value.timeline : [],
     captions: Array.isArray(value.captions) ? value.captions : [],
-    outputs: Array.isArray(value.outputs) ? value.outputs : [],
+    outputs: Array.isArray(value.outputs) ? value.outputs.map((output) => ({
+      ...output,
+      videoUrl: typeof output.videoUrl === 'string' && output.videoUrl.trim() ? output.videoUrl : undefined,
+      bytes: Number.isFinite(output.bytes) && Number(output.bytes) > 0 ? Number(output.bytes) : undefined,
+      checksum: typeof output.checksum === 'string' && output.checksum.trim() ? output.checksum : undefined,
+      storage: output.storage === 'cloud' || output.storage === 'downloaded' ? output.storage : undefined,
+      renderedAt: Number.isFinite(output.renderedAt) && Number(output.renderedAt) > 0 ? Number(output.renderedAt) : undefined,
+      archivedAt: Number.isFinite(output.archivedAt) && Number(output.archivedAt) > 0 ? Number(output.archivedAt) : undefined,
+      archiveError: typeof output.archiveError === 'string' && output.archiveError.trim() ? output.archiveError : undefined,
+    })) : [],
     pacing: Array.isArray(value.pacing) ? value.pacing : undefined,
     reframeOverrides: Array.from(reframeByKey.values()),
     updatedAt: Number(value.updatedAt) || now(),
@@ -392,6 +410,13 @@ export const createAutoEditorPlan = (project: ProjectState): ProjectState => {
       status: samePlan && existing ? existing.status : 'planned',
       fileName: `${safeFileName(project.title)}-${ratioName}.mp4`,
       estimatedRenderMinutes: Number(Math.max(0.5, (totalDuration / 60) * (aspectRatio === '9:16' ? 1.35 : 1.15) + timeline.length * 0.08).toFixed(1)),
+      videoUrl: samePlan ? existing?.videoUrl : undefined,
+      bytes: samePlan ? existing?.bytes : undefined,
+      checksum: samePlan ? existing?.checksum : undefined,
+      storage: samePlan ? existing?.storage : undefined,
+      renderedAt: samePlan ? existing?.renderedAt : undefined,
+      archivedAt: samePlan ? existing?.archivedAt : undefined,
+      archiveError: samePlan ? existing?.archiveError : undefined,
       error: samePlan ? existing?.error : undefined,
       createdAt: existing?.createdAt || timestamp,
       updatedAt: timestamp,
@@ -575,15 +600,40 @@ export const startAutoEditorRender = (project: ProjectState, outputId: string): 
   return setOutputStatus(withJob, outputId, 'rendering');
 };
 
-export const finishAutoEditorRender = (project: ProjectState, outputId: string): ProjectState => {
+export const finishAutoEditorRender = (
+  project: ProjectState,
+  outputId: string,
+  master?: AutoEditorMasterRecord,
+): ProjectState => {
   const job = project.workflow?.jobs.find((item) => item.kind === 'auto-editor' && item.resourceId === outputId && item.status === 'running');
   const completed = job ? patchProductionJob(project, job.id, {
     status: 'completed',
     progress: 100,
     completedUnits: project.autoEditor?.timeline.length || 0,
-    detail: 'Đã render và tải MP4 trên thiết bị.',
+    detail: master?.storage === 'cloud'
+      ? 'Đã render, tải MP4 và lưu master bền vững lên cloud.'
+      : 'Đã render và tải MP4 trên thiết bị; master chưa được lưu cloud.',
   }) : project;
-  return setOutputStatus(completed, outputId, 'ready');
+  const ready = setOutputStatus(completed, outputId, 'ready');
+  if (!master) return ready;
+  const timestamp = now();
+  return {
+    ...ready,
+    autoEditor: {
+      ...ready.autoEditor!,
+      outputs: ready.autoEditor!.outputs.map((output) => output.id === outputId ? {
+        ...output,
+        videoUrl: master.videoUrl,
+        bytes: master.bytes,
+        checksum: master.checksum,
+        storage: master.storage,
+        renderedAt: timestamp,
+        archivedAt: master.storage === 'cloud' ? timestamp : undefined,
+        archiveError: master.archiveError,
+      } : output),
+      updatedAt: timestamp,
+    },
+  };
 };
 
 export const failAutoEditorRender = (project: ProjectState, outputId: string, error: string): ProjectState => {

@@ -28,6 +28,13 @@ export interface AutoEditorRenderProgress {
   detail?: string;
 }
 
+export interface AutoEditorRenderArtifact {
+  blob: Blob;
+  fileName: string;
+  aspectRatio: AspectRatio;
+  bytes: number;
+}
+
 interface RenderClip {
   shot: Shot;
   duration: number;
@@ -67,11 +74,11 @@ const extension = (url: string, fallback: string): string => {
 const uint8BlobPart = (value: Uint8Array): ArrayBuffer =>
   value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
 
-const downloadBlob = (blob: Blob, fileName: string): void => {
-  const url = URL.createObjectURL(blob);
+export const downloadAutoEditorArtifact = (artifact: AutoEditorRenderArtifact): void => {
+  const url = URL.createObjectURL(artifact.blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = fileName;
+  anchor.download = artifact.fileName;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -192,7 +199,7 @@ export const renderAutoEditorOutputInBrowser = async (
   project: ProjectState,
   outputId: string,
   onProgress?: (progress: AutoEditorRenderProgress) => void,
-): Promise<void> => {
+): Promise<AutoEditorRenderArtifact> => {
   if (rendering) throw new Error('Một đầu ra khác đang được render trên thiết bị này.');
   if (!isAutoEditorRenderSupported()) throw new Error('Trình duyệt này không hỗ trợ FFmpeg WebAssembly.');
   const state = normalizeAutoEditorState(project.autoEditor, project);
@@ -392,9 +399,11 @@ export const renderAutoEditorOutputInBrowser = async (
     onProgress?.({ phase: 'Đang đóng gói MP4…', progress: 95 });
     const result = await ffmpeg.readFile(outputFile);
     if (!(result instanceof Uint8Array) || !result.byteLength) throw new Error('FFmpeg không trả về MP4 hợp lệ.');
-    downloadBlob(new Blob([uint8BlobPart(result)], { type: 'video/mp4' }), output.fileName || `${safeName(project.title)}-${output.aspectRatio.replace(':', 'x')}.mp4`);
+    const blob = new Blob([uint8BlobPart(result)], { type: 'video/mp4' });
+    const fileName = output.fileName || `${safeName(project.title)}-${output.aspectRatio.replace(':', 'x')}.mp4`;
     recordUsage({ kind: 'export', modelId: 'Egoric Auto Editor · Local FFmpeg', inputSize: downloadedBytes, durationMs: Date.now() - startedAt, status: 'success' });
-    onProgress?.({ phase: 'Đã render và tải MP4', progress: 100, detail: 'Toàn bộ quá trình chạy trên thiết bị, chi phí API $0.' });
+    onProgress?.({ phase: 'MP4 đã sẵn sàng', progress: 92, detail: 'Đang bàn giao artifact cho Master Library.' });
+    return { blob, fileName, aspectRatio: output.aspectRatio, bytes: blob.size };
   } catch (error) {
     recordUsage({ kind: 'export', modelId: 'Egoric Auto Editor · Local FFmpeg', inputSize: downloadedBytes, durationMs: Date.now() - startedAt, status: 'failed', error: error instanceof Error ? error.message : String(error) });
     throw error;

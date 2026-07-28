@@ -102,6 +102,8 @@ Một lần chạy thật cho biết nhiều hơn ba epic nữa.
 
 **3–4 tuần.**
 
+> Tiến độ nền tảng: Sprint 1D đã thêm [Master Library](MASTER_LIBRARY.vi.md). MP4 không còn biến mất khỏi app sau thao tác tải xuống; bản hosted lưu artifact và checksum lên R2. Adapter TikTok/YouTube/Reels vẫn chưa được coi là hoàn tất cho tới khi dùng chính master đã duyệt này và poll được trạng thái nền tảng.
+
 Mở rộng đúng đường ống đã có, không xây mới:
 
 - `PublishChannelId` thêm `tiktok`, `youtube`, `facebook-reels`.

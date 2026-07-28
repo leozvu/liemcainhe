@@ -113,9 +113,27 @@ describe('Auto Editor', () => {
     expect(started.workflow?.checkpoints[0].label).toContain('render');
     expect(started.workflow?.jobs[0].kind).toBe('auto-editor');
     expect(started.workflow?.jobs[0].detail).toContain('không gọi API');
-    const finished = finishAutoEditorRender(started, output.id);
+    const finished = finishAutoEditorRender(started, output.id, {
+      storage: 'cloud',
+      videoUrl: '/api/cloud/media/proj/editor/masters/master.mp4',
+      bytes: 12_345,
+      checksum: 'a'.repeat(64),
+    });
     expect(finished.autoEditor?.outputs[0].status).toBe('ready');
+    expect(finished.autoEditor?.outputs[0]).toMatchObject({
+      storage: 'cloud',
+      videoUrl: '/api/cloud/media/proj/editor/masters/master.mp4',
+      bytes: 12_345,
+    });
     expect(finished.workflow?.jobs[0].status).toBe('completed');
+    expect(finished.workflow?.jobs[0].detail).toContain('lưu master bền vững');
+
+    const samePlan = createAutoEditorPlan(finished);
+    expect(samePlan.autoEditor?.outputs[0].videoUrl).toContain('/api/cloud/media/');
+
+    const changedPlan = createAutoEditorPlan(updateAutoEditorSettings(samePlan, { colorPreset: 'warm' }));
+    expect(changedPlan.autoEditor?.outputs[0].videoUrl).toBeUndefined();
+    expect(changedPlan.autoEditor?.outputs[0].storage).toBeUndefined();
   });
 
   it('khóa đường render master cho tới khi AI Supervisor đã quét', () => {
