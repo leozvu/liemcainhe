@@ -67,7 +67,9 @@ const AUTH_SESSION_COOKIE = '__Host-egoric_session';
 const AUTH_DEV_SESSION_COOKIE = 'egoric_session';
 const AUTH_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const AUTH_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const AUTH_PASSWORD_ITERATIONS = 210_000;
+// The Cloudflare Workers Web Crypto runtime rejects PBKDF2 counts above 100,000.
+// Keep the value explicit because it is persisted with every password hash.
+const AUTH_PASSWORD_ITERATIONS = 100_000;
 const AUTH_MAX_FAILED_LOGINS = 8;
 const AUTH_LOCK_MS = 15 * 60 * 1000;
 

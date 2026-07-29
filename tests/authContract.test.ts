@@ -25,7 +25,12 @@ describe('Egoric team authentication contract', () => {
     expect(migrationSource).not.toMatch(/password\s+TEXT/i);
     expect(workerSource).toContain("name: 'PBKDF2'");
     expect(workerSource).toContain("hash: 'SHA-256'");
-    expect(workerSource).toContain('AUTH_PASSWORD_ITERATIONS = 210_000');
+    expect(workerSource).toContain('AUTH_PASSWORD_ITERATIONS = 100_000');
+  });
+
+  it('keeps PBKDF2 within the Cloudflare Workers runtime ceiling', () => {
+    const iterations = Number(workerSource.match(/AUTH_PASSWORD_ITERATIONS = ([\d_]+)/)?.[1].replaceAll('_', ''));
+    expect(iterations).toBe(100_000);
   });
 
   it('issues a hardened, server-only session cookie', () => {
