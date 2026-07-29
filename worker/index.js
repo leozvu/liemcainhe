@@ -649,9 +649,9 @@ async function saveMediaMetadata(env, input) {
 }
 
 async function handleCloudApi(request, env, url) {
-  if (!env.DB || !env.MEDIA) return json({ error: 'Cloud workspace chưa được cấp D1/R2.' }, 503);
+  if (!env.DB) return json({ error: 'Cloud workspace chưa được cấp D1.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để đồng bộ dự án.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để đồng bộ dự án.' }, 401);
 
   const projectMatch = url.pathname.match(/^\/api\/cloud\/projects\/([^/]+)$/);
   if (url.pathname === '/api/cloud/projects' && request.method === 'GET') {
@@ -696,8 +696,10 @@ async function handleCloudApi(request, env, url) {
         env.DB.prepare('DELETE FROM egoric_review_notes WHERE owner_email = ? AND project_id = ?').bind(email, projectId),
         env.DB.prepare('DELETE FROM egoric_stage_approvals WHERE owner_email = ? AND project_id = ?').bind(email, projectId),
       ]);
-      const owner = await hashOwner(email);
-      await deleteMediaPrefix(env.MEDIA, `${owner}/${projectId}/`);
+      if (env.MEDIA) {
+        const owner = await hashOwner(email);
+        await deleteMediaPrefix(env.MEDIA, `${owner}/${projectId}/`);
+      }
       return json({ deleted: true });
     }
   }
@@ -883,6 +885,10 @@ async function handleCloudApi(request, env, url) {
 
     if (statements.length) await env.DB.batch(statements);
     return json({ written: statements.length });
+  }
+
+  if (url.pathname.startsWith('/api/cloud/media') && !env.MEDIA) {
+    return json({ error: 'Kho media R2 chưa được bật. Dữ liệu chiến dịch và dự án vẫn được lưu bằng D1.' }, 503);
   }
 
   if (url.pathname === '/api/cloud/media/import' && request.method === 'POST') {
