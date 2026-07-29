@@ -7,6 +7,7 @@ import {
 } from '../services/content/contentAxes';
 import { ARTICLE_LAYOUTS } from '../services/content/articleHtmlService';
 import { PUBLISH_CHANNELS } from '../services/content/publishChannels';
+import { CREATIVE_LENSES } from '../services/content/creativeDirectionService';
 import {
   APPROACH_COPY,
   AUDIENCE_COPY,
@@ -14,6 +15,7 @@ import {
   LAYOUT_COPY,
   VOICE_COPY,
   localizeAxisOptions,
+  localizeCreativeLens,
   localizePublishChannel,
 } from '../components/StageContent/contentCopy';
 import { translate } from '../services/i18n';
@@ -48,5 +50,19 @@ describe('Content Studio song ngữ', () => {
     expect(localized.fields.map((field) => field.key)).toEqual(source.fields.map((field) => field.key));
     expect(localized.steps[0]).toContain('developers.facebook.com');
     expect(localizePublishChannel(source, 'vi')).toBe(source);
+  });
+
+  it('dịch nhãn lăng kính nhưng giữ nguyên ID và directive đưa vào prompt', () => {
+    const localized = CREATIVE_LENSES.map((lens) => localizeCreativeLens(lens, 'en'));
+
+    expect(localized.map((lens) => lens.key)).toEqual(CREATIVE_LENSES.map((lens) => lens.key));
+    expect(localized.flatMap((lens) => lens.options.map((option) => option.id))).toEqual(
+      CREATIVE_LENSES.flatMap((lens) => lens.options.map((option) => option.id)),
+    );
+    expect(localized.flatMap((lens) => lens.options.map((option) => option.directive))).toEqual(
+      CREATIVE_LENSES.flatMap((lens) => lens.options.map((option) => option.directive)),
+    );
+    expect(localized[0].label).toBe('Opening mechanism');
+    expect(localized[0].options[0].label).toBe('Immediate benefit');
   });
 });

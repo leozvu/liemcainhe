@@ -18,13 +18,18 @@ import {
 import {
   CREATIVE_LENSES,
   MAX_ACTIVE_LENSES,
-  describeCreativeDirection,
+  getCreativeLens,
   getCreativeLensOption,
   suggestCreativeDirections,
   updateDirectionSelection,
 } from '../../services/content/creativeDirectionService';
 import { useLocale } from '../../contexts/LocaleContext';
 import { TranslationKey } from '../../services/i18n';
+import {
+  localizeCreativeDirection,
+  localizeCreativeLens,
+  localizeCreativeLensOption,
+} from './contentCopy';
 
 interface Props {
   brief: ContentBrief;
@@ -38,7 +43,7 @@ const INTENSITY_OPTIONS: Array<{ value: CreativeIntensity; label: TranslationKey
 ];
 
 const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const [showSuggestions, setShowSuggestions] = useState(!brief.creativeDirection);
   const [error, setError] = useState<string | null>(null);
   const suggestions = useMemo(
@@ -46,6 +51,11 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
     [brief.topic, brief.intent, brief.approach, brief.audience],
   );
   const direction = brief.creativeDirection;
+  const displayDirection = direction ? localizeCreativeDirection(direction, locale) : undefined;
+  const displayLenses = useMemo(
+    () => CREATIVE_LENSES.map((lens) => localizeCreativeLens(lens, locale)),
+    [locale],
+  );
 
   const chooseDirection = (value: CreativeDirection) => {
     setError(null);
@@ -128,6 +138,7 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
           <div className="mt-4 grid gap-3 xl:grid-cols-3">
             {suggestions.map((suggestion) => {
               const selected = direction?.id === suggestion.id;
+              const displaySuggestion = localizeCreativeDirection(suggestion, locale);
               return (
                 <article
                   key={suggestion.id}
@@ -139,8 +150,8 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-white">{suggestion.name}</h3>
-                      <p className="mt-1.5 text-xs leading-5 text-zinc-400">{suggestion.promise}</p>
+                      <h3 className="text-sm font-semibold text-white">{displaySuggestion.name}</h3>
+                      <p className="mt-1.5 text-xs leading-5 text-zinc-400">{displaySuggestion.promise}</p>
                     </div>
                     {selected && (
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-200 text-slate-950" aria-label={t('content.creative.selectedAria')}>
@@ -148,11 +159,15 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
                       </span>
                     )}
                   </div>
-                  <p className="mt-3 text-[11px] leading-5 text-zinc-500">{suggestion.rationale}</p>
+                  <p className="mt-3 text-[11px] leading-5 text-zinc-500">{displaySuggestion.rationale}</p>
                   <div className="mt-4 flex flex-wrap gap-1.5">
                     {suggestion.selections.map((selection) => (
                       <span key={selection.lens} className="eg-chip border-white/[.08] bg-white/[.025] text-zinc-400">
-                        {getCreativeLensOption(selection).label}
+                        {localizeCreativeLensOption(
+                          getCreativeLens(selection.lens),
+                          getCreativeLensOption(selection),
+                          locale,
+                        ).label}
                       </span>
                     ))}
                   </div>
@@ -177,9 +192,9 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="eg-kicker">{t('content.creative.locked')}</div>
-              <h3 className="mt-1.5 text-lg font-semibold text-white">{direction.name}</h3>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-400">{direction.promise}</p>
-              <p className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-600">{direction.rationale}</p>
+              <h3 className="mt-1.5 text-lg font-semibold text-white">{displayDirection?.name}</h3>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-400">{displayDirection?.promise}</p>
+              <p className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-600">{displayDirection?.rationale}</p>
             </div>
             <span className="eg-chip self-start border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100">
               <ShieldCheck className="h-3 w-3" aria-hidden="true" />
@@ -191,7 +206,14 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
             <div className="rounded-2xl border border-white/[.07] bg-black/15 p-4">
               <div className="eg-kicker">{t('content.creative.formula')}</div>
               <p className="mt-2 text-xs leading-6 text-zinc-300">
-                {describeCreativeDirection(direction)}
+                {direction.selections
+                  .slice(0, MAX_ACTIVE_LENSES)
+                  .map((selection) => localizeCreativeLensOption(
+                    getCreativeLens(selection.lens),
+                    getCreativeLensOption(selection),
+                    locale,
+                  ).label)
+                  .join(' · ')}
               </p>
             </div>
             <label className="block rounded-2xl border border-white/[.07] bg-black/15 p-4">
@@ -226,9 +248,11 @@ const CreativeDirectionPanel: React.FC<Props> = ({ brief, onChange }) => {
                 </div>
               )}
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {CREATIVE_LENSES.map((lens) => {
+                {displayLenses.map((lens) => {
                   const selected = direction.selections.find((item) => item.lens === lens.key);
-                  const current = selected ? getCreativeLensOption(selected) : undefined;
+                  const current = selected
+                    ? localizeCreativeLensOption(lens, getCreativeLensOption(selected), locale)
+                    : undefined;
                   return (
                     <label key={lens.key} className={`block rounded-xl border p-3 ${selected ? 'border-cyan-200/20 bg-cyan-200/[.035]' : 'border-white/[.06] bg-black/10'}`}>
                       <span className="text-xs font-semibold text-zinc-300">{lens.label}</span>
