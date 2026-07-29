@@ -35,6 +35,7 @@ lerna-debug.log*
 
 # Runtime caches
 .cache/
+.wrangler/
 .parcel-cache/
 .vite/
 .turbo/
