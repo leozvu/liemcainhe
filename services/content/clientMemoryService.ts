@@ -5,6 +5,7 @@ import {
   SavedArticle,
   isQualityReviewRecord,
 } from '../../types/content';
+import { AppLocale } from '../i18n';
 import { PublishLedgerEntry, fingerprintPost } from './publishLedgerService';
 import { CHANNEL_LIMITS, toPostText } from './publishService';
 import { engagementRate } from './insightsService';
@@ -230,23 +231,31 @@ export const buildMemoryPromptContext = (memory: ClientMemory): string => {
 };
 
 /** Một dòng tóm tắt để hiện trong giao diện. */
-export const describeMemory = (memory: ClientMemory): string => {
+export const describeMemory = (memory: ClientMemory, locale: AppLocale = 'vi'): string => {
   if (!hasMemory(memory)) {
     if (memory.recordedDecisionCount) {
-      return `Đã ghi nhận ${memory.recordedDecisionCount} quyết định nhưng chưa có mẫu đủ chất lượng để học.`;
+      return locale === 'en'
+        ? `${memory.recordedDecisionCount} decisions recorded, but none are high-signal enough to learn from yet.`
+        : `Đã ghi nhận ${memory.recordedDecisionCount} quyết định nhưng chưa có mẫu đủ chất lượng để học.`;
     }
-    return 'Chưa có bài nào được duyệt để học.';
+    return locale === 'en' ? 'No approved articles to learn from yet.' : 'Chưa có bài nào được duyệt để học.';
   }
 
   const parts: string[] = [];
-  if (memory.approvedCount) parts.push(`học từ ${memory.approvedCount} bài đã duyệt`);
-  if (memory.rejectedCount) parts.push(`${memory.rejectedCount} lần bị yêu cầu sửa`);
+  if (memory.approvedCount) {
+    parts.push(locale === 'en' ? `${memory.approvedCount} approved articles` : `học từ ${memory.approvedCount} bài đã duyệt`);
+  }
+  if (memory.rejectedCount) {
+    parts.push(locale === 'en' ? `${memory.rejectedCount} change requests` : `${memory.rejectedCount} lần bị yêu cầu sửa`);
+  }
   if (memory.excludedDecisionCount) {
-    parts.push(`${memory.excludedDecisionCount} quyết định không đủ tín hiệu đã được loại`);
+    parts.push(locale === 'en'
+      ? `${memory.excludedDecisionCount} low-signal decisions excluded`
+      : `${memory.excludedDecisionCount} quyết định không đủ tín hiệu đã được loại`);
   }
 
   const measured = memory.approved.filter((item) => item.engagementRate !== undefined).length;
-  if (measured) parts.push(`${measured} bài có số liệu hiệu quả`);
+  if (measured) parts.push(locale === 'en' ? `${measured} with performance data` : `${measured} bài có số liệu hiệu quả`);
 
-  return `Đang ${parts.join(', ')}.`;
+  return locale === 'en' ? `Learning from ${parts.join(', ')}.` : `Đang ${parts.join(', ')}.`;
 };

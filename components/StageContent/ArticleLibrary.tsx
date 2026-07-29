@@ -21,6 +21,7 @@ import { getPublishChannel } from '../../services/content/publishChannels';
 import { getPublishSecret } from '../../services/credentialVault';
 import { listAccounts } from '../../services/content/managedAccountService';
 import { WORKSPACE_SYNC_APPLIED_EVENT, WorkspaceSyncAppliedDetail } from '../../services/workspaceSyncCoordinatorService';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   /** Bài đang mở, để lưu vào thư viện. Không có thì chỉ xem lại bài cũ. */
@@ -53,6 +54,7 @@ const ArticleLibrary: React.FC<Props> = ({
   onLoad,
   onReviewChange,
 }) => {
+  const { locale, localeTag, t } = useLocale();
   const [articles, setArticles] = useState<SavedArticle[]>([]);
   const [ledger, setLedger] = useState<PublishLedgerEntry[]>([]);
   const [query, setQuery] = useState('');
@@ -103,8 +105,8 @@ const ArticleLibrary: React.FC<Props> = ({
       onReviewChange?.(saved.review?.decision);
       setNotice(
         compliance && !compliance.passed
-          ? `Đã lưu “${saved.title}”, nhưng bài đang vi phạm Brand Kit nên bàn duyệt sẽ chặn.`
-          : `Đã lưu “${saved.title}” vào thư viện. Sang Trung tâm vận hành → Bàn duyệt để duyệt.`,
+          ? t('content.library.savedBlocked', { title: saved.title })
+          : t('content.library.saved', { title: saved.title }),
       );
     } finally {
       setBusy(false);
@@ -144,7 +146,7 @@ const ArticleLibrary: React.FC<Props> = ({
         return account ? getPublishSecret(account.id) : {};
       });
       await refresh();
-      setNotice('Đã đọc lại số liệu của các bài đã đăng.');
+      setNotice(t('content.library.insightsRefreshed'));
     } finally {
       setBusy(false);
     }
@@ -160,9 +162,9 @@ const ArticleLibrary: React.FC<Props> = ({
     <section className="eg-panel mt-6 p-5" aria-labelledby="library-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="library-heading" className="text-sm font-semibold text-white">Thư viện bài viết</h2>
+          <h2 id="library-heading" className="text-sm font-semibold text-white">{t('content.library.title')}</h2>
           <p className="mt-1 text-xs text-zinc-500">
-            Dùng chung cho cả workspace. Bài cũ vẫn tìm lại được sau khi dự án đóng.
+            {t('content.library.description')}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -171,18 +173,18 @@ const ArticleLibrary: React.FC<Props> = ({
             className="eg-button-secondary min-h-11 px-4"
             onClick={() => void handleRefreshInsights()}
             disabled={busy}
-            title="Đọc lượt tiếp cận và tương tác của các bài đã đăng"
+            title={t('content.library.refreshInsightsTitle')}
           >
-            <BarChart3 className={`mr-2 inline h-4 w-4 ${busy ? 'animate-pulse' : ''}`} />Đọc số liệu
+            <BarChart3 className={`mr-2 inline h-4 w-4 ${busy ? 'animate-pulse' : ''}`} />{t('content.library.refreshInsights')}
           </button>
           <button
             type="button"
             className="eg-button-secondary min-h-11 px-4"
             onClick={() => void handleSave()}
             disabled={!draft || busy}
-            title={draft ? 'Lưu bài đang mở vào thư viện' : 'Chưa có bài nào để lưu'}
+            title={draft ? t('content.library.saveTitle') : t('content.library.noDraftTitle')}
           >
-            <Save className="mr-2 inline h-4 w-4" />Lưu bài đang mở
+            <Save className="mr-2 inline h-4 w-4" />{t('content.library.save')}
           </button>
         </div>
       </div>
@@ -200,18 +202,18 @@ const ArticleLibrary: React.FC<Props> = ({
             className="eg-input w-full pl-10"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Tìm theo tiêu đề, chủ đề, hashtag — không cần bỏ dấu"
-            aria-label="Tìm bài trong thư viện"
+            placeholder={t('content.library.searchPlaceholder')}
+            aria-label={t('content.library.searchAria')}
           />
         </div>
       )}
 
       {articles.length === 0 ? (
         <p className="mt-5 text-sm text-zinc-500">
-          Thư viện đang trống. Viết một bài rồi bấm <strong className="text-zinc-400">Lưu bài đang mở</strong>.
+          {t('content.library.empty')}
         </p>
       ) : visible.length === 0 ? (
-        <p className="mt-5 text-sm text-zinc-500">Không có bài nào khớp “{query}”.</p>
+        <p className="mt-5 text-sm text-zinc-500">{t('content.library.noMatch', { query })}</p>
       ) : (
         <ul className="mt-4 space-y-2">
           {visible.map((article) => {
@@ -222,8 +224,8 @@ const ArticleLibrary: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-zinc-200">{article.title}</div>
                     <div className="eg-mono mt-1 flex flex-wrap gap-x-3 text-[10px] uppercase tracking-wider text-zinc-600">
-                      <span>{new Date(article.updatedAt).toLocaleString('vi-VN')}</span>
-                      <span>{article.draft.sections.length} mục</span>
+                      <span>{new Date(article.updatedAt).toLocaleString(localeTag)}</span>
+                      <span>{t('content.library.sectionCount', { count: article.draft.sections.length })}</span>
                       {article.projectTitle && <span className="truncate">{article.projectTitle}</span>}
                     </div>
                     {published.length > 0 && (
@@ -241,7 +243,7 @@ const ArticleLibrary: React.FC<Props> = ({
                                   : 'text-zinc-600'
                               }`}
                             >
-                              {entry.insights ? describeInsights(entry.insights) : 'Chưa đọc số liệu'}
+                              {entry.insights ? describeInsights(entry.insights, locale) : t('content.library.noInsights')}
                             </span>
                           </div>
                         ))}
@@ -255,13 +257,13 @@ const ArticleLibrary: React.FC<Props> = ({
                       className="eg-button-secondary min-h-11 px-3 text-xs"
                       onClick={() => void handleOpen(article)}
                     >
-                      <FolderOpen className="mr-1.5 inline h-3.5 w-3.5" />Mở
+                      <FolderOpen className="mr-1.5 inline h-3.5 w-3.5" />{t('content.library.open')}
                     </button>
                     <button
                       type="button"
                       className="eg-icon-button flex h-11 w-11 items-center justify-center"
                       onClick={() => setConfirmingDelete(article.id)}
-                      aria-label={`Xoá ${article.title}`}
+                      aria-label={t('content.library.deleteAria', { title: article.title })}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -270,20 +272,20 @@ const ArticleLibrary: React.FC<Props> = ({
 
                 {confirmingDelete === article.id && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t eg-divider pt-3">
-                    <span className="text-xs text-zinc-300">Xoá khỏi thư viện? Không khôi phục được.</span>
+                    <span className="text-xs text-zinc-300">{t('content.library.deleteConfirm')}</span>
                     <button
                       type="button"
                       className="eg-button-secondary min-h-11 px-3 text-xs"
                       onClick={() => void handleDelete(article.id)}
                     >
-                      Xoá
+                      {t('content.library.delete')}
                     </button>
                     <button
                       type="button"
                       className="eg-button-secondary min-h-11 px-3 text-xs"
                       onClick={() => setConfirmingDelete(null)}
                     >
-                      Huỷ
+                      {t('common.cancel')}
                     </button>
                   </div>
                 )}

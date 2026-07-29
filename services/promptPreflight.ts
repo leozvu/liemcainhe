@@ -1,4 +1,5 @@
 import { BrandKit } from '../types';
+import { AppLocale } from './i18n';
 import { callChatApi } from './adapters/chatAdapter';
 import { normalizeBrandKit } from './brandKitService';
 import { parseModelJson } from './jsonResponse';
@@ -377,12 +378,35 @@ export const assertGenerationAllowed = (
 };
 
 /** Một dòng tóm tắt để hiện cạnh nút sinh. */
-export const describePreflight = (report: PreflightReport): string => {
-  if (report.verdict === 'pass') return 'Prompt ổn, sinh được.';
+export const describePreflight = (report: PreflightReport, locale: AppLocale = 'vi'): string => {
+  if (report.verdict === 'pass') return locale === 'en' ? 'Prompt passed and is ready to render.' : 'Prompt ổn, sinh được.';
   const blocking = report.issues.filter((issue) => issue.severity === 'block').length;
   if (blocking) {
     const saved = report.estimatedSavedUsd;
-    return `Chặn ${blocking} lỗi chắc chắn hỏng${saved ? `, tránh tốn khoảng ${saved} USD` : ''}.`;
+    return locale === 'en'
+      ? `Blocked ${blocking} definite ${blocking === 1 ? 'issue' : 'issues'}${saved ? `, avoiding about USD ${saved}` : ''}.`
+      : `Chặn ${blocking} lỗi chắc chắn hỏng${saved ? `, tránh tốn khoảng ${saved} USD` : ''}.`;
   }
-  return `${report.issues.length} điểm nên xem lại trước khi sinh.`;
+  return locale === 'en'
+    ? `${report.issues.length} ${report.issues.length === 1 ? 'item needs' : 'items need'} review before rendering.`
+    : `${report.issues.length} điểm nên xem lại trước khi sinh.`;
+};
+
+export const describePreflightIssue = (
+  issue: PreflightIssue,
+  locale: AppLocale = 'vi',
+): Pick<PreflightIssue, 'message' | 'fix'> => {
+  if (locale === 'vi' || issue.code === 'model-flagged') return issue;
+
+  const english: Partial<Record<PreflightIssueCode, Pick<PreflightIssue, 'message' | 'fix'>>> = {
+    empty: { message: 'The prompt is empty, so there is nothing to render.', fix: 'Describe the subject, setting, and lighting.' },
+    'too-vague': { message: 'The prompt is too short for the model to identify a clear subject.', fix: 'Describe the subject, setting, and lighting instead of atmosphere alone.' },
+    'text-in-image': { message: 'The prompt asks the image model to render text.', fix: 'Remove the text and add it later in the editor for accurate typography.' },
+    contradiction: { message: 'The prompt contains conflicting visual instructions.', fix: 'Remove one of the conflicting requirements.' },
+    'brand-forbidden': { message: 'The prompt contains a term prohibited by the client Brand Kit.', fix: 'Remove or replace the prohibited term before rendering.' },
+    'missing-reference': { message: 'This model requires a reference image, but none is attached.', fix: 'Attach a character or location reference, or choose a text-to-image model.' },
+    'unsupported-request': { message: 'The selected model does not support this request.', fix: 'Adjust the request or choose a compatible model.' },
+  };
+
+  return english[issue.code] ?? issue;
 };

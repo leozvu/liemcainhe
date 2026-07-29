@@ -1,6 +1,7 @@
 import React from 'react';
 import { Flame, Loader2, RefreshCw } from 'lucide-react';
 import { TrendItem, TrendSource } from '../../types/content';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   sources: TrendSource[];
@@ -22,18 +23,21 @@ const TrendBoard: React.FC<Props> = ({
   selectedTopic,
   onLoad,
   onPick,
-}) => (
+}) => {
+  const { t } = useLocale();
+
+  return (
   <section className="eg-panel p-5" aria-labelledby="trend-heading">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 id="trend-heading" className="text-sm font-semibold text-white">Bảng xu hướng</h2>
+        <h2 id="trend-heading" className="text-sm font-semibold text-white">{t('content.trend.title')}</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Nguồn không phản hồi sẽ tự chuyển sang nguồn khác.
+          {t('content.trend.description')}
         </p>
       </div>
       <div className="flex items-end gap-2">
         <label className="block">
-          <span className="eg-kicker">Nguồn</span>
+          <span className="eg-kicker">{t('content.trend.source')}</span>
           <select
             className="eg-input mt-2"
             value={sourceId}
@@ -42,25 +46,25 @@ const TrendBoard: React.FC<Props> = ({
             {sources.map((source) => (
               <option key={source.id} value={source.id}>
                 {source.label}
-                {source.kind === 'search' ? ' (tìm kiếm)' : ''}
+                {source.kind === 'search' ? t('content.trend.searchSuffix') : ''}
               </option>
             ))}
           </select>
         </label>
         <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={onLoad} disabled={loading}>
           {loading ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 inline h-4 w-4" />}
-          Lấy tin
+          {t('content.trend.load')}
         </button>
       </div>
     </div>
 
     {loading && trends.length === 0 && (
-      <p className="mt-5 text-sm text-zinc-500">Đang đọc bảng xu hướng…</p>
+      <p className="mt-5 text-sm text-zinc-500">{t('content.trend.loading')}</p>
     )}
 
     {!loading && trends.length === 0 && (
       <p className="mt-5 text-sm text-zinc-500">
-        Chưa có tin nào. Bấm <strong className="text-zinc-400">Lấy tin</strong> để đọc bảng xu hướng.
+        {t('content.trend.empty')}
       </p>
     )}
 
@@ -83,7 +87,7 @@ const TrendBoard: React.FC<Props> = ({
                 <span className={`eg-mono w-6 shrink-0 text-right text-[10px] ${active ? 'text-cyan-100/70' : 'text-zinc-600'}`}>
                   {trend.rank}
                 </span>
-                {trend.rank <= 3 && <Flame className="h-3.5 w-3.5 shrink-0 text-amber-300/70" aria-label="Đang nóng" />}
+                {trend.rank <= 3 && <Flame className="h-3.5 w-3.5 shrink-0 text-amber-300/70" aria-label={t('content.trend.hot')} />}
                 <span className="min-w-0 flex-1 truncate text-sm">{trend.title}</span>
                 <span className="eg-mono shrink-0 text-[9px] uppercase tracking-wider text-zinc-600">
                   {trend.sourceLabel}
@@ -95,6 +99,7 @@ const TrendBoard: React.FC<Props> = ({
       </ul>
     )}
   </section>
-);
+  );
+};
 
 export default TrendBoard;

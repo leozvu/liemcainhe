@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { ArticleDraft } from '../../types/content';
 import { estimateReadingMinutes } from '../../services/content/articleService';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   draft: ArticleDraft;
@@ -16,6 +17,7 @@ interface Props {
  * lại thời gian đọc và chạy lại vòng kiểm Brand Kit ở khối bên dưới.
  */
 const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
+  const { t } = useLocale();
   /** Ghi lại kèm tính lại thời gian đọc, để con số không bao giờ lệch nội dung. */
   const patch = (changes: Partial<ArticleDraft>) => {
     const next = { ...draft, ...changes };
@@ -36,7 +38,7 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
   return (
     <div className="space-y-5">
       <label className="block">
-        <span className="eg-kicker">Tiêu đề</span>
+        <span className="eg-kicker">{t('content.editor.headline')}</span>
         <input
           className="eg-input mt-2 w-full"
           value={draft.title}
@@ -45,7 +47,7 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
       </label>
 
       <label className="block">
-        <span className="eg-kicker">Sapo</span>
+        <span className="eg-kicker">{t('content.editor.standfirst')}</span>
         <textarea
           className="eg-input mt-2 min-h-[76px] w-full resize-y"
           value={draft.sapo}
@@ -55,9 +57,9 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
 
       <div>
         <div className="flex items-center justify-between">
-          <span className="eg-kicker">Các mục</span>
+          <span className="eg-kicker">{t('content.editor.sections')}</span>
           <button type="button" className="eg-button-secondary min-h-11 px-3 text-xs" onClick={addSection}>
-            <Plus className="mr-1.5 inline h-3.5 w-3.5" />Thêm mục
+            <Plus className="mr-1.5 inline h-3.5 w-3.5" />{t('content.editor.addSection')}
           </button>
         </div>
 
@@ -68,16 +70,16 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
                 <input
                   className="eg-input flex-1"
                   value={section.heading}
-                  placeholder="Tiêu đề mục"
+                  placeholder={t('content.editor.sectionTitle')}
                   onChange={(event) => patchSection(index, { heading: event.target.value })}
                 />
                 <button
                   type="button"
                   className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center"
                   onClick={() => removeSection(index)}
-                  aria-label={`Xoá mục ${index + 1}`}
+                  aria-label={t('content.editor.deleteSectionAria', { number: index + 1 })}
                   disabled={draft.sections.length <= 1}
-                  title={draft.sections.length <= 1 ? 'Bài phải còn ít nhất một mục' : 'Xoá mục này'}
+                  title={draft.sections.length <= 1 ? t('content.editor.keepOneSection') : t('content.editor.deleteSection')}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -85,7 +87,7 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
               <textarea
                 className="eg-input mt-2 min-h-[104px] w-full resize-y"
                 value={section.body}
-                placeholder="Nội dung mục"
+                placeholder={t('content.editor.sectionBody')}
                 onChange={(event) => patchSection(index, { body: event.target.value })}
               />
             </div>
@@ -95,7 +97,7 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
 
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block">
-          <span className="eg-kicker">Hashtag, cách nhau bằng dấu cách</span>
+          <span className="eg-kicker">{t('content.editor.hashtags')}</span>
           <input
             className="eg-input mt-2 w-full"
             value={draft.hashtags.join(' ')}
@@ -110,7 +112,7 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
           />
         </label>
         <label className="block">
-          <span className="eg-kicker">Tiêu đề cho tìm kiếm</span>
+          <span className="eg-kicker">{t('content.editor.seoTitle')}</span>
           <input
             className="eg-input mt-2 w-full"
             value={draft.seoTitle}
@@ -123,7 +125,7 @@ const ArticleEditor: React.FC<Props> = ({ draft, onChange }) => {
       </div>
 
       <label className="block">
-        <span className="eg-kicker">Mô tả cho tìm kiếm</span>
+        <span className="eg-kicker">{t('content.editor.seoDescription')}</span>
         <textarea
           className="eg-input mt-2 min-h-[64px] w-full resize-y"
           value={draft.metaDescription}

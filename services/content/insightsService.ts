@@ -1,4 +1,5 @@
 import { PostInsights, PublishChannelId, PublishCredentials } from '../../types/content';
+import { AppLocale, intlLocale } from '../i18n';
 
 /**
  * Thu số liệu hiệu quả của bài đã đăng.
@@ -193,18 +194,22 @@ export const engagementRate = (insights: PostInsights): number | undefined => {
 };
 
 /** Một dòng tóm tắt để hiện trong danh sách. */
-export const describeInsights = (insights: PostInsights): string => {
+export const describeInsights = (insights: PostInsights, locale: AppLocale = 'vi'): string => {
   if (insights.unavailable) return insights.unavailable;
 
   const parts: string[] = [];
-  if (insights.reach !== undefined) parts.push(`${insights.reach.toLocaleString('vi-VN')} người tiếp cận`);
-  else if (insights.impressions !== undefined) parts.push(`${insights.impressions.toLocaleString('vi-VN')} lượt hiển thị`);
+  const localeTag = intlLocale(locale);
+  if (insights.reach !== undefined) {
+    parts.push(`${insights.reach.toLocaleString(localeTag)} ${locale === 'en' ? 'reach' : 'người tiếp cận'}`);
+  } else if (insights.impressions !== undefined) {
+    parts.push(`${insights.impressions.toLocaleString(localeTag)} ${locale === 'en' ? 'impressions' : 'lượt hiển thị'}`);
+  }
 
   const engaged = totalEngagements(insights);
-  if (engaged !== undefined) parts.push(`${engaged.toLocaleString('vi-VN')} tương tác`);
+  if (engaged !== undefined) parts.push(`${engaged.toLocaleString(localeTag)} ${locale === 'en' ? 'engagements' : 'tương tác'}`);
 
   const rate = engagementRate(insights);
   if (rate !== undefined) parts.push(`${rate}%`);
 
-  return parts.length ? parts.join(' · ') : 'Chưa có số liệu';
+  return parts.length ? parts.join(' · ') : locale === 'en' ? 'No insights yet' : 'Chưa có số liệu';
 };

@@ -35,6 +35,8 @@ import {
 } from '../../services/content/managedAccountService';
 import { inspectBrandCompliance } from '../../services/brandKitService';
 import { getPublishSecret, setPublishSecret } from '../../services/credentialVault';
+import { useLocale } from '../../contexts/LocaleContext';
+import { localizePublishChannel } from './contentCopy';
 
 interface Props {
   draft: ArticleDraft;
@@ -63,6 +65,7 @@ interface Props {
  * kiệm được.
  */
 const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, clientId }) => {
+  const { locale, t } = useLocale();
   const [channelId, setChannelId] = useState<PublishChannelId>('facebook-page');
   const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -76,7 +79,11 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
   const [sending, setSending] = useState(false);
   const [outcomes, setOutcomes] = useState<AccountPublishOutcome[] | null>(null);
 
-  const channel = PUBLISH_CHANNELS.find((item) => item.id === channelId)!;
+  const localizedChannels = useMemo(
+    () => PUBLISH_CHANNELS.map((item) => localizePublishChannel(item, locale)),
+    [locale],
+  );
+  const channel = localizedChannels.find((item) => item.id === channelId)!;
   const limit = CHANNEL_LIMITS[channelId];
   const postText = toPostText(draft, limit);
 
@@ -175,7 +182,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
       setAdding(false);
       await reload();
     } catch (error) {
-      setFormError(error instanceof ManagedAccountError ? error.issues : ['Không thêm được tài khoản.']);
+      setFormError(error instanceof ManagedAccountError ? error.issues : [t('content.error.addAccount')]);
     }
   };
 
@@ -243,14 +250,13 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
 
   return (
     <section className="eg-panel mt-6 p-5" aria-labelledby="publish-heading">
-      <h2 id="publish-heading" className="text-sm font-semibold text-white">Đăng bài</h2>
+      <h2 id="publish-heading" className="text-sm font-semibold text-white">{t('content.publish.title')}</h2>
       <p className="mt-1.5 text-xs text-zinc-500">
-        Token chỉ nằm trong phiên trình duyệt này, không ghi ra đĩa và không lên cloud. Đóng tab là mất.
-        Danh sách tài khoản thì được lưu lại, chỉ token là không.
+        {t('content.publish.security')}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {PUBLISH_CHANNELS.map((item) => (
+        {localizedChannels.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -292,14 +298,14 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
 
       <div className="mt-5">
         <div className="flex items-center justify-between gap-3">
-          <div className="eg-kicker">Tài khoản {channel.label}</div>
+          <div className="eg-kicker">{t('content.publish.accounts', { channel: channel.label })}</div>
           <button
             type="button"
             className="min-h-11 text-xs font-medium text-cyan-200/80 hover:text-cyan-100"
             onClick={() => setAdding((v) => !v)}
             aria-expanded={adding}
           >
-            <Plus className="mr-1 inline h-3.5 w-3.5" />Thêm tài khoản
+            <Plus className="mr-1 inline h-3.5 w-3.5" />{t('content.publish.addAccount')}
           </button>
         </div>
 
@@ -307,16 +313,16 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
           <div className="mt-3 rounded-xl border border-white/[.07] bg-black/20 p-4">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block">
-                <span className="eg-kicker">Tên gọi</span>
+                <span className="eg-kicker">{t('content.publish.label')}</span>
                 <input
                   className="eg-input mt-2 w-full"
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
-                  placeholder="Fanpage Cà phê Hạnh — miền Nam"
+                  placeholder={t('content.publish.labelPlaceholder')}
                 />
               </label>
               <label className="block">
-                <span className="eg-kicker">{channel.fields.find((f) => f.key === 'accountId')?.label ?? 'ID trên nền tảng'}</span>
+                <span className="eg-kicker">{channel.fields.find((f) => f.key === 'accountId')?.label ?? t('content.publish.platformId')}</span>
                 <input
                   className="eg-input mt-2 w-full"
                   value={newExternalId}
@@ -332,10 +338,10 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
             )}
             <div className="mt-3 flex gap-2">
               <button type="button" className="eg-button-primary min-h-11 px-4 text-xs" onClick={() => void handleAdd()}>
-                Lưu tài khoản
+                {t('content.publish.saveAccount')}
               </button>
               <button type="button" className="eg-button-secondary min-h-11 px-4 text-xs" onClick={() => setAdding(false)}>
-                Huỷ
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -343,7 +349,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
 
         {channelAccounts.length === 0 ? (
           <p className="mt-3 rounded-xl border border-white/[.07] bg-black/20 px-4 py-3 text-xs leading-relaxed text-zinc-500">
-            Chưa có tài khoản {channel.label} nào. Thêm ít nhất một tài khoản để đăng được.
+            {t('content.publish.noAccounts', { channel: channel.label })}
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
@@ -360,7 +366,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                       className="mt-1 h-4 w-4 shrink-0 accent-cyan-300"
                       checked={isSelected}
                       disabled={!isUsable}
-                      aria-label={`Chọn ${account.label}`}
+                      aria-label={t('content.publish.selectAria', { label: account.label })}
                       onChange={(e) =>
                         setSelectedIds((previous) =>
                           e.target.checked
@@ -374,7 +380,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                         <span className="truncate text-sm font-medium text-zinc-100">{account.label}</span>
                         {!isUsable && (
                           <span className="shrink-0 rounded-md border border-white/10 px-1.5 text-[10px] text-zinc-500">
-                            {account.status === 'paused' ? 'tạm dừng' : 'không đăng được'}
+                            {account.status === 'paused' ? t('content.publish.paused') : t('content.publish.unavailable')}
                           </span>
                         )}
                       </div>
@@ -408,7 +414,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                     <button
                       type="button"
                       className="min-h-11 shrink-0 px-2 text-zinc-600 hover:text-rose-200"
-                      aria-label={`Gỡ ${account.label}`}
+                      aria-label={t('content.publish.removeAria', { label: account.label })}
                       onClick={() => void handleRemove(account.id)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -428,7 +434,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
           onClick={() => setShowSteps((v) => !v)}
           aria-expanded={showSteps}
         >
-          {showSteps ? 'Ẩn hướng dẫn lấy token' : `Lấy token ${channel.label} ở đâu?`}
+          {showSteps ? t('content.publish.hideTokenGuide') : t('content.publish.tokenGuide', { channel: channel.label })}
         </button>
 
         {showSteps && (
@@ -438,7 +444,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
             </ol>
 
             <div className="mt-4 border-t eg-divider pt-3">
-              <div className="eg-kicker">Điều kiện bắt buộc</div>
+              <div className="eg-kicker">{t('content.publish.requirements')}</div>
               <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs leading-relaxed text-zinc-400">
                 {channel.requirements.map((item) => <li key={item}>{item}</li>)}
               </ul>
@@ -457,7 +463,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
               rel="noreferrer noopener"
               className="mt-4 inline-flex min-h-11 items-center text-xs font-medium text-cyan-200/80 hover:text-cyan-100"
             >
-              Mở {channel.consoleUrl.replace('https://', '')}
+              {t('content.publish.openConsole', { host: channel.consoleUrl.replace('https://', '') })}
               <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
             </a>
           </div>
@@ -466,7 +472,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
 
       <div className="mt-5 border-t eg-divider pt-4">
         <div className="flex items-baseline justify-between">
-          <div className="eg-kicker">Nội dung sắp đăng</div>
+          <div className="eg-kicker">{t('content.publish.preview')}</div>
           <span className={`eg-mono text-[10px] ${postText.length > limit ? 'text-rose-300' : 'text-zinc-600'}`}>
             {postText.length}/{limit}
           </span>
@@ -491,8 +497,8 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
               <ShieldAlert className="h-4 w-4 shrink-0 text-rose-300" />
             )}
             <span className={`text-sm font-medium ${compliance.passed ? 'text-emerald-100' : 'text-rose-100'}`}>
-              Kiểm Brand Kit: {compliance.score}/100
-              {compliance.passed ? ' — đạt' : ' — chưa đạt, không đăng được'}
+              {t('content.publish.brandScore', { score: compliance.score })}
+              {compliance.passed ? t('content.publish.brandPassed') : t('content.publish.brandBlocked')}
             </span>
           </div>
 
@@ -508,7 +514,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
           )}
           {!compliance.passed && (
             <p className="mt-2 text-xs text-rose-100/70">
-              Sửa bài rồi viết lại, hoặc chỉnh Brand Kit nếu quy định đã thay đổi.
+              {t('content.publish.brandFix')}
             </p>
           )}
         </div>
@@ -531,19 +537,19 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
             <>
               <p className="font-medium text-amber-50">
                 {reviewDecision === 'changes-requested'
-                  ? 'Bàn duyệt yêu cầu sửa'
+                  ? t('content.publish.reviewChanges')
                   : reviewDecision === 'pending'
-                    ? 'Đang chờ duyệt'
-                    : 'Chưa qua bàn duyệt'}
+                    ? t('content.publish.reviewPending')
+                    : t('content.publish.reviewMissing')}
               </p>
               <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
                 {reviewDecision
-                  ? 'Mở Trung tâm vận hành → Bàn duyệt để xử lý.'
-                  : 'Lưu bài vào thư viện rồi duyệt ở Trung tâm vận hành → Bàn duyệt. Mọi bài đều phải qua bước này, kể cả kênh của Egoric.'}
+                  ? t('content.publish.reviewAction')
+                  : t('content.publish.reviewSaveFirst')}
               </p>
             </>
           ) : (
-            <p className="font-medium text-emerald-100">Đã duyệt, đăng được.</p>
+            <p className="font-medium text-emerald-100">{t('content.publish.reviewApproved')}</p>
           )}
         </div>
       </div>
@@ -552,7 +558,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
         <ul className="mt-3 space-y-1 text-xs text-amber-100/70">
           {missingByAccount.map((entry) => (
             <li key={entry.account.id}>
-              <strong>{entry.account.label}</strong> còn thiếu: {entry.missing.join(', ')}.
+              {t('content.publish.missingCredential', { label: entry.account.label, fields: entry.missing.join(', ') })}
             </li>
           ))}
         </ul>
@@ -573,20 +579,23 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
             }
           >
             <Send className="mr-2 inline h-4 w-4" />
-            Đăng lên {selected.length || 0} tài khoản
+            {t('content.publish.publishCount', { count: selected.length || 0 })}
           </button>
         ) : (
           <>
             <span className="text-xs text-zinc-300">
-              Đăng công khai lên {selected.length} tài khoản {channel.label}:{' '}
-              {selected.map((item) => item.label).join(', ')}. Thao tác này không rút lại được từ đây.
+              {t('content.publish.confirmMessage', {
+                count: selected.length,
+                channel: channel.label,
+                accounts: selected.map((item) => item.label).join(', '),
+              })}
             </span>
             <button type="button" className="eg-button-primary min-h-11 px-5" onClick={() => void handlePublish(false)} disabled={sending}>
               {sending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : null}
-              Xác nhận đăng
+              {t('content.publish.confirm')}
             </button>
             <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={() => setConfirming(false)} disabled={sending}>
-              Huỷ
+              {t('common.cancel')}
             </button>
           </>
         )}
@@ -623,8 +632,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                   <p className="mt-0.5 text-xs leading-relaxed opacity-90">
                     {isDuplicate && duplicate?.kind === 'indeterminate' ? (
                       <>
-                        Lần đăng trước chưa rõ kết quả. <strong>Bài có thể đã lên.</strong> Hãy mở{' '}
-                        {channel.label} kiểm tra trước khi đăng lại.
+                        {t('content.publish.indeterminate', { channel: channel.label })}
                       </>
                     ) : (
                       result.message
@@ -633,16 +641,19 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                       <>
                         {' '}
                         <a href={result.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-4">
-                          Xem bài
+                          {t('content.publish.viewPost')}
                         </a>
                       </>
                     )}
                   </p>
                   {row.statusChange && (
                     <p className="mt-2 rounded-lg border border-rose-300/25 bg-rose-500/[.07] px-3 py-2 text-xs leading-relaxed text-rose-100">
-                      {row.statusChange.reason} Tài khoản đã được đánh dấu{' '}
-                      <strong>{row.statusChange.to === 'revoked' ? 'bị thu hồi' : 'hết token'}</strong> và
-                      tạm thời không chọn để đăng được nữa.
+                      {locale === 'vi' ? `${row.statusChange.reason} ` : ''}
+                      {t('content.publish.statusChanged', {
+                        status: row.statusChange.to === 'revoked'
+                          ? t('content.publish.revoked')
+                          : t('content.publish.expired'),
+                      })}
                     </p>
                   )}
                   {isDuplicate && (
@@ -652,7 +663,7 @@ const PublishPanel: React.FC<Props> = ({ draft, brandKit, reviewDecision, client
                       onClick={() => void retryOne(row.managedAccountId)}
                       disabled={sending}
                     >
-                      Tôi đã kiểm tra, vẫn đăng
+                      {t('content.publish.retry')}
                     </button>
                   )}
                 </div>

@@ -58,6 +58,15 @@ import IllustrationPanel from './IllustrationPanel';
 import PublishPanel from './PublishPanel';
 import TrendBoard from './TrendBoard';
 import CreativeDirectionPanel from './CreativeDirectionPanel';
+import { useLocale } from '../../contexts/LocaleContext';
+import {
+  APPROACH_COPY,
+  AUDIENCE_COPY,
+  INTENT_COPY,
+  LAYOUT_COPY,
+  VOICE_COPY,
+  localizeAxisOptions,
+} from './contentCopy';
 
 interface Props {
   project: ProjectState;
@@ -77,6 +86,7 @@ const EMPTY_STUDIO_STATE: ContentStudioState = {
 };
 
 const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript }) => {
+  const { locale, t } = useLocale();
   /**
    * Nội dung đáng giữ nằm trong `project.contentStudio`, không phải state cục
    * bộ, để chuyển tab hay đóng app không mất bài. Ghi vào dự án là đủ vì App
@@ -110,6 +120,10 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
   const draft = saved?.draft ?? null;
   const bridge = saved?.bridge ?? null;
   const duration = (saved?.durationSeconds ?? 60) as ShortFilmDuration;
+  const intentOptions = useMemo(() => localizeAxisOptions(INTENT_OPTIONS, INTENT_COPY, t), [t]);
+  const approachOptions = useMemo(() => localizeAxisOptions(APPROACH_OPTIONS, APPROACH_COPY, t), [t]);
+  const voiceOptions = useMemo(() => localizeAxisOptions(VOICE_OPTIONS, VOICE_COPY, t), [t]);
+  const audienceOptions = useMemo(() => localizeAxisOptions(AUDIENCE_OPTIONS, AUDIENCE_COPY, t), [t]);
 
   /**
    * Mọi thay đổi đều tính từ `prev` chứ không từ biến trong closure.
@@ -162,7 +176,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
       draft: null,
       bridge: null,
     }));
-    setNotice('Đã cập nhật hướng sáng tạo. Hãy tạo lại bài viết hoặc phim ngắn.');
+    setNotice(t('content.notice.directionUpdated'));
   };
 
   const handleLoadTrends = async () => {
@@ -171,7 +185,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
     try {
       const items = await fetchTrendsWithFallback(sourceId, 12);
       setTrends(items);
-      if (!items.length) setError('Không nguồn nào phản hồi. Hãy thử lại sau ít phút.');
+      if (!items.length) setError(t('content.error.noSources'));
     } finally {
       setLoadingTrends(false);
     }
@@ -194,7 +208,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
     try {
       await task();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Có lỗi không xác định.');
+      setError(err instanceof Error ? err.message : t('common.unknownError'));
     } finally {
       setBusy(null);
     }
@@ -235,7 +249,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
             {
               title: brief.topic,
               sourceId: brief.origin?.sourceId ?? 'thu-cong',
-              sourceLabel: brief.origin?.sourceLabel ?? 'Tự nhập',
+              sourceLabel: brief.origin?.sourceLabel ?? t('content.manualSource'),
               category: 'tong_hop',
               rank: 1,
             },
@@ -253,13 +267,13 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
       language: seed.language,
       visualStyle: seed.visualStyle,
     });
-    setNotice('Đã đưa truyện sang Kịch bản. Dự án hiện tại đã được cập nhật.');
+    setNotice(t('content.notice.sentToScript'));
     onGoToScript?.();
   };
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(markdown);
-    setNotice('Đã chép bài viết dạng Markdown.');
+    setNotice(t('content.notice.markdownCopied'));
   };
 
   const safeName = (draft?.title || 'bai-viet').replace(/[\\/:*?"<>|]/g, '-');
@@ -298,11 +312,10 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
     <div className="eg-safe-scroll h-screen overflow-y-auto">
       <div className="mx-auto max-w-6xl px-6 py-8">
         <header className="mb-8">
-          <div className="eg-kicker">Xưởng nội dung</div>
-          <h1 className="eg-display mt-2 text-3xl font-semibold text-white">Bắt trend và viết bài</h1>
+          <div className="eg-kicker">{t('content.studioKicker')}</div>
+          <h1 className="eg-display mt-2 text-3xl font-semibold text-white">{t('content.title')}</h1>
           <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-            Chọn một chủ đề đang nóng, chỉnh bốn trục điều khiển rồi để hệ thống viết bài. Cùng chủ
-            đề đó có thể chuyển thẳng thành truyện cho Kịch bản.
+            {t('content.description')}
           </p>
         </header>
 
@@ -329,37 +342,37 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
         />
 
         <section className="eg-panel mt-6 p-5" aria-labelledby="brief-heading">
-          <h2 id="brief-heading" className="text-sm font-semibold text-white">Brief</h2>
+          <h2 id="brief-heading" className="text-sm font-semibold text-white">{t('content.brief.title')}</h2>
 
           <label className="mt-4 block">
-            <span className="eg-kicker">Chủ đề</span>
+            <span className="eg-kicker">{t('content.brief.topic')}</span>
             <input
               className="eg-input mt-2 w-full"
               value={brief.topic}
               onChange={(e) => patchBrief({ topic: e.target.value })}
-              placeholder="Chọn từ bảng xu hướng hoặc tự nhập"
+              placeholder={t('content.brief.topicPlaceholder')}
             />
           </label>
 
           <div className="mt-5 grid gap-5 md:grid-cols-2">
-            <AxisPicker label="Mục tiêu" options={INTENT_OPTIONS} value={brief.intent} onChange={(v) => patchBrief({ intent: v })} />
-            <AxisPicker label="Góc tiếp cận" options={APPROACH_OPTIONS} value={brief.approach} onChange={(v) => patchBrief({ approach: v })} />
-            <AxisPicker label="Giọng" options={VOICE_OPTIONS} value={brief.voice} onChange={(v) => patchBrief({ voice: v })} />
-            <AxisPicker label="Người đọc" options={AUDIENCE_OPTIONS} value={brief.audience} onChange={(v) => patchBrief({ audience: v })} />
+            <AxisPicker label={t('content.brief.intent')} options={intentOptions} value={brief.intent} onChange={(v) => patchBrief({ intent: v })} />
+            <AxisPicker label={t('content.brief.approach')} options={approachOptions} value={brief.approach} onChange={(v) => patchBrief({ approach: v })} />
+            <AxisPicker label={t('content.brief.voice')} options={voiceOptions} value={brief.voice} onChange={(v) => patchBrief({ voice: v })} />
+            <AxisPicker label={t('content.brief.audience')} options={audienceOptions} value={brief.audience} onChange={(v) => patchBrief({ audience: v })} />
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="eg-kicker">Từ khoá, cách nhau bằng dấu phẩy</span>
+              <span className="eg-kicker">{t('content.brief.keywords')}</span>
               <input
                 className="eg-input mt-2 w-full"
                 value={keywordText}
                 onChange={(e) => setKeywordText(e.target.value)}
-                placeholder="giá vàng, lãi suất"
+                placeholder={t('content.brief.keywordsPlaceholder')}
               />
             </label>
             <label className="block">
-              <span className="eg-kicker">Độ dài thân bài (chữ)</span>
+              <span className="eg-kicker">{t('content.brief.wordCount')}</span>
               <input
                 type="number"
                 min={300}
@@ -373,25 +386,25 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
           </div>
 
           <label className="mt-4 block">
-            <span className="eg-kicker">Ràng buộc riêng</span>
+            <span className="eg-kicker">{t('content.brief.constraints')}</span>
             <textarea
               className="eg-input mt-2 min-h-[72px] w-full resize-y"
               value={brief.notes ?? ''}
               onChange={(e) => patchBrief({ notes: e.target.value })}
-              placeholder="Ví dụ: không nhắc tên đối thủ, phải nêu chương trình khuyến mãi tháng này"
+              placeholder={t('content.brief.constraintsPlaceholder')}
             />
           </label>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button type="button" className="eg-button-primary min-h-11 px-5" onClick={() => void handleGenerateArticle()} disabled={!canGenerate}>
               {busy === 'article' ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 inline h-4 w-4" />}
-              Viết bài
+              {t('content.brief.write')}
             </button>
-            {!brief.topic.trim() && <span className="text-xs text-zinc-500">Cần có chủ đề trước đã.</span>}
+            {!brief.topic.trim() && <span className="text-xs text-zinc-500">{t('content.brief.topicRequired')}</span>}
             {memory && hasMemory(memory) && (
               <span className="inline-flex items-center gap-1.5 text-xs text-cyan-100/70">
                 <BrainCircuit className="h-3.5 w-3.5" />
-                {describeMemory(memory)}
+                {describeMemory(memory, locale)}
               </span>
             )}
           </div>
@@ -403,9 +416,9 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
           <section className="eg-panel mt-6 p-5" aria-labelledby="draft-heading">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 id="draft-heading" className="text-sm font-semibold text-white">Bài viết</h2>
+                <h2 id="draft-heading" className="text-sm font-semibold text-white">{t('content.article.title')}</h2>
                 <p className="eg-mono mt-1 text-[10px] uppercase tracking-wider text-zinc-500">
-                  {draft.sections.length} mục · đọc khoảng {draft.readingMinutes} phút
+                  {t('content.article.stats', { sections: draft.sections.length, minutes: draft.readingMinutes })}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -416,13 +429,13 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
                   aria-pressed={editing}
                 >
                   {editing ? <Eye className="mr-2 inline h-4 w-4" /> : <Pencil className="mr-2 inline h-4 w-4" />}
-                  {editing ? 'Xem bài' : 'Sửa bài'}
+                  {editing ? t('content.article.view') : t('content.article.edit')}
                 </button>
                 <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={() => void handleCopy()}>
-                  <Copy className="mr-2 inline h-4 w-4" />Chép Markdown
+                  <Copy className="mr-2 inline h-4 w-4" />{t('content.article.copyMarkdown')}
                 </button>
                 <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={handleDownload}>
-                  <Download className="mr-2 inline h-4 w-4" />Tải Markdown
+                  <Download className="mr-2 inline h-4 w-4" />{t('content.article.downloadMarkdown')}
                 </button>
               </div>
             </div>
@@ -465,7 +478,7 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
                   </article>
 
                   <div className="mt-5 border-t eg-divider pt-4">
-                    <div className="eg-kicker">Cho công cụ tìm kiếm</div>
+                    <div className="eg-kicker">{t('content.article.search')}</div>
                     <p className="mt-1.5 text-xs text-zinc-400"><strong className="text-zinc-300">{draft.seoTitle}</strong></p>
                     <p className="mt-1 text-xs text-zinc-500">{draft.metaDescription}</p>
                   </div>
@@ -474,33 +487,32 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
             </div>
 
             <div className="mt-5 border-t eg-divider pt-4">
-              <div className="eg-kicker">Xuất bản dạng trang web</div>
+              <div className="eg-kicker">{t('content.article.webPublish')}</div>
               <p className="mt-1.5 text-xs text-zinc-500">
-                Dùng để đăng lên web hoặc blog của khách, và để gửi khách duyệt. Màu và font lấy từ
-                Brand Kit của dự án.
+                {t('content.article.webPublishDetail')}
               </p>
               <div className="mt-3 flex flex-wrap items-end gap-3">
                 <label className="block">
-                  <span className="eg-kicker">Bố cục</span>
+                  <span className="eg-kicker">{t('content.article.layout')}</span>
                   <select
                     className="eg-input mt-2"
                     value={layout}
                     onChange={(e) => setLayout(e.target.value as ArticleLayout)}
                   >
                     {ARTICLE_LAYOUTS.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
+                        <option key={item.value} value={item.value}>{t(LAYOUT_COPY[item.value].label)}</option>
                     ))}
                   </select>
                 </label>
                 <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={handlePreviewHtml}>
-                  <ExternalLink className="mr-2 inline h-4 w-4" />Xem thử
+                  <ExternalLink className="mr-2 inline h-4 w-4" />{t('content.article.preview')}
                 </button>
                 <button type="button" className="eg-button-secondary min-h-11 px-4" onClick={handleDownloadHtml}>
-                  <Download className="mr-2 inline h-4 w-4" />Tải HTML
+                  <Download className="mr-2 inline h-4 w-4" />{t('content.article.downloadHtml')}
                 </button>
               </div>
               <p className="mt-2 text-xs text-zinc-500">
-                {ARTICLE_LAYOUTS.find((item) => item.value === layout)?.description}
+                {t(LAYOUT_COPY[layout].description)}
               </p>
             </div>
           </section>
@@ -537,54 +549,54 @@ const StageContent: React.FC<Props> = ({ project, updateProject, onGoToScript })
             patchStudio({ draft: article.draft, brief: article.brief });
             setReviewDecision(article.review?.decision);
             setEditing(false);
-            setNotice(`Đã mở “${article.title}” từ thư viện.`);
+            setNotice(t('content.notice.articleOpened', { title: article.title }));
           }}
         />
 
         <section className="eg-panel mt-6 p-5" aria-labelledby="bridge-heading">
-          <h2 id="bridge-heading" className="text-sm font-semibold text-white">Chuyển thành phim ngắn</h2>
+          <h2 id="bridge-heading" className="text-sm font-semibold text-white">{t('content.bridge.title')}</h2>
           <p className="mt-1.5 text-xs text-zinc-500">
             {draft
-              ? 'Sẽ dựa trên mạch của bài viết ở trên.'
-              : 'Chưa có bài viết thì vẫn chuyển thẳng từ chủ đề được.'}
+              ? t('content.bridge.fromArticle')
+              : t('content.bridge.fromTopic')}
           </p>
 
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="block">
-              <span className="eg-kicker">Thời lượng</span>
+              <span className="eg-kicker">{t('content.bridge.duration')}</span>
               <select
                 className="eg-input mt-2"
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value) as ShortFilmDuration)}
               >
-                {SHORT_FILM_DURATIONS.map((value) => <option key={value} value={value}>{value} giây</option>)}
+                {SHORT_FILM_DURATIONS.map((value) => <option key={value} value={value}>{t('content.bridge.seconds', { count: value })}</option>)}
               </select>
             </label>
             <button type="button" className="eg-button-secondary min-h-11 px-5" onClick={() => void handleBuildBridge()} disabled={!canGenerate}>
               {busy === 'bridge' ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 inline h-4 w-4" />}
-              Dựng truyện
+              {t('content.bridge.build')}
             </button>
           </div>
 
           {bridge && (
             <div className="mt-5 border-t eg-divider pt-5">
-              <div className="eg-kicker">Logline</div>
+              <div className="eg-kicker">{t('content.bridge.logline')}</div>
               <p className="mt-1.5 text-sm font-medium text-zinc-200">{bridge.logline}</p>
 
-              <div className="eg-kicker mt-4">Truyện</div>
+              <div className="eg-kicker mt-4">{t('content.bridge.story')}</div>
               <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{bridge.rawScript}</p>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="eg-chip">{bridge.suggestedDurationSeconds} giây</span>
+                <span className="eg-chip">{t('content.bridge.seconds', { count: bridge.suggestedDurationSeconds })}</span>
                 <span className="eg-chip">{bridge.suggestedVisualStyle}</span>
                 {bridge.characterHints.map((hint) => <span key={hint} className="eg-chip">{hint}</span>)}
               </div>
 
               <button type="button" className="eg-button-primary mt-5 min-h-11 px-5" onClick={handleSendToScript}>
-                Đưa sang Kịch bản<ArrowRight className="ml-2 inline h-4 w-4" />
+                {t('content.bridge.send')}<ArrowRight className="ml-2 inline h-4 w-4" />
               </button>
               <p className="mt-2 text-xs text-zinc-500">
-                Thao tác này ghi đè phần truyện của dự án <strong className="text-zinc-400">{project.title}</strong>.
+                {t('content.bridge.overwrite', { title: project.title })}
               </p>
             </div>
           )}
