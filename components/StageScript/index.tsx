@@ -15,6 +15,7 @@ import {
   patchProductionJob,
   setProductionJobStatus,
 } from '../../services/workflowService';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   project: ProjectState;
@@ -24,6 +25,7 @@ interface Props {
 type TabMode = 'story' | 'script';
 
 const StageScript: React.FC<Props> = ({ project, updateProject }) => {
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabMode>(project.scriptData ? 'script' : 'story');
   
   const [localScript, setLocalScript] = useState(project.rawScript);
@@ -74,7 +76,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     });
 
     if (!validation.valid) {
-      setError(validation.error);
+      setError(validation.error ? t(validation.error) : null);
       return;
     }
 
@@ -83,14 +85,14 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     const job = createProductionJob({
       kind: 'script-analysis',
       stage: 'script',
-      label: project.scriptData ? 'Phân tích lại kịch bản' : 'Phân tích kịch bản',
+      label: project.scriptData ? t('script.job.reanalyze') : t('script.job.analyze'),
       totalUnits: 2,
-      detail: 'Tách dữ liệu sản xuất và dựng danh sách cảnh quay.',
+      detail: t('script.job.detail'),
     });
     try {
       updateProject((previous) => {
         const protectedProject = previous.scriptData || previous.shots.length
-          ? createProjectCheckpoint(previous, 'Trước khi phân tích lại kịch bản')
+          ? createProjectCheckpoint(previous, t('script.job.checkpoint'))
           : previous;
         const running = setProductionJobStatus(addProductionJob(protectedProject, job), job.id, 'running');
         return {
@@ -109,7 +111,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       updateProject((previous) => patchProductionJob(previous, job.id, {
         progress: 50,
         completedUnits: 1,
-        detail: 'Đã tách cấu trúc. Đang dựng danh sách cảnh quay…',
+        detail: t('script.job.structureReady'),
       }));
       
       scriptData.targetDuration = finalDuration;
@@ -135,8 +137,9 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
 
     } catch (err: any) {
       console.error(err);
-      setError(`Lỗi: ${err.message || "Không thể kết nối AI"}`);
-      updateProject((previous) => setProductionJobStatus({ ...previous, isParsingScript: false }, job.id, 'failed', err.message || 'Không thể kết nối AI'));
+      const message = err.message || t('script.errorConnection');
+      setError(t('script.errorPrefix', { message }));
+      updateProject((previous) => setProductionJobStatus({ ...previous, isParsingScript: false }, job.id, 'failed', message));
     } finally {
       setIsProcessing(false);
     }
@@ -146,11 +149,11 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     const finalModel = migrateDeprecatedChatModelId(getFinalValue(localModel, customModelInput));
     
     if (!localScript.trim()) {
-      setError("Hãy nhập nội dung kịch bản làm cơ sở trước.");
+      setError(t('script.validation.continueBase'));
       return;
     }
     if (!finalModel) {
-      setError('Hãy chọn hoặc nhập tên mô hình.');
+      setError(t('script.validation.model'));
       return;
     }
 
@@ -177,7 +180,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setError(`AI không thể viết tiếp: ${err.message || "Lỗi kết nối"}`);
+      setError(t('script.errorContinue', { message: err.message || t('script.errorConnectionShort') }));
       try {
         const continuedContent = await continueScript(baseScript, localLanguage, finalModel);
         const newScript = baseScript + '\n\n' + continuedContent;
@@ -195,11 +198,11 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
     const finalModel = migrateDeprecatedChatModelId(getFinalValue(localModel, customModelInput));
     
     if (!localScript.trim()) {
-      setError("Hãy nhập nội dung kịch bản trước.");
+      setError(t('script.validation.script'));
       return;
     }
     if (!finalModel) {
-      setError('Hãy chọn hoặc nhập tên mô hình.');
+      setError(t('script.validation.model'));
       return;
     }
 
@@ -226,7 +229,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
       }
     } catch (err: any) {
       console.error(err);
-      setError(`AI không thể viết lại: ${err.message || "Lỗi kết nối"}`);
+      setError(t('script.errorRewrite', { message: err.message || t('script.errorConnectionShort') }));
       try {
         const rewrittenContent = await rewriteScript(baseScript, localLanguage, finalModel);
         setLocalScript(rewrittenContent);
@@ -362,7 +365,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject }) => {
   return (
     <div className="h-full bg-transparent relative z-10">
       {activeTab === 'story' ? (
-        <div className="flex h-full bg-slate-950/35 text-slate-200 backdrop-blur-sm">
+        <div className="flex h-full flex-col overflow-y-auto bg-slate-950/35 text-slate-200 backdrop-blur-sm md:flex-row md:overflow-hidden">
           <ConfigPanel
             title={localTitle}
             duration={localDuration}

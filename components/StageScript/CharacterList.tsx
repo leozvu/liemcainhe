@@ -1,7 +1,8 @@
 import React from 'react';
-import { Users, Edit2 } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { Character } from '../../types';
 import InlineEditor from './InlineEditor';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   characters: Character[];
@@ -20,10 +21,11 @@ const CharacterList: React.FC<Props> = ({
   onSave,
   onCancel
 }) => {
+  const { t } = useLocale();
   return (
     <section>
       <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-        <Users className="w-3 h-3" /> Danh sách nhân vật
+        <Users className="w-3 h-3" /> {t('script.characters')}
       </h3>
       <div className="space-y-3">
         {characters.map(c => (
@@ -42,10 +44,10 @@ const CharacterList: React.FC<Props> = ({
                   onChange={(val) => onEdit(c.id, val)}
                   onSave={() => onSave(c.id, editingPrompt)}
                   onCancel={onCancel}
-                  placeholder="Nhập mô tả hình ảnh nhân vật..."
+                  placeholder={t('script.characterPromptPlaceholder')}
                   rows={4}
                   mono={true}
-                  emptyText="Chưa có mô tả hình ảnh"
+                  emptyText={t('script.characterPromptEmpty')}
                 />
               </div>
             </div>

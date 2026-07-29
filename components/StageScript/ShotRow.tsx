@@ -3,6 +3,7 @@ import { Aperture, Edit2, Check, X, UserPlus } from 'lucide-react';
 import { Shot, Character, ScriptData } from '../../types';
 import InlineEditor from './InlineEditor';
 import { STYLES } from './constants';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   shot: Shot;
@@ -47,15 +48,16 @@ const ShotRow: React.FC<Props> = ({
   onSaveAction,
   onCancelAction
 }) => {
+  const { t } = useLocale();
   // Chuyển mã cảnh quay thành số thứ tự cảnh chính hoặc cảnh phụ trong danh sách.
   const getShotDisplayNumber = () => {
     const idParts = shot.id.split('-').slice(1);
     if (idParts.length === 1) {
-      return `CẢNH ${String(idParts[0]).padStart(3, '0')}`;
+      return t('script.shotNumber', { number: String(idParts[0]).padStart(3, '0') });
     } else if (idParts.length === 2) {
-      return `CẢNH ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
+      return t('script.shotNumber', { number: `${String(idParts[0]).padStart(3, '0')}-${idParts[1]}` });
     } else {
-      return `CẢNH ${shotNumber.toString().padStart(3, '0')}`;
+      return t('script.shotNumber', { number: shotNumber.toString().padStart(3, '0') });
     }
   };
 
@@ -80,35 +82,37 @@ const ShotRow: React.FC<Props> = ({
         {editingShotActionId === shot.id ? (
           <div className="space-y-3 p-4 bg-slate-950/55 border border-white/10 rounded-2xl">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Mô tả hành động</label>
+              <label htmlFor={`shot-action-${shot.id}`} className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{t('script.actionDescription')}</label>
               <textarea
+                id={`shot-action-${shot.id}`}
                 value={editingShotActionText}
                 onChange={(e) => onEditAction(shot.id, e.target.value, editingShotDialogueText)}
                 className={STYLES.editor.textarea}
                 rows={3}
-                placeholder="Nhập mô tả hành động..."
+                placeholder={t('script.actionPlaceholder')}
               />
             </div>
             
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Lời thoại (tùy chọn)</label>
+              <label htmlFor={`shot-dialogue-${shot.id}`} className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{t('script.dialogueOptional')}</label>
               <textarea
+                id={`shot-dialogue-${shot.id}`}
                 value={editingShotDialogueText}
                 onChange={(e) => onEditAction(shot.id, editingShotActionText, e.target.value)}
                 className={`${STYLES.editor.textarea} ${STYLES.editor.serif}`}
                 rows={2}
-                placeholder="Nhập lời thoại, hoặc để trống nếu không có..."
+                placeholder={t('script.dialoguePlaceholder')}
               />
             </div>
             
             <div className="flex gap-2 pt-2 border-t border-white/10">
-              <button onClick={onSaveAction} className="px-3 py-1.5 bg-cyan-300 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1 hover:bg-cyan-200 transition-colors">
+              <button type="button" onClick={onSaveAction} className="min-h-11 px-3 py-1.5 bg-cyan-300 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1 hover:bg-cyan-200 transition-colors">
                 <Check className="w-3 h-3" />
-                Lưu
+                {t('script.save')}
               </button>
-              <button onClick={onCancelAction} className="px-3 py-1.5 bg-white/10 text-zinc-300 text-xs font-bold rounded-xl flex items-center gap-1 hover:bg-white/15 transition-colors">
+              <button type="button" onClick={onCancelAction} className="min-h-11 px-3 py-1.5 bg-white/10 text-zinc-300 text-xs font-bold rounded-xl flex items-center gap-1 hover:bg-white/15 transition-colors">
                 <X className="w-3 h-3" />
-                Hủy
+                {t('script.cancel')}
               </button>
             </div>
           </div>
@@ -120,8 +124,10 @@ const ShotRow: React.FC<Props> = ({
               </p>
               <button
                 onClick={() => onEditAction(shot.id, shot.actionSummary, shot.dialogue || '')}
-                className="opacity-0 group-hover/action:opacity-100 transition-opacity p-1.5 hover:bg-white/10 rounded-xl flex-shrink-0"
-                title="Chỉnh sửa hành động và lời thoại"
+                type="button"
+                className="inline-flex h-11 w-11 items-center justify-center opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100 rounded-xl flex-shrink-0"
+                title={t('script.editAction')}
+                aria-label={t('script.editAction')}
               >
                 <Edit2 className="w-3.5 h-3.5 text-zinc-500 hover:text-white" />
               </button>
@@ -137,11 +143,13 @@ const ShotRow: React.FC<Props> = ({
         
         <div className="pt-2">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Nhân vật</span>
+            <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">{t('script.shotCharacters')}</span>
             <button
               onClick={() => onEditCharacters(shot.id)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/10 rounded-xl"
-              title="Chỉnh sửa danh sách nhân vật"
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100 rounded-xl"
+              title={t('script.editCharacters')}
+              aria-label={t('script.editCharacters')}
             >
               <Edit2 className="w-3 h-3 text-zinc-500 hover:text-white" />
             </button>
@@ -150,10 +158,10 @@ const ShotRow: React.FC<Props> = ({
           {editingShotCharactersId === shot.id ? (
             <div className="space-y-3 p-3 bg-slate-950/55 border border-white/10 rounded-2xl">
               <div className="space-y-2">
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Nhân vật trong cảnh</div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('script.charactersInShot')}</div>
                 <div className="flex flex-wrap gap-2">
                   {shot.characters.length === 0 ? (
-                    <span className="text-xs text-zinc-600 italic">Không có nhân vật</span>
+                    <span className="text-xs text-zinc-600 italic">{t('script.noCharacters')}</span>
                   ) : (
                     shot.characters.map(cid => {
                       const char = scriptData?.characters.find(c => c.id === cid);
@@ -162,8 +170,10 @@ const ShotRow: React.FC<Props> = ({
                           <span>{char.name}</span>
                           <button
                             onClick={() => onRemoveCharacter(shot.id, cid)}
-                            className="ml-1 hover:text-red-400 transition-colors"
-                            title="Gỡ nhân vật"
+                            type="button"
+                            className="ml-1 inline-flex h-11 w-11 items-center justify-center hover:text-red-400 transition-colors"
+                            title={t('script.removeCharacter')}
+                            aria-label={`${t('script.removeCharacter')}: ${char.name}`}
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -175,23 +185,24 @@ const ShotRow: React.FC<Props> = ({
               </div>
               
               <div className="space-y-2">
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Thêm nhân vật</div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('script.addCharacter')}</div>
                 <div className="flex flex-wrap gap-2">
                   {scriptData?.characters
                     .filter(char => !shot.characters.includes(char.id))
                     .map(char => (
                       <button
                         key={char.id}
+                        type="button"
                         onClick={() => onAddCharacter(shot.id, char.id)}
-                        className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-slate-400 border border-white/10 px-2 py-1 rounded-full bg-white/[0.04] hover:bg-cyan-300/10 hover:text-cyan-100 hover:border-cyan-200/25 transition-colors"
-                        title="Thêm nhân vật"
+                        className="min-h-11 flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-slate-400 border border-white/10 px-3 py-1 rounded-full bg-white/[0.04] hover:bg-cyan-300/10 hover:text-cyan-100 hover:border-cyan-200/25 transition-colors"
+                        title={t('script.addCharacter')}
                       >
                         <UserPlus className="w-3 h-3" />
                         <span>{char.name}</span>
                       </button>
                     ))}
                   {scriptData?.characters.filter(char => !shot.characters.includes(char.id)).length === 0 && (
-                    <span className="text-xs text-zinc-600 italic">Đã thêm tất cả nhân vật</span>
+                    <span className="text-xs text-zinc-600 italic">{t('script.allCharactersAdded')}</span>
                   )}
                 </div>
               </div>
@@ -199,17 +210,18 @@ const ShotRow: React.FC<Props> = ({
               <div className="pt-2 border-t border-white/10">
                 <button
                   onClick={onCloseCharactersEdit}
-                  className="px-3 py-1.5 bg-cyan-300/10 text-cyan-100 text-xs font-bold rounded-xl flex items-center gap-1 hover:bg-cyan-300/15 transition-colors border border-cyan-200/15"
+                  type="button"
+                  className="min-h-11 px-3 py-1.5 bg-cyan-300/10 text-cyan-100 text-xs font-bold rounded-xl flex items-center gap-1 hover:bg-cyan-300/15 transition-colors border border-cyan-200/15"
                 >
                   <Check className="w-3 h-3" />
-                  Hoàn tất
+                  {t('script.done')}
                 </button>
               </div>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
               {shot.characters.length === 0 ? (
-                <span className="text-[10px] text-zinc-700 italic">Không có nhân vật</span>
+                <span className="text-[10px] text-zinc-700 italic">{t('script.noCharacters')}</span>
               ) : (
                 shot.characters.map(cid => {
                   const char = scriptData?.characters.find(c => c.id === cid);
@@ -227,13 +239,15 @@ const ShotRow: React.FC<Props> = ({
         <div className="xl:hidden pt-4 border-t border-white/10">
           <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2 flex items-center gap-2 justify-between">
             <span className="flex items-center gap-2">
-              <Aperture className="w-3 h-3" /> Câu lệnh hình ảnh
+              <Aperture className="w-3 h-3" /> {t('script.visualPrompt')}
             </span>
             {editingShotId !== shot.id && (
               <button
                 onClick={() => onEditPrompt(shot.id, shot.keyframes[0]?.visualPrompt || '')}
-                className="p-1.5 bg-white/10 hover:bg-white/15 rounded-xl transition-colors"
-                title="Chỉnh sửa câu lệnh"
+                type="button"
+                className="inline-flex h-11 w-11 items-center justify-center bg-white/10 hover:bg-white/15 rounded-xl transition-colors"
+                title={t('script.editPrompt')}
+                aria-label={t('script.editPrompt')}
               >
                 <Edit2 className="w-3 h-3 text-zinc-400" />
               </button>
@@ -246,7 +260,7 @@ const ShotRow: React.FC<Props> = ({
             onChange={(val) => onEditPrompt(shot.id, val)}
             onSave={onSavePrompt}
             onCancel={onCancelPrompt}
-            placeholder="Nhập câu lệnh hình ảnh..."
+            placeholder={t('script.promptPlaceholder')}
             rows={4}
             mono={true}
             showEditButton={false}
@@ -257,13 +271,15 @@ const ShotRow: React.FC<Props> = ({
       <div className="w-64 hidden xl:block pl-6 border-l border-white/10">
         <div className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest mb-2 flex items-center gap-2 justify-between">
           <span className="flex items-center gap-2">
-            <Aperture className="w-3 h-3" /> Câu lệnh hình ảnh
+            <Aperture className="w-3 h-3" /> {t('script.visualPrompt')}
           </span>
           {editingShotId !== shot.id && (
             <button
               onClick={() => onEditPrompt(shot.id, shot.keyframes[0]?.visualPrompt || '')}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/10 rounded-xl"
-              title="Chỉnh sửa câu lệnh"
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100 rounded-xl"
+              title={t('script.editPrompt')}
+              aria-label={t('script.editPrompt')}
             >
               <Edit2 className="w-3 h-3 text-zinc-500 hover:text-white" />
             </button>
@@ -276,7 +292,7 @@ const ShotRow: React.FC<Props> = ({
           onChange={(val) => onEditPrompt(shot.id, val)}
           onSave={onSavePrompt}
           onCancel={onCancelPrompt}
-          placeholder="Nhập câu lệnh hình ảnh..."
+          placeholder={t('script.promptPlaceholder')}
           rows={6}
           mono={true}
           showEditButton={false}

@@ -1,16 +1,18 @@
 import React from 'react';
 import { MapPin } from 'lucide-react';
 import { Scene } from '../../types';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   scenes: Scene[];
 }
 
 const SceneList: React.FC<Props> = ({ scenes }) => {
+  const { t } = useLocale();
   return (
     <section>
       <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-        <MapPin className="w-3 h-3" /> Danh sách bối cảnh
+        <MapPin className="w-3 h-3" /> {t('script.locations')}
       </h3>
       <div className="space-y-1">
         {scenes.map((s) => (

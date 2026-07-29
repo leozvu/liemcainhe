@@ -1,4 +1,5 @@
 import { Scene } from '../../types';
+import { TranslationKey } from '../../services/i18n';
 
 export const getFinalValue = (selected: string, customInput: string): string => {
   return selected === 'custom' ? customInput : selected;
@@ -29,18 +30,18 @@ export const validateConfig = (config: {
   duration: string;
   model: string;
   visualStyle: string;
-}): { valid: boolean; error: string | null } => {
+}): { valid: boolean; error: TranslationKey | null } => {
   if (!config.script.trim()) {
-    return { valid: false, error: 'Hãy nhập nội dung kịch bản.' };
+    return { valid: false, error: 'script.validation.script' };
   }
   if (!config.duration) {
-    return { valid: false, error: 'Hãy chọn thời lượng mục tiêu.' };
+    return { valid: false, error: 'script.validation.duration' };
   }
   if (!config.model) {
-    return { valid: false, error: 'Hãy chọn hoặc nhập tên mô hình.' };
+    return { valid: false, error: 'script.validation.model' };
   }
   if (!config.visualStyle) {
-    return { valid: false, error: 'Hãy chọn hoặc nhập phong cách hình ảnh.' };
+    return { valid: false, error: 'script.validation.style' };
   }
   return { valid: true, error: null };
 };

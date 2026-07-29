@@ -23,10 +23,11 @@ All shared interface copy lives in `services/i18n.ts`. Components consume it thr
 - API onboarding and the internal model gateway settings.
 - Pre-production Room, localized brief-readiness checks, deliverable handoff, and cost guardrails.
 - Campaign Zero runbook, evidence gates, telemetry, team clock, provider reconciliation, and paid-test preflight.
+- Script Studio setup, output-language selector, editor, AI states, storyboard breakdown, character casting, and visual-prompt controls.
 
 ## Next translation waves
 
-1. Content Studio, Script, Assets, Voice, Director, and Export stages.
+1. Content Studio, Assets, Voice, Director, and Export stages.
 2. Operations, review portals, cost dashboards, empty/error states, and confirmation dialogs.
 3. Public/legal/help copy plus automated UI coverage for every route.
 

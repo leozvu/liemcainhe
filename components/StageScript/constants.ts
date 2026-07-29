@@ -1,28 +1,36 @@
-export const DURATION_OPTIONS = [
-  { label: '30 giây (quảng cáo)', value: '30s' },
-  { label: '60 giây (phim giới thiệu)', value: '60s' },
-  { label: '2 phút (đoạn nhá hàng)', value: '120s' },
-  { label: '5 phút (phim ngắn)', value: '300s' },
-  { label: '15 phút (tập phim)', value: '900s' },
-  { label: 'Tùy chỉnh', value: 'custom' }
+import { TranslationKey } from '../../services/i18n';
+
+export interface ScriptOption {
+  label: TranslationKey;
+  value: string;
+  desc?: TranslationKey;
+}
+
+export const DURATION_OPTIONS: ScriptOption[] = [
+  { label: 'script.option.duration.30s', value: '30s' },
+  { label: 'script.option.duration.60s', value: '60s' },
+  { label: 'script.option.duration.120s', value: '120s' },
+  { label: 'script.option.duration.300s', value: '300s' },
+  { label: 'script.option.duration.900s', value: '900s' },
+  { label: 'script.option.custom', value: 'custom' }
 ];
 
-export const LANGUAGE_OPTIONS = [
-  { label: 'Tiếng Việt', value: 'Vietnamese' },
-  { label: 'Tiếng Anh (Mỹ)', value: 'English' },
-  { label: 'Tiếng Nhật', value: 'Japanese' },
-  { label: 'Tiếng Pháp', value: 'French' },
-  { label: 'Tiếng Tây Ban Nha', value: 'Spanish' }
+export const LANGUAGE_OPTIONS: ScriptOption[] = [
+  { label: 'script.option.language.vi', value: 'Vietnamese' },
+  { label: 'script.option.language.en', value: 'English' },
+  { label: 'script.option.language.ja', value: 'Japanese' },
+  { label: 'script.option.language.fr', value: 'French' },
+  { label: 'script.option.language.es', value: 'Spanish' }
 ];
 
-export const VISUAL_STYLE_OPTIONS = [
-  { label: 'Anime Nhật Bản', value: 'anime', desc: 'Phong cách anime Nhật với đường nét rõ' },
-  { label: 'Hoạt hình 2D', value: '2d-animation', desc: 'Phong cách hoạt hình 2D kinh điển' },
-  { label: 'Hoạt hình 3D', value: '3d-animation', desc: 'Phong cách phim hoạt hình 3D điện ảnh' },
-  { label: 'Viễn tưởng công nghệ', value: 'cyberpunk', desc: 'Thẩm mỹ tương lai với ánh sáng neon và công nghệ cao' },
-  { label: 'Tranh sơn dầu', value: 'oil-painting', desc: 'Chất liệu nghệ thuật sơn dầu' },
-  { label: 'Phim người đóng', value: 'live-action', desc: 'Phong cách phim điện ảnh chân thực' },
-  { label: 'Phong cách khác', value: 'custom', desc: 'Tự nhập phong cách mong muốn' }
+export const VISUAL_STYLE_OPTIONS: ScriptOption[] = [
+  { label: 'script.option.style.anime', value: 'anime', desc: 'script.option.style.animeDetail' },
+  { label: 'script.option.style.2d', value: '2d-animation', desc: 'script.option.style.2dDetail' },
+  { label: 'script.option.style.3d', value: '3d-animation', desc: 'script.option.style.3dDetail' },
+  { label: 'script.option.style.cyberpunk', value: 'cyberpunk', desc: 'script.option.style.cyberpunkDetail' },
+  { label: 'script.option.style.oil', value: 'oil-painting', desc: 'script.option.style.oilDetail' },
+  { label: 'script.option.style.live', value: 'live-action', desc: 'script.option.style.liveDetail' },
+  { label: 'script.option.style.custom', value: 'custom', desc: 'script.option.style.customDetail' }
 ];
 
 export const STYLES = {

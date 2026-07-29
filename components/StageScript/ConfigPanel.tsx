@@ -3,6 +3,7 @@ import { BookOpen, Wand2, BrainCircuit, AlertCircle, ChevronRight, Aperture } fr
 import OptionSelector from './OptionSelector';
 import { DURATION_OPTIONS, LANGUAGE_OPTIONS, VISUAL_STYLE_OPTIONS, STYLES } from './constants';
 import ModelSelector from '../ModelSelector';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   title: string;
@@ -47,37 +48,46 @@ const ConfigPanel: React.FC<Props> = ({
   onCustomStyleChange,
   onAnalyze
 }) => {
+  const { t } = useLocale();
+  const localizeOptions = (options: typeof DURATION_OPTIONS) => options.map((option) => ({
+    ...option,
+    label: t(option.label),
+    desc: option.desc ? t(option.desc) : undefined,
+  }));
+
   return (
-    <div className="w-96 border-r border-cyan-300/10 flex flex-col bg-slate-950/60 backdrop-blur-2xl">
+    <div className="w-full border-b border-cyan-300/10 bg-slate-950/60 backdrop-blur-2xl md:w-96 md:border-b-0 md:border-r flex flex-col">
       <div className="h-16 px-5 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.03]">
         <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-cyan-300" />
-          Cấu hình dự án
+          {t('script.configTitle')}
         </h2>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
         <div className="space-y-2">
-          <label className={STYLES.label}>Tên dự án</label>
+          <label htmlFor="script-project-title" className={STYLES.label}>{t('script.projectName')}</label>
           <input 
+            id="script-project-title"
             type="text"
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
             className={STYLES.input}
-            placeholder="Nhập tên dự án..."
+            placeholder={t('script.projectPlaceholder')}
           />
         </div>
 
         <div className="space-y-2">
-          <label className={STYLES.label}>Ngôn ngữ đầu ra</label>
+          <label htmlFor="script-output-language" className={STYLES.label}>{t('script.outputLanguage')}</label>
           <div className="relative">
             <select
+              id="script-output-language"
               value={language}
               onChange={(e) => onLanguageChange(e.target.value)}
               className={STYLES.select}
             >
               {LANGUAGE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>{t(opt.label)}</option>
               ))}
             </select>
             <div className="absolute right-3 top-3 pointer-events-none">
@@ -87,13 +97,13 @@ const ConfigPanel: React.FC<Props> = ({
         </div>
 
         <OptionSelector
-          label="Thời lượng mục tiêu"
-          options={DURATION_OPTIONS}
+          label={t('script.targetDuration')}
+          options={localizeOptions(DURATION_OPTIONS)}
           value={duration}
           onChange={onDurationChange}
           customInput={customDurationInput}
           onCustomInputChange={onCustomDurationChange}
-          customPlaceholder="Nhập thời lượng (ví dụ: 90s, 3m)"
+          customPlaceholder={t('script.durationPlaceholder')}
           gridCols={2}
         />
 
@@ -103,22 +113,22 @@ const ConfigPanel: React.FC<Props> = ({
             value={model}
             onChange={onModelChange}
             disabled={isProcessing}
-            label="Mô hình tạo bảng phân cảnh"
+            label={t('script.storyboardModel')}
           />
           <p className="text-[9px] text-slate-500">
-            Có sẵn GPT-5.2 / GPT-5.4; bạn có thể thêm mô hình hội thoại trong <span className="text-cyan-300">Cấu hình mô hình</span>
+            {t('script.modelHelp')} <span className="text-cyan-300">{t('script.modelSettings')}</span>
           </p>
         </div>
 
         <OptionSelector
-          label="Phong cách hình ảnh"
+          label={t('script.visualStyle')}
           icon={<Wand2 className="w-3 h-3" />}
-          options={VISUAL_STYLE_OPTIONS}
+          options={localizeOptions(VISUAL_STYLE_OPTIONS)}
           value={visualStyle}
           onChange={onVisualStyleChange}
           customInput={customStyleInput}
           onCustomInputChange={onCustomStyleChange}
-          customPlaceholder="Nhập phong cách (ví dụ: màu nước, pixel art)"
+          customPlaceholder={t('script.stylePlaceholder')}
           gridCols={2}
         />
       </div>
@@ -136,17 +146,17 @@ const ConfigPanel: React.FC<Props> = ({
           {isProcessing ? (
             <>
               <BrainCircuit className="w-4 h-4 animate-spin" />
-              Đang phân tích...
+              {t('script.analyzing')}
             </>
           ) : (
             <>
               <Wand2 className="w-4 h-4" />
-              Tạo bảng phân cảnh
+              {t('script.createStoryboard')}
             </>
           )}
         </button>
         {error && (
-          <div className="mt-4 p-3 bg-red-900/10 border border-red-900/50 text-red-500 text-xs rounded flex items-center gap-2">
+          <div role="alert" className="mt-4 p-3 bg-red-900/10 border border-red-900/50 text-red-400 text-xs rounded flex items-center gap-2">
             <AlertCircle className="w-3 h-3 flex-shrink-0" />
             {error}
           </div>

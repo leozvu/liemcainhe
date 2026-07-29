@@ -5,6 +5,7 @@ import { deduplicateScenes } from './utils';
 import CharacterList from './CharacterList';
 import SceneList from './SceneList';
 import ShotRow from './ShotRow';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   project: ProjectState;
@@ -57,26 +58,27 @@ const SceneBreakdown: React.FC<Props> = ({
   onCancelShotAction,
   onBackToStory
 }) => {
+  const { t } = useLocale();
   const uniqueScenes = deduplicateScenes(project.scriptData?.scenes);
 
   return (
     <div className="flex flex-col h-full bg-slate-950/35 animate-in fade-in duration-500 backdrop-blur-sm">
-      <div className="h-16 px-6 border-b border-white/10 bg-slate-950/55 flex items-center justify-between shrink-0 z-20 backdrop-blur-xl">
-        <div className="flex items-center gap-6">
+      <div className="min-h-16 gap-4 px-4 py-3 border-b border-white/10 bg-slate-950/55 flex flex-wrap items-center justify-between shrink-0 z-20 backdrop-blur-xl sm:px-6">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <h2 className="text-lg font-light text-white tracking-tight flex items-center gap-3">
             <List className="w-5 h-5 text-cyan-300" />
-            Danh sách cảnh quay
-            <span className="text-xs text-cyan-100/40 font-mono uppercase tracking-wider ml-1">BẢNG PHÂN CẢNH</span>
+            {t('script.breakdownTitle')}
+            <span className="text-xs text-cyan-100/40 font-mono uppercase tracking-wider ml-1">{t('script.storyboardKicker')}</span>
           </h2>
           <div className="h-6 w-px bg-white/10"></div>
           
           <div className="flex items-center gap-4">
             <div className="flex flex-col">
-              <span className="text-[10px] text-cyan-100/40 uppercase tracking-widest">Dự án</span>
+              <span className="text-[10px] text-cyan-100/40 uppercase tracking-widest">{t('script.project')}</span>
               <span className="text-sm text-zinc-200 font-medium">{project.scriptData?.title}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[10px] text-cyan-100/40 uppercase tracking-widest">Thời lượng</span>
+              <span className="text-[10px] text-cyan-100/40 uppercase tracking-widest">{t('script.duration')}</span>
               <span className="text-sm font-mono text-cyan-100/70">{project.targetDuration}</span>
             </div>
           </div>
@@ -84,10 +86,10 @@ const SceneBreakdown: React.FC<Props> = ({
         
         <button 
           onClick={onBackToStory}
-          className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-all"
+          className="min-h-11 text-xs font-bold text-slate-400 hover:text-white flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-all"
         >
           <ArrowLeft className="w-3 h-3" />
-          Quay lại chỉnh sửa
+          {t('script.backToEdit')}
         </button>
       </div>
 
@@ -95,7 +97,7 @@ const SceneBreakdown: React.FC<Props> = ({
         <div className="w-72 border-r border-white/10 bg-slate-950/55 flex flex-col hidden lg:flex backdrop-blur-xl">
           <div className="p-6 border-b border-white/10">
             <h3 className="text-[10px] font-bold text-cyan-100/45 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <TextQuote className="w-3 h-3" /> Tóm tắt câu chuyện
+              <TextQuote className="w-3 h-3" /> {t('script.storySummary')}
             </h3>
             <p className="text-xs text-slate-300 italic leading-relaxed font-serif">"{project.scriptData?.logline}"</p>
           </div>

@@ -21,6 +21,7 @@ describe('nền tảng giao diện song ngữ', () => {
     expect(translate('en', 'preproduction.readinessCount', { ready: 6, total: 8 })).toBe('6/8 items confirmed');
     expect(translate('en', 'campaignZero.gatesShort', { completed: 9, total: 14 })).toBe('9/14 gates');
     expect(translate('en', 'campaignZero.preflightLocked', { count: 2 })).toBe('Real requests locked · 2 conditions remaining');
+    expect(translate('en', 'script.shotNumber', { number: '007-B' })).toBe('SHOT 007-B');
   });
 
   it('cấp locale chuẩn cho Intl', () => {
