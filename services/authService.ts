@@ -27,6 +27,15 @@ export interface EgoricInvite {
   role: Exclude<EgoricRole, 'owner'>;
   expiresAt: number;
   createdAt?: number;
+  deliveryStatus?: 'sent' | 'not_configured' | 'failed';
+  deliveryProvider?: 'resend' | null;
+  deliveryAttemptedAt?: number;
+}
+
+export interface EgoricInviteDelivery {
+  status: 'sent' | 'not_configured' | 'failed';
+  provider: 'resend' | null;
+  messageId?: string;
 }
 
 export interface AuthState {
@@ -112,7 +121,7 @@ export const acceptInvite = (token: string, displayName: string, password: strin
 
 export const loadTeam = (): Promise<TeamState> => requestJson('/api/auth/team');
 
-export const createInvite = (input: { email: string; displayName: string; role: Exclude<EgoricRole, 'owner'> }): Promise<{ invite: EgoricInvite; inviteUrl: string }> => (
+export const createInvite = (input: { email: string; displayName: string; role: Exclude<EgoricRole, 'owner'> }): Promise<{ invite: EgoricInvite; inviteUrl: string; delivery: EgoricInviteDelivery }> => (
   requestJson('/api/auth/invites', { method: 'POST', body: JSON.stringify(input) })
 );
 

@@ -11,7 +11,7 @@
 
 ## Bảo mật
 
-- Mật khẩu: PBKDF2-SHA-256, 210.000 vòng, salt ngẫu nhiên riêng cho từng tài khoản.
+- Mật khẩu: PBKDF2-SHA-256, 100.000 vòng (ngưỡng tối đa của Cloudflare Workers), salt ngẫu nhiên riêng cho từng tài khoản.
 - Phiên: token 256-bit ngẫu nhiên, D1 chỉ lưu SHA-256; cookie `HttpOnly`, `Secure`, `SameSite=Lax`, hạn 14 ngày.
 - Login sai 8 lần sẽ khóa tạm 15 phút.
 - Lời mời: token dùng một lần, D1 chỉ lưu SHA-256, hết hạn sau 7 ngày.
@@ -25,6 +25,17 @@
 3. Mở site, nhập email Owner, họ tên, mật khẩu riêng và mã khởi tạo.
 4. Sau khi Owner đầu tiên được tạo, API bootstrap tự từ chối mọi lần gọi tiếp theo.
 5. Owner mở `Tài khoản và đội ngũ`, chọn vai trò, tạo link mời rồi gửi riêng cho từng nhân sự.
+
+## Gửi email mời
+
+- Không có provider: app ghi rõ `Email tự động chưa cấu hình`, vẫn trả link dùng một lần và có nút mở email soạn sẵn để Owner gửi thủ công.
+- Có Resend: đặt `RESEND_API_KEY` và `EGORIC_INVITE_FROM_EMAIL` ở runtime. Domain trong địa chỉ gửi phải được xác minh trên Resend.
+- App chỉ hiển thị `Email đã được provider tiếp nhận` sau khi Resend trả về message ID. Trạng thái gửi được lưu cùng lời mời để Owner kiểm tra lại.
+- Nếu domain chạy app khác origin nhận request, đặt `EGORIC_PUBLIC_URL` thành origin public chính thức để email luôn chứa đúng link.
+
+## Yêu cầu đối với link mời
+
+Link mời phải nằm trên một deployment public ở lớp hosting; màn hình đăng nhập riêng của Egoric sẽ bảo vệ app ở lớp ứng dụng. Nếu host vẫn chỉ cho Owner hoặc thành viên ChatGPT workspace truy cập, nhân sự bên ngoài sẽ bị chặn trước khi request tới Egoric dù token mời hợp lệ.
 
 ## Thu hồi quyền
 

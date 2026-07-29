@@ -72,6 +72,11 @@ const AUTH_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const AUTH_PASSWORD_ITERATIONS = 100_000;
 const AUTH_MAX_FAILED_LOGINS = 8;
 const AUTH_LOCK_MS = 15 * 60 * 1000;
+const AUTH_INVITE_ROLE_LABELS = {
+  director: 'Đạo diễn',
+  editor: 'Dựng phim',
+  account: 'Quản lý khách hàng',
+};
 
 const ROLE_PERMISSIONS = {
   owner: new Set(['*']),
@@ -159,6 +164,56 @@ const derivePasswordHash = async (password, salt, iterations = AUTH_PASSWORD_ITE
   }, key, 256);
   return authBytesToBase64Url(new Uint8Array(bits));
 };
+
+const escapeEmailHtml = (value) => String(value || '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
+const configuredPublicOrigin = (env, requestOrigin) => {
+  try {
+    const candidate = new URL(String(env.EGORIC_PUBLIC_URL || requestOrigin));
+    if (!['https:', 'http:'].includes(candidate.protocol)) return requestOrigin;
+    return candidate.origin;
+  } catch {
+    return requestOrigin;
+  }
+};
+
+export async function deliverInviteEmail(env, input) {
+  const apiKey = String(env.RESEND_API_KEY || '').trim();
+  const from = String(env.EGORIC_INVITE_FROM_EMAIL || '').trim();
+  if (!apiKey || !from) return { status: 'not_configured', provider: null };
+
+  const roleLabel = AUTH_INVITE_ROLE_LABELS[input.role] || input.role;
+  const safeName = escapeEmailHtml(input.displayName);
+  const safeRole = escapeEmailHtml(roleLabel);
+  const safeInviteUrl = escapeEmailHtml(input.inviteUrl);
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+      'idempotency-key': `egoric-invite-${input.tokenHash}`,
+    },
+    body: JSON.stringify({
+      from,
+      to: [input.email],
+      subject: 'Bạn được mời vào Egoric Film Studio',
+      text: `Chào ${input.displayName},\n\nBạn được mời tham gia Egoric Film Studio với vai trò ${roleLabel}.\nKích hoạt tài khoản trong 7 ngày tại: ${input.inviteUrl}\n\nNếu bạn không mong đợi lời mời này, hãy bỏ qua email.`,
+      html: `<div style="background:#080c11;color:#e7edf3;font-family:Arial,sans-serif;padding:32px"><div style="max-width:560px;margin:auto;background:#0d141b;border:1px solid #24303a;border-radius:18px;padding:32px"><div style="color:#80e5e1;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase">Egoric Agency</div><h1 style="font-size:24px;margin:14px 0;color:#fff">Tham gia Egoric Film Studio</h1><p style="line-height:1.7;color:#aab6c1">Chào ${safeName}, bạn được mời tham gia không gian sản xuất với vai trò <strong style="color:#fff">${safeRole}</strong>.</p><p style="margin:28px 0"><a href="${safeInviteUrl}" style="display:inline-block;background:#7be0dc;color:#071013;text-decoration:none;font-weight:700;padding:14px 20px;border-radius:10px">Kích hoạt tài khoản</a></p><p style="font-size:12px;line-height:1.6;color:#72808d">Link dùng một lần và hết hạn sau 7 ngày. Nếu bạn không mong đợi lời mời này, hãy bỏ qua email.</p></div></div>`,
+      tags: [{ name: 'category', value: 'team-invite' }],
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.id) {
+    console.error('Egoric invite email rejected', { status: response.status, code: payload?.name || payload?.statusCode || 'unknown' });
+    return { status: 'failed', provider: 'resend' };
+  }
+  return { status: 'sent', provider: 'resend', messageId: String(payload.id) };
+}
 
 const publicAuthUser = (row) => row ? ({
   id: row.id,
@@ -376,7 +431,9 @@ async function handleAuthApi(request, env, url) {
          FROM egoric_auth_users WHERE workspace_owner_email = ? ORDER BY role, display_name`
       ).bind(identity.workspaceOwnerEmail).all(),
       env.DB.prepare(
-        `SELECT email, display_name AS displayName, role, expires_at AS expiresAt, created_at AS createdAt
+        `SELECT email, display_name AS displayName, role, expires_at AS expiresAt, created_at AS createdAt,
+                delivery_status AS deliveryStatus, delivery_provider AS deliveryProvider,
+                delivery_attempted_at AS deliveryAttemptedAt
          FROM egoric_auth_invites
          WHERE workspace_owner_email = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC`
       ).bind(identity.workspaceOwnerEmail, Date.now()).all(),
@@ -396,12 +453,26 @@ async function handleAuthApi(request, env, url) {
     const token = createSecureToken();
     const tokenHash = await hashText(token);
     const now = Date.now();
+    const inviteUrl = `${configuredPublicOrigin(env, url.origin)}/?invite=${encodeURIComponent(token)}`;
     await env.DB.prepare(
       `INSERT INTO egoric_auth_invites
        (token_hash, email, display_name, role, workspace_owner_email, invited_by, expires_at, used_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`
     ).bind(tokenHash, email, displayName, role, identity.workspaceOwnerEmail, identity.id, now + AUTH_INVITE_TTL_MS, now).run();
-    return json({ invite: { email, displayName, role, expiresAt: now + AUTH_INVITE_TTL_MS }, inviteUrl: `${url.origin}/?invite=${encodeURIComponent(token)}` }, 201);
+    const delivery = await deliverInviteEmail(env, { email, displayName, role, inviteUrl, tokenHash });
+    await env.DB.prepare(
+      `UPDATE egoric_auth_invites
+       SET delivery_status = ?, delivery_provider = ?, delivery_message_id = ?, delivery_attempted_at = ?
+       WHERE token_hash = ?`
+    ).bind(delivery.status, delivery.provider, delivery.messageId || null, Date.now(), tokenHash).run();
+    return json({
+      invite: {
+        email, displayName, role, expiresAt: now + AUTH_INVITE_TTL_MS,
+        deliveryStatus: delivery.status, deliveryProvider: delivery.provider, deliveryAttemptedAt: Date.now(),
+      },
+      inviteUrl,
+      delivery,
+    }, 201);
   }
 
   const userMatch = url.pathname.match(/^\/api\/auth\/users\/([^/]+)$/);

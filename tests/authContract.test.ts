@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import worker from '../worker/index.js';
+import worker, { deliverInviteEmail } from '../worker/index.js';
 import { roleCan } from '../services/authService';
 
 const root = path.join(__dirname, '..');
 const workerSource = readFileSync(path.join(root, 'worker', 'index.js'), 'utf8');
 const migrationSource = readFileSync(path.join(root, 'drizzle', '0012_team_auth.sql'), 'utf8');
+const inviteDeliveryMigration = readFileSync(path.join(root, 'drizzle', '0013_invite_delivery.sql'), 'utf8');
 const indexSource = readFileSync(path.join(root, 'index.tsx'), 'utf8');
 
 const countDb = (count = 0) => ({
@@ -18,6 +19,8 @@ const countDb = (count = 0) => ({
 });
 
 describe('Egoric team authentication contract', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('stores password and session material only as hashes', () => {
     expect(migrationSource).toContain('password_salt TEXT NOT NULL');
     expect(migrationSource).toContain('password_hash TEXT NOT NULL');
@@ -31,6 +34,35 @@ describe('Egoric team authentication contract', () => {
   it('keeps PBKDF2 within the Cloudflare Workers runtime ceiling', () => {
     const iterations = Number(workerSource.match(/AUTH_PASSWORD_ITERATIONS = ([\d_]+)/)?.[1].replaceAll('_', ''));
     expect(iterations).toBe(100_000);
+  });
+
+  it('does not pretend an invitation email was sent without a provider', async () => {
+    const request = vi.spyOn(globalThis, 'fetch');
+    const delivery = await deliverInviteEmail({}, {
+      email: 'editor@example.com', displayName: 'Editor', role: 'editor',
+      inviteUrl: 'https://studio.example.com/?invite=secret', tokenHash: 'token-hash',
+    });
+    expect(delivery).toEqual({ status: 'not_configured', provider: null });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('records provider acceptance only after Resend returns a message id', async () => {
+    const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: 'email_123' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    const delivery = await deliverInviteEmail({ RESEND_API_KEY: 'server-secret', EGORIC_INVITE_FROM_EMAIL: 'Egoric <team@example.com>' }, {
+      email: 'editor@example.com', displayName: 'Editor', role: 'editor',
+      inviteUrl: 'https://studio.example.com/?invite=secret', tokenHash: 'token-hash',
+    });
+    expect(delivery).toEqual({ status: 'sent', provider: 'resend', messageId: 'email_123' });
+    expect(request).toHaveBeenCalledWith('https://api.resend.com/emails', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('persists invitation delivery state for owner visibility', () => {
+    expect(inviteDeliveryMigration).toContain('delivery_status');
+    expect(inviteDeliveryMigration).toContain('delivery_message_id');
+    expect(workerSource).toContain('delivery_status AS deliveryStatus');
   });
 
   it('issues a hardened, server-only session cookie', () => {
