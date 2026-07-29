@@ -10,6 +10,7 @@ import {
 } from '../services/modelRegistry';
 import { verifyProviderApiKey } from '../services/providerService';
 import { callShopAIKeyImageApi, callShopAIKeyVideoApi } from '../services/adapters/shopAIKeyAdapter';
+import { callVideoApi } from '../services/adapters/videoAdapter';
 import { callChatApi } from '../services/adapters/chatAdapter';
 import { generateVoice } from '../services/voiceService';
 import { setVoiceCredentials } from '../services/voiceRegistry';
@@ -49,8 +50,10 @@ describe('ShopAIKey internal gateway mode', () => {
     expect(getActiveModelsConfig()).toEqual({
       chat: 'shopaikey-grok-fast',
       image: 'shopaikey-nano-banana-2',
-      video: 'shopaikey-veo3-fast',
+      video: 'shopaikey-veo31-fast',
     });
+    expect(getModels('video').filter((model) => model.isEnabled).map((model) => model.apiModel))
+      .toEqual(['veo3.1-fast', 'veo3.1-pro']);
   });
 
   it('xác thực khóa bằng /v1/models qua proxy cùng miền', async () => {
@@ -121,7 +124,7 @@ describe('ShopAIKey internal gateway mode', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { task_id: 'task_egoric_1' } }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { status: 'SUCCESS', result_url: 'https://cdn.test/video.mp4' } }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    const model = getModels('video').find((item) => item.id === 'shopaikey-veo3-fast') as any;
+    const model = getModels('video').find((item) => item.id === 'shopaikey-veo31-fast') as any;
     const taskIds: string[] = [];
     const pending = callShopAIKeyVideoApi({
       prompt: 'Máy quay tiến chậm',
@@ -133,6 +136,26 @@ describe('ShopAIKey internal gateway mode', () => {
     await expect(pending).resolves.toBe('https://cdn.test/video.mp4');
     expect(taskIds).toEqual(['task_egoric_1']);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('chỉ cho Veo chạy hai tỷ lệ mà provider thực sự chấp nhận', () => {
+    const model = getModels('video').find((item) => item.id === 'shopaikey-veo31-fast') as any;
+    expect(model.params.supportedAspectRatios).toEqual(['16:9', '9:16']);
+    expect(model.params.supportedAspectRatios).not.toContain('1:1');
+  });
+
+  it('preflight catalog chặn video ngoài group key trước request trả phí', async () => {
+    setProviderApiKey(SHOPAIKEY_PROVIDER_ID, 'sk-test');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: [{ id: 'veo3.1-fast' }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const unavailable = getModels('video').find((item) => item.id === 'shopaikey-grok-video-3') as any;
+
+    await expect(callVideoApi({ prompt: 'Một cảnh thử', aspectRatio: '16:9' }, unavailable))
+      .rejects.toThrow('không cấp quyền');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api-proxy/shopaikey/v1/models');
   });
 
   it('dùng cùng khóa ShopAIKey cho Gemini TTS', async () => {

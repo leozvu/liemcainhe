@@ -11,6 +11,12 @@ describe('localizeApiErrorMessage', () => {
   it('chỉ báo thiếu credit khi nhà cung cấp nói rõ', () => {
     expect(localizeApiErrorMessage('insufficient credit balance', 402)).toContain('không đủ credit');
   });
+
+  it('phân biệt group key không có channel model với hết credit', () => {
+    const message = localizeApiErrorMessage('No available channel for model grok-video-3 under group cheap', 500);
+    expect(message).toContain('không có quyền sử dụng mô hình');
+    expect(message).not.toContain('không đủ credit');
+  });
 });
 
 /**

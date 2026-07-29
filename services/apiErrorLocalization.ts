@@ -75,7 +75,11 @@ export const classifyApiError = (input: unknown, status?: number): ApiErrorCateg
   if (isRateLimitError) return 'rate-limit';
 
   if (status === 401 || /invalid\s*(api\s*)?key|unauthorized|authentication/.test(normalized)) return 'auth';
-  if (status === 403 || /forbidden|permission\s*denied|access\s*denied/.test(normalized)) return 'permission';
+  if (
+    status === 403
+    || /forbidden|permission\s*denied|access\s*denied/.test(normalized)
+    || /no\s+available\s+channel\s+for\s+model|model\s+(is\s+)?not\s+available|unsupported\s+model|model\s+not\s+found/.test(normalized)
+  ) return 'permission';
   if (/safety|moderation|content\s*policy|blocked/.test(normalized)) return 'moderation';
   if (status && status >= 500) return 'server';
   // "failed to fetch" là chuỗi trình duyệt ném ra khi đứt mạng, phổ biến nhất

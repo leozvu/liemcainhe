@@ -91,6 +91,23 @@ describe('model fallback policy', () => {
     expect(candidates.map((model) => model.apiModel)).toEqual(['gpt-5-mini']);
   });
 
+  it('không dùng catalog chat để chặn nhầm endpoint ảnh riêng', () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    saveProviderModelAvailability('shopaikey', ['grok-4-1-fast-reasoning']);
+    const preferred = getModels('image').find((model) => model.id === 'shopaikey-nano-banana-2')!;
+    expect(getRoutingCandidates('image', preferred).map((model) => model.id)).toEqual([preferred.id]);
+  });
+
   it('fallback chat đúng một lần và đánh dấu đã hết tuyến để lớp ngoài không retry lồng', async () => {
     const values = new Map<string, string>();
     vi.stubGlobal('localStorage', {

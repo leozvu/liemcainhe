@@ -71,6 +71,13 @@ export interface WorkspaceCloudHealth {
   ok: true;
   serverTime: number;
   collections: WorkspaceCloudCollectionHealth[];
+  capabilities?: {
+    database: boolean;
+    media: boolean;
+    inviteEmail: boolean;
+    youtubePublishing: boolean;
+    tiktokPublishing: boolean;
+  };
 }
 
 export interface WorkspaceSyncController {

@@ -73,7 +73,12 @@ export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition
     .map((id) => models.find((model) => model.id === id))
     .filter((model): model is ModelDefinition => Boolean(model))
     .filter((model) => !seen.has(model.id) && Boolean(seen.add(model.id)))
-    .filter((model) => isProviderModelAllowed(model.providerId, model.apiModel || model.id) !== false);
+    // `/v1/models` của ShopAIKey là catalog OpenAI/chat. Một số model media
+    // xuất hiện trong đó nhưng Nano Banana lại không, dù endpoint ảnh riêng
+    // vẫn chạy bình thường. Chỉ dùng catalog này làm preflight cho chat và
+    // video; nếu áp cho ảnh, nút "Kiểm tra key" sẽ tự làm hỏng tạo ảnh.
+    .filter((model) => type === 'image'
+      || isProviderModelAllowed(model.providerId, model.apiModel || model.id) !== false);
   const configured = ordered.filter((model) => Boolean(getApiKeyForModel(model.id)));
   const usable = applyCircuitBreaker(configured.length ? configured : ordered, getProviderHealth());
   return usable.slice(0, Math.max(1, policy.maxAttempts));

@@ -388,10 +388,11 @@ export const BUILTIN_IMAGE_MODELS: ImageModelDefinition[] = [
 export const DEPRECATED_BUILTIN_IMAGE_MODEL_IDS = ['gemini-3-pro-image-preview', 'qwen-image-2.0'] as const;
 
 /** Mã mô hình video mặc định. */
-export const DEFAULT_VIDEO_MODEL_ID = 'shopaikey-veo3-fast';
+export const DEFAULT_VIDEO_MODEL_ID = 'shopaikey-veo31-fast';
 
 /** Mô hình video tích hợp đã ngừng dùng; cấu hình cũ sẽ chuyển sang mặc định. */
 export const DEPRECATED_BUILTIN_VIDEO_MODEL_IDS = [
+  'shopaikey-veo3-fast',
   'veo',
   'veo-3.1',
   'veo_3_1_t2v_fast_landscape',
@@ -425,8 +426,8 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     endpoint: '/v1/video/generations',
     description: 'Tuyến video mặc định cho bản nháp và shot social.',
     isBuiltIn: true,
-    isEnabled: true,
-    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedDurations: [5, 8] },
+    isEnabled: false,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedAspectRatios: ['16:9', '9:16'], supportedDurations: [5, 8] },
   },
   {
     id: 'shopaikey-veo31-fast',
@@ -438,7 +439,19 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     description: 'Tuyến Veo mới hơn cho shot đã duyệt và chuyển động phức tạp.',
     isBuiltIn: true,
     isEnabled: true,
-    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedDurations: [5, 8] },
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedAspectRatios: ['16:9', '9:16'], supportedDurations: [5, 8] },
+  },
+  {
+    id: 'shopaikey-veo31-pro',
+    name: 'Veo 3.1 Pro',
+    type: 'video',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    apiModel: 'veo3.1-pro',
+    endpoint: '/v1/video/generations',
+    description: 'Tuyến chất lượng cao cho shot final đã duyệt; chỉ chạy sau khi kiểm tra ngân sách.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedAspectRatios: ['16:9', '9:16'], supportedDurations: [5, 8] },
   },
   {
     id: 'shopaikey-grok-video-3',
@@ -449,7 +462,7 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     endpoint: '/v1/video/generations',
     description: 'Tuyến video ngắn có lựa chọn thời lượng và độ phân giải.',
     isBuiltIn: true,
-    isEnabled: true,
+    isEnabled: false,
     params: { ...DEFAULT_VIDEO_PARAMS_SORA, supportedDurations: [5, 8, 10] },
   },
   {
@@ -461,7 +474,7 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     endpoint: '/v1/videos',
     description: 'Tuyến OpenAI Videos cho shot cao cấp; chỉ dùng sau khi duyệt ngân sách.',
     isBuiltIn: true,
-    isEnabled: true,
+    isEnabled: false,
     params: { ...DEFAULT_VIDEO_PARAMS_SORA },
   },
   {

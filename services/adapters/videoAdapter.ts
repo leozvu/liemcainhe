@@ -1,4 +1,4 @@
-import { VideoModelDefinition, VideoGenerateOptions, AspectRatio, VideoDuration } from '../../types/model';
+import { VideoModelDefinition, VideoGenerateOptions, AspectRatio, VideoDuration, SHOPAIKEY_PROVIDER_ID } from '../../types/model';
 import { getApiKeyForModel, getApiBaseUrlForModel, getActiveVideoModel, getProviderById } from '../modelRegistry';
 import { ApiKeyError } from './chatAdapter';
 import { throwFromVideoHttpError, formatVideoTaskErrorForUser } from '../videoHttpErrors';
@@ -9,6 +9,7 @@ import { callKieVideoApi } from './kieAdapter';
 import { callShopAIKeyVideoApi } from './shopAIKeyAdapter';
 import { executeWithModelFallback } from '../modelRoutingService';
 import { createConfirmedBillableFailure, submitPaidTaskSafely } from '../mediaExecutionService';
+import { refreshProviderModelAvailability } from '../providerService';
 
 const resizeImageToSize = async (base64Data: string, targetWidth: number, targetHeight: number): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -317,6 +318,10 @@ export const callVideoApi = async (
 ): Promise<string> => {
   const preferred = model || getActiveVideoModel();
   if (!preferred) throw new Error('Không có mô hình video khả dụng');
+  const apiKey = getApiKeyForModel(preferred.id);
+  if (preferred.providerId === SHOPAIKEY_PROVIDER_ID && apiKey) {
+    await refreshProviderModelAvailability(preferred.providerId, apiKey);
+  }
   return executeWithModelFallback({
     type: 'video',
     preferred,

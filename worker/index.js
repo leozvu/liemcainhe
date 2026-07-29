@@ -828,7 +828,18 @@ async function handleCloudApi(request, env, url) {
       };
     });
 
-    return json({ ok: true, serverTime: Date.now(), collections });
+    return json({
+      ok: true,
+      serverTime: Date.now(),
+      collections,
+      capabilities: {
+        database: true,
+        media: Boolean(env.MEDIA),
+        inviteEmail: Boolean(env.RESEND_API_KEY && env.EGORIC_INVITE_FROM_EMAIL),
+        youtubePublishing: Boolean(env.YOUTUBE_CLIENT_ID && env.YOUTUBE_CLIENT_SECRET && String(env.DISTRIBUTION_TOKEN_KEY || '').length >= 32),
+        tiktokPublishing: Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET && String(env.DISTRIBUTION_TOKEN_KEY || '').length >= 32),
+      },
+    });
   }
 
   if (url.pathname === '/api/cloud/workspace' && request.method === 'GET') {

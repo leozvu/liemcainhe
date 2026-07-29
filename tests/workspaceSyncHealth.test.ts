@@ -21,17 +21,19 @@ describe('health endpoint của workspace cloud', () => {
     const DB = createHealthDb();
     const response = await worker.fetch(new Request('https://studio.test/api/cloud/workspace/health', {
       headers: { 'oai-authenticated-user-email': 'owner@egoric.vn' },
-    }), { DB });
+    }), { DB, MEDIA: {} });
 
     expect(response.status).toBe(200);
     const data = await response.json() as {
       ok: boolean;
       collections: Array<{ collection: string; active: number; tombstones: number }>;
+      capabilities: { media: boolean; inviteEmail: boolean; youtubePublishing: boolean };
     };
     expect(data.ok).toBe(true);
     expect(data.collections).toHaveLength(6);
     expect(data.collections.find((item) => item.collection === 'agencyClients')).toMatchObject({ active: 3, tombstones: 1 });
     expect(data.collections.find((item) => item.collection === 'articleLibrary')).toMatchObject({ active: 0, tombstones: 0 });
+    expect(data.capabilities).toMatchObject({ media: true, inviteEmail: false, youtubePublishing: false });
     expect(DB.prepare).toHaveBeenCalledWith(expect.stringContaining('GROUP BY collection'));
   });
 

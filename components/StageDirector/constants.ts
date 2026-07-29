@@ -54,6 +54,6 @@ Ngôn ngữ lời thoại: {language}`
 };
 
 export const DEFAULTS = {
-  videoModel: 'shopaikey-veo3-fast' as const,
+  videoModel: 'shopaikey-veo31-fast' as const,
   batchGenerateDelay: 3000,
 };

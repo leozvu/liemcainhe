@@ -237,7 +237,7 @@ const WorkspaceSyncCenter: React.FC<Props> = ({ isOpen, onClose }) => {
         </header>
 
         <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">
-          <section className="grid gap-3 lg:grid-cols-3" aria-label="Tổng quan đồng bộ">
+          <section className="grid gap-3 lg:grid-cols-4" aria-label="Tổng quan đồng bộ">
             <article className={`rounded-2xl border p-4 ${statusHealthy ? 'border-emerald-300/20 bg-emerald-300/[.05]' : runtime.phase === 'error' ? 'border-rose-300/20 bg-rose-300/[.05]' : 'border-white/[.08] bg-white/[.025]'}`}>
               <div className="flex items-center justify-between gap-3"><ShieldCheck className={`h-5 w-5 ${statusHealthy ? 'text-emerald-200' : 'text-cyan-200'}`} /><span className="font-mono text-[9px] uppercase tracking-wider text-zinc-600">Trạng thái</span></div>
               <div className="mt-4 text-base font-semibold text-white">{PHASE_LABELS[runtime.phase]}</div>
@@ -252,6 +252,11 @@ const WorkspaceSyncCenter: React.FC<Props> = ({ isOpen, onClose }) => {
               <div className="flex items-center justify-between gap-3"><Cloud className="h-5 w-5 text-cyan-200" /><span className="font-mono text-[9px] uppercase tracking-wider text-zinc-600">Cloud D1</span></div>
               <div className="mt-4 font-mono text-2xl font-semibold tabular-nums text-white">{cloud ? cloudTotals.active : '—'}</div>
               <p className={`mt-2 text-[11px] ${cloudError ? 'text-amber-200/80' : 'text-zinc-500'}`}>{cloudError || `${cloudTotals.tombstones} dấu xóa · phản hồi ${formatTime(cloud?.serverTime)}`}</p>
+            </article>
+            <article className={`rounded-2xl border p-4 ${cloud?.capabilities?.media ? 'border-emerald-300/20 bg-emerald-300/[.05]' : 'border-amber-300/20 bg-amber-300/[.05]'}`}>
+              <div className="flex items-center justify-between gap-3"><ShieldCheck className={`h-5 w-5 ${cloud?.capabilities?.media ? 'text-emerald-200' : 'text-amber-200'}`} /><span className="font-mono text-[9px] uppercase tracking-wider text-zinc-600">Hạ tầng</span></div>
+              <div className="mt-4 text-base font-semibold text-white">{cloud?.capabilities?.media ? 'Media sẵn sàng' : 'Thiếu kho media'}</div>
+              <p className="mt-2 text-[11px] leading-5 text-zinc-500">R2 {cloud?.capabilities?.media ? 'đã bật' : 'chưa bật'} · Email mời {cloud?.capabilities?.inviteEmail ? 'đã bật' : 'dùng link thủ công'} · YouTube {cloud?.capabilities?.youtubePublishing ? 'sẵn sàng' : 'chưa cấu hình'} · TikTok {cloud?.capabilities?.tiktokPublishing ? 'sẵn sàng' : 'chưa cấu hình'}</p>
             </article>
           </section>
 
