@@ -22,6 +22,8 @@ describe('nền tảng giao diện song ngữ', () => {
     expect(translate('en', 'campaignZero.gatesShort', { completed: 9, total: 14 })).toBe('9/14 gates');
     expect(translate('en', 'campaignZero.preflightLocked', { count: 2 })).toBe('Real requests locked · 2 conditions remaining');
     expect(translate('en', 'script.shotNumber', { number: '007-B' })).toBe('SHOT 007-B');
+    expect(translate('en', 'assets.progress', { current: 3, total: 8 })).toBe('Progress: 3 / 8');
+    expect(translate('en', 'assets.lockSceneNamed', { name: 'Rooftop' })).toBe('Lock the model and aspect ratio for location Rooftop');
   });
 
   it('cấp locale chuẩn cho Intl', () => {

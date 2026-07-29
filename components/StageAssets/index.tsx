@@ -42,6 +42,7 @@ import {
   resolveGenerationParams,
   unlockGenerationParams,
 } from '../../services/consistencyService';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface Props {
   project: ProjectState;
@@ -51,6 +52,7 @@ interface Props {
 
 const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError }) => {
   const { showAlert } = useAlert();
+  const { t } = useLocale();
   const [batchProgress, setBatchProgress] = useState<{current: number, total: number} | null>(null);
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -71,6 +73,8 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   const language = getProjectLanguage(project.language, project.scriptData?.language);
   const visualStyle = getProjectVisualStyle(project.visualStyle, project.scriptData?.visualStyle);
   const genre = project.scriptData?.genre || DEFAULTS.genre;
+  const displayAssetError = (error: any, fallback: string): string =>
+    error?.message === 'Tải ảnh lên thất bại' ? t('assets.error.upload') : error?.message || fallback;
 
   const getLockedBrandAssets = (types: Array<'logo' | 'product' | 'character' | 'reference'>) => {
     const configuredIds = project.consistency?.lockedBrandAssetIds;
@@ -142,9 +146,9 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         approved: false,
         addedAt: Date.now(),
       }));
-      showAlert('Đã thêm ảnh tham chiếu. Hãy duyệt ảnh nếu nhận diện đúng.', { type: 'success' });
+      showAlert(t('assets.notice.referenceAdded'), { type: 'success' });
     } catch (error: any) {
-      showAlert(error?.message || 'Không thể thêm ảnh tham chiếu.', { type: 'error' });
+      showAlert(error?.message || t('assets.error.addReference'), { type: 'error' });
     }
   };
 
@@ -153,7 +157,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
   };
 
   const handleRemoveCharacterReference = (characterId: string, referenceId: string) => {
-    showAlert('Xóa ảnh này khỏi bộ tham chiếu nhân vật?', {
+    showAlert(t('assets.notice.removeReference'), {
       type: 'warning',
       showCancel: true,
       onConfirm: () => updateCharacterConsistency(
@@ -350,7 +354,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           updateProject,
           kind: 'asset-image',
           stage: 'assets',
-          label: `Tạo ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'} ${currentAsset?.name || id}`,
+          label: t('assets.job.single', { type: t(type === 'character' ? 'assets.character' : 'assets.scene'), name: currentAsset?.name || id }),
           resourceId: `${type}:${id}`,
           previousOutput: currentAsset?.referenceImage,
           commitResult: (previous, imageUrl) => markDependentShotsStale(
@@ -382,7 +386,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const isRegenerate = itemsToGen.length === 0;
 
     if (isRegenerate) {
-      showAlert(`Bạn có chắc muốn tạo lại toàn bộ ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'}?`, {
+      showAlert(t('assets.confirm.batch', { type: t(type === 'character' ? 'assets.character' : 'assets.scene') }), {
         type: 'warning',
         showCancel: true,
         onConfirm: async () => {
@@ -400,13 +404,13 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const job = createProductionJob({
       kind: 'asset-image',
       stage: 'assets',
-      label: `Tạo ${targetItems.length} ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'}`,
+      label: t('assets.job.batch', { count: targetItems.length, type: t(type === 'character' ? 'assets.character' : 'assets.scene') }),
       totalUnits: targetItems.length,
-      detail: 'Tạo tuần tự để giới hạn lỗi rate-limit và theo dõi được từng mục.',
+      detail: t('assets.job.batchDetail'),
     });
     updateProject((previous) => {
       const protectedProject = protectExisting
-        ? createProjectCheckpoint(previous, `Trước khi tạo lại ảnh ${type === 'character' ? 'nhân vật' : 'bối cảnh'}`)
+        ? createProjectCheckpoint(previous, t('assets.job.batchCheckpoint', { type: t(type === 'character' ? 'assets.character' : 'assets.scene') }))
         : previous;
       return setProductionJobStatus(addProductionJob(protectedProject, job), job.id, 'running');
     });
@@ -422,7 +426,9 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       updateProject((previous) => patchProductionJob(previous, job.id, {
         progress: Math.round(((i + 1) / targetItems.length) * 100),
         completedUnits: i + 1,
-        detail: failures ? `${failures} mục lỗi · tiếp tục các mục còn lại` : `Đã hoàn tất ${i + 1}/${targetItems.length} mục`,
+        detail: failures
+          ? t('assets.job.batchFailure', { count: failures })
+          : t('assets.job.batchProgress', { current: i + 1, total: targetItems.length }),
       }));
     }
 
@@ -431,7 +437,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       previous,
       job.id,
       failures ? 'failed' : 'completed',
-      failures ? `${failures}/${targetItems.length} ảnh không tạo được. Có thể mở công đoạn để chạy lại.` : undefined,
+      failures ? t('assets.job.batchSummary', { failed: failures, total: targetItems.length }) : undefined,
     ));
   };
 
@@ -448,7 +454,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         updateProject((previous) => markDependentShotsStale({ ...previous, scriptData: newData }, 'character', charId));
       }
     } catch (e: any) {
-      showAlert(e.message, { type: 'error' });
+      showAlert(displayAssetError(e, t('assets.error.upload')), { type: 'error' });
     }
   };
 
@@ -465,7 +471,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         updateProject((previous) => markDependentShotsStale({ ...previous, scriptData: newData }, 'scene', sceneId));
       }
     } catch (e: any) {
-      showAlert(e.message, { type: 'error' });
+      showAlert(displayAssetError(e, t('assets.error.upload')), { type: 'error' });
     }
   };
 
@@ -474,15 +480,15 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       try {
         const item = createLibraryItemFromCharacter(char);
         await saveAssetToLibrary(item);
-        showAlert(`Đã thêm vào thư viện: ${char.name}`, { type: 'success' });
+        showAlert(t('assets.notice.libraryAdded', { name: char.name }), { type: 'success' });
         refreshLibrary();
       } catch (e: any) {
-        showAlert(e?.message || 'Không thể thêm vào thư viện', { type: 'error' });
+        showAlert(e?.message || t('assets.error.libraryAdd'), { type: 'error' });
       }
     };
 
     if (!char.referenceImage) {
-      showAlert('Nhân vật chưa có ảnh tham chiếu. Bạn vẫn muốn thêm vào thư viện?', {
+      showAlert(t('assets.notice.characterMissingReference'), {
         type: 'warning',
         showCancel: true,
         onConfirm: saveItem
@@ -498,15 +504,15 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       try {
         const item = createLibraryItemFromScene(scene);
         await saveAssetToLibrary(item);
-        showAlert(`Đã thêm vào thư viện: ${scene.location}`, { type: 'success' });
+        showAlert(t('assets.notice.libraryAdded', { name: scene.location }), { type: 'success' });
         refreshLibrary();
       } catch (e: any) {
-        showAlert(e?.message || 'Không thể thêm vào thư viện', { type: 'error' });
+        showAlert(e?.message || t('assets.error.libraryAdd'), { type: 'error' });
       }
     };
 
     if (!scene.referenceImage) {
-      showAlert('Bối cảnh chưa có ảnh tham chiếu. Bạn vẫn muốn thêm vào thư viện?', {
+      showAlert(t('assets.notice.sceneMissingReference'), {
         type: 'warning',
         showCancel: true,
         onConfirm: saveItem
@@ -521,15 +527,15 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     try {
       const updated = applyLibraryItemToProject(project, item);
       updateProject(() => updated);
-      showAlert(`Đã nhập: ${item.name}`, { type: 'success' });
+      showAlert(t('assets.notice.imported', { name: item.name }), { type: 'success' });
     } catch (e: any) {
-      showAlert(e?.message || 'Nhập tài nguyên thất bại', { type: 'error' });
+      showAlert(e?.message === 'Dự án chưa có nhân vật và bối cảnh nên chưa thể nhập tài nguyên.' ? t('assets.error.emptyProject') : e?.message || t('assets.error.import'), { type: 'error' });
     }
   };
 
   const handleReplaceCharacterFromLibrary = (item: AssetLibraryItem, targetId: string) => {
     if (item.type !== 'character') {
-      showAlert('Hãy chọn tài nguyên nhân vật để thay thế', { type: 'warning' });
+      showAlert(t('assets.notice.chooseCharacterAsset'), { type: 'warning' });
       return;
     }
     if (!project.scriptData) return;
@@ -556,7 +562,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     });
 
     updateProject({ scriptData: newData, shots: nextShots });
-    showAlert(`Đã thay nhân vật: ${previous.name} → ${cloned.name}`, { type: 'success' });
+    showAlert(t('assets.notice.characterReplaced', { previous: previous.name, next: cloned.name }), { type: 'success' });
     setShowLibraryModal(false);
     setReplaceTargetCharId(null);
   };
@@ -566,7 +572,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       await deleteAssetFromLibrary(itemId);
       setLibraryItems((prev) => prev.filter((item) => item.id !== itemId));
     } catch (e: any) {
-      showAlert(e?.message || 'Không thể xóa tài nguyên', { type: 'error' });
+      showAlert(e?.message || t('assets.error.libraryDelete'), { type: 'error' });
     }
   };
 
@@ -632,7 +638,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const newData = { ...project.scriptData };
     newData.characters.push(newChar);
     updateProject({ scriptData: newData });
-    showAlert('Đã tạo nhân vật mới. Hãy chỉnh câu lệnh và tạo ảnh.', { type: 'success' });
+    showAlert(t('assets.notice.characterCreated'), { type: 'success' });
   };
 
   const handleDeleteCharacter = (charId: string) => {
@@ -641,18 +647,18 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     if (!char) return;
 
     showAlert(
-      `Bạn có chắc muốn xóa nhân vật "${char.name}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi bảng phân cảnh có sử dụng nhân vật và có thể làm sai liên kết.`,
+      t('assets.confirm.deleteCharacter', { name: char.name }),
       {
         type: 'warning',
-        title: 'Xóa nhân vật',
+        title: t('assets.confirm.deleteCharacterTitle'),
         showCancel: true,
-        confirmText: 'Xóa',
-        cancelText: 'Hủy',
+        confirmText: t('assets.delete'),
+        cancelText: t('common.cancel'),
         onConfirm: () => {
           const newData = { ...project.scriptData! };
           newData.characters = newData.characters.filter(c => !compareIds(c.id, charId));
           updateProject({ scriptData: newData });
-          showAlert(`Đã xóa nhân vật "${char.name}"`, { type: 'success' });
+          showAlert(t('assets.notice.characterDeleted', { name: char.name }), { type: 'success' });
         }
       }
     );
@@ -673,7 +679,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     const newData = { ...project.scriptData };
     newData.scenes.push(newScene);
     updateProject({ scriptData: newData });
-    showAlert('Đã tạo bối cảnh mới. Hãy chỉnh câu lệnh và tạo ảnh.', { type: 'success' });
+    showAlert(t('assets.notice.sceneCreated'), { type: 'success' });
   };
 
   const handleDeleteScene = (sceneId: string) => {
@@ -682,18 +688,18 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
     if (!scene) return;
 
     showAlert(
-      `Bạn có chắc muốn xóa bối cảnh "${scene.location}"?\n\nLưu ý: thao tác này ảnh hưởng đến mọi bảng phân cảnh có sử dụng bối cảnh và có thể làm sai liên kết.`,
+      t('assets.confirm.deleteScene', { name: scene.location }),
       {
         type: 'warning',
-        title: 'Xóa bối cảnh',
+        title: t('assets.confirm.deleteSceneTitle'),
         showCancel: true,
-        confirmText: 'Xóa',
-        cancelText: 'Hủy',
+        confirmText: t('assets.delete'),
+        cancelText: t('common.cancel'),
         onConfirm: () => {
           const newData = { ...project.scriptData! };
           newData.scenes = newData.scenes.filter(s => !compareIds(s.id, sceneId));
           updateProject({ scriptData: newData });
-          showAlert(`Đã xóa bối cảnh "${scene.location}"`, { type: 'success' });
+          showAlert(t('assets.notice.sceneDeleted', { name: scene.location }), { type: 'success' });
         }
       }
     );
@@ -758,7 +764,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           updateProject,
           kind: 'asset-image',
           stage: 'assets',
-          label: `Tạo biến thể ${variation.name || varId} của ${char.name}`,
+          label: t('assets.job.variation', { variation: variation.name || varId, character: char.name }),
           resourceId: `character:${charId}:variation:${varId}`,
           previousOutput: variation.referenceImage,
           commitResult: (previous, imageUrl) => {
@@ -790,7 +796,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       if (onApiKeyError && onApiKeyError(e)) {
         return;
       }
-      showAlert('Tạo biến thể thất bại', { type: 'error' });
+      showAlert(t('assets.error.variation'), { type: 'error' });
     }
   };
 
@@ -808,14 +814,14 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         updateProject({ scriptData: newData });
       }
     } catch (e: any) {
-      showAlert(e.message, { type: 'error' });
+      showAlert(displayAssetError(e, t('assets.error.upload')), { type: 'error' });
     }
   };
 
   if (!project.scriptData) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-slate-950/35 text-slate-500 backdrop-blur-sm">
-        <p>Hãy hoàn thành Giai đoạn 01 — Sáng tạo kịch bản trước.</p>
+        <p>{t('assets.completeScriptFirst')}</p>
       </div>
     );
   }
@@ -841,7 +847,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
       {batchProgress && (
         <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-md animate-in fade-in">
           <Loader2 className="w-12 h-12 text-cyan-300 animate-spin mb-6" />
-          <h3 className="text-xl font-bold text-white mb-2">Đang tạo hàng loạt tài nguyên...</h3>
+          <h3 className="text-xl font-bold text-white mb-2">{t('assets.batchGenerating')}</h3>
           <div className="w-64 h-1.5 bg-white/10 rounded-full overflow-hidden mb-2">
             <div 
               className="h-full bg-gradient-to-r from-cyan-300 to-sky-400 transition-all duration-300" 
@@ -849,7 +855,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
             />
           </div>
           <p className="text-zinc-400 font-mono text-xs">
-            Tiến độ: {batchProgress.current} / {batchProgress.total}
+            {t('assets.progress', { current: batchProgress.current, total: batchProgress.total })}
           </p>
         </div>
       )}
@@ -871,24 +877,26 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           setShowLibraryModal(false);
           setReplaceTargetCharId(null);
         }}>
-          <div className={STYLES.modalContainer} onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="asset-library-title" className={STYLES.modalContainer} onClick={(e) => e.stopPropagation()}>
             <div className={STYLES.modalHeader}>
               <div className="flex items-center gap-3">
                 <Archive className="w-4 h-4 text-cyan-300" />
                 <div>
-                  <div className="text-sm font-bold text-white">Thư viện tài nguyên</div>
+                  <div id="asset-library-title" className="text-sm font-bold text-white">{t('assets.library')}</div>
                   <div className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">
-                    {libraryItems.length} tài nguyên
+                    {t('assets.libraryCount', { count: libraryItems.length })}
                   </div>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setShowLibraryModal(false);
                   setReplaceTargetCharId(null);
                 }}
-                className="p-2 text-slate-500 hover:text-white hover:bg-white/10 rounded-xl"
-                title="Đóng"
+                className="h-11 w-11 inline-flex items-center justify-center text-slate-500 hover:text-white hover:bg-white/10 rounded-xl"
+                title={t('common.close')}
+                aria-label={t('common.close')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -900,22 +908,23 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                   <input
                     value={libraryQuery}
                     onChange={(e) => setLibraryQuery(e.target.value)}
-                    placeholder="Tìm theo tên tài nguyên..."
+                    placeholder={t('assets.searchLibrary')}
                     className="w-full pl-9 pr-3 py-2 bg-white/[0.06] border border-white/10 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-300/40"
                   />
                 </div>
                 <div className="flex gap-2">
                   {(['all', 'character', 'scene'] as const).map((type) => (
                     <button
+                      type="button"
                       key={type}
                       onClick={() => setLibraryFilter(type)}
-                      className={`px-3 py-2 text-[10px] font-bold uppercase tracking-widest border rounded ${
+                      className={`min-h-11 px-3 py-2 text-[10px] font-bold uppercase tracking-widest border rounded-xl ${
                         libraryFilter === type
                           ? 'bg-cyan-300 text-slate-950 border-cyan-300'
                           : 'bg-white/[0.04] text-slate-400 border-white/10 hover:text-white hover:border-cyan-300/30'
                       }`}
                     >
-                      {type === 'all' ? 'Tất cả' : type === 'character' ? 'Nhân vật' : 'Bối cảnh'}
+                      {t(type === 'all' ? 'assets.all' : type === 'character' ? 'assets.characters' : 'assets.scenes')}
                     </button>
                   ))}
                 </div>
@@ -927,7 +936,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                 </div>
               ) : filteredLibraryItems.length === 0 ? (
                 <div className="border border-dashed border-cyan-200/15 rounded-2xl p-10 text-center text-slate-500 text-sm">
-                  Chưa có tài nguyên. Chọn “Thêm vào thư viện” trên thẻ nhân vật hoặc bối cảnh.
+                  {t('assets.libraryEmpty')}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -958,30 +967,33 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
                           <div>
                             <div className="text-sm text-white font-bold line-clamp-1">{item.name}</div>
                             <div className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest mt-1">
-                              {item.type === 'character' ? 'Nhân vật' : 'Bối cảnh'}
+                              {t(item.type === 'character' ? 'assets.character' : 'assets.scene')}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
+                              type="button"
                               onClick={() =>
                                 replaceTargetCharId
                                   ? handleReplaceCharacterFromLibrary(item, replaceTargetCharId)
                                   : handleImportFromLibrary(item)
                               }
-                              className="flex-1 py-2 bg-cyan-300 text-slate-950 hover:bg-cyan-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors"
+                              className="flex-1 min-h-11 py-2 bg-cyan-300 text-slate-950 hover:bg-cyan-200 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors"
                             >
-                              {replaceTargetCharId ? 'Thay nhân vật hiện tại' : 'Nhập vào dự án'}
+                              {replaceTargetCharId ? t('assets.replaceCurrentCharacter') : t('assets.importToProject')}
                             </button>
                             <button
+                              type="button"
                               onClick={() =>
-                                showAlert('Bạn có chắc muốn xóa tài nguyên này khỏi thư viện?', {
+                                showAlert(t('assets.confirm.deleteLibraryItem'), {
                                   type: 'warning',
                                   showCancel: true,
                                   onConfirm: () => handleDeleteLibraryItem(item.id)
                                 })
                               }
-                              className="p-2 border border-white/10 text-slate-500 hover:text-red-300 hover:border-red-400/40 rounded-xl transition-colors"
-                              title="Xóa"
+                              className="h-11 w-11 inline-flex items-center justify-center border border-white/10 text-slate-500 hover:text-red-300 hover:border-red-400/40 rounded-xl transition-colors"
+                              title={t('assets.delete')}
+                              aria-label={t('assets.delete')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -997,27 +1009,28 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         </div>
       )}
 
-      <div className={STYLES.header}>
+      <div className={`${STYLES.header} flex-col xl:flex-row items-stretch xl:items-center gap-4`}>
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-bold text-white flex items-center gap-3">
                   <Users className="w-5 h-5 text-cyan-300" />
-            Nhân vật & bối cảnh
+            {t('assets.title')}
             <span className="text-xs text-cyan-100/40 font-mono font-normal uppercase tracking-wider bg-white/5 px-2 py-1 rounded-full">
-              TÀI NGUYÊN VÀ TUYỂN VAI
+              {t('assets.kicker')}
             </span>
           </h2>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
+            type="button"
             onClick={() => openLibrary('all')}
             disabled={!!batchProgress}
             className={STYLES.secondaryButton}
           >
             <Archive className="w-4 h-4" />
-            Thư viện tài nguyên
+            {t('assets.library')}
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500 uppercase">Mô hình</span>
+            <span className="text-[10px] text-zinc-500 uppercase">{t('assets.model')}</span>
             <ModelSelector
               type="image"
               value={selectedImageModelId}
@@ -1028,7 +1041,7 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           </div>
           <div className="w-px h-6 bg-white/10" />
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500 uppercase">Tỷ lệ</span>
+            <span className="text-[10px] text-zinc-500 uppercase">{t('assets.aspectRatio')}</span>
             <AspectRatioSelector
               value={aspectRatio}
               onChange={setAspectRatio}
@@ -1042,10 +1055,10 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
           <div className="w-px h-6 bg-white/10" />
           <div className="flex gap-2">
             <span className={STYLES.badge}>
-              {project.scriptData.characters.length} NHÂN VẬT
+              {t('assets.characterCount', { count: project.scriptData.characters.length })}
             </span>
             <span className={STYLES.badge}>
-              {project.scriptData.scenes.length} BỐI CẢNH
+              {t('assets.sceneCount', { count: project.scriptData.scenes.length })}
             </span>
           </div>
         </div>
@@ -1055,38 +1068,41 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         <ConsistencyWorkbench project={project} onToggleBrandAsset={handleToggleBrandAsset} />
 
         <section>
-          <div className="flex items-end justify-between mb-6 border-b border-white/10 pb-4">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6 border-b border-white/10 pb-4">
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-cyan-300 rounded-full shadow-lg shadow-cyan-300/40" />
-                Ý tưởng nhân vật
+                {t('assets.characterIdeas')}
               </h3>
-              <p className="text-xs text-zinc-500 mt-1 pl-3.5">Tạo hình ảnh tham chiếu nhất quán cho nhân vật trong kịch bản</p>
+              <p className="text-xs text-zinc-500 mt-1 pl-3.5">{t('assets.characterIdeasDetail')}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button 
+                type="button"
                 onClick={handleAddCharacter}
                 disabled={!!batchProgress}
-                className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-white/10"
+                className="min-h-11 px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-white/10"
               >
                 <Users className="w-3 h-3" />
-                Tạo nhân vật
+                {t('assets.createCharacter')}
               </button>
               <button 
+                type="button"
                 onClick={() => openLibrary('character')}
                 disabled={!!batchProgress}
                 className={STYLES.secondaryButton}
               >
                 <Archive className="w-3 h-3" />
-                Chọn từ thư viện
+                {t('assets.chooseFromLibrary')}
               </button>
               <button 
+                type="button"
                 onClick={() => handleBatchGenerate('character')}
                 disabled={!!batchProgress}
                 className={allCharactersReady ? STYLES.secondaryButton : STYLES.primaryButton}
               >
                 {allCharactersReady ? <RefreshCw className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-                {allCharactersReady ? 'Tạo lại tất cả nhân vật' : 'Tạo tất cả nhân vật'}
+                {allCharactersReady ? t('assets.regenerateAllCharacters') : t('assets.generateAllCharacters')}
               </button>
             </div>
           </div>
@@ -1119,38 +1135,41 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError })
         </section>
 
         <section>
-          <div className="flex items-end justify-between mb-6 border-b border-white/10 pb-4">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6 border-b border-white/10 pb-4">
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                Ý tưởng bối cảnh
+                {t('assets.sceneIdeas')}
               </h3>
-              <p className="text-xs text-zinc-500 mt-1 pl-3.5">Tạo hình ảnh tham chiếu cho môi trường trong kịch bản</p>
+              <p className="text-xs text-zinc-500 mt-1 pl-3.5">{t('assets.sceneIdeasDetail')}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button 
+                type="button"
                 onClick={handleAddScene}
                 disabled={!!batchProgress}
-                className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-white/10"
+                className="min-h-11 px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-white/10"
               >
                 <MapPin className="w-3 h-3" />
-                Tạo bối cảnh
+                {t('assets.createScene')}
               </button>
               <button 
+                type="button"
                 onClick={() => openLibrary('scene')}
                 disabled={!!batchProgress}
                 className={STYLES.secondaryButton}
               >
                 <Archive className="w-3 h-3" />
-                Chọn từ thư viện
+                {t('assets.chooseFromLibrary')}
               </button>
               <button 
+                type="button"
                 onClick={() => handleBatchGenerate('scene')}
                 disabled={!!batchProgress}
                 className={allScenesReady ? STYLES.secondaryButton : STYLES.primaryButton}
               >
                 {allScenesReady ? <RefreshCw className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
-                {allScenesReady ? 'Tạo lại tất cả bối cảnh' : 'Tạo tất cả bối cảnh'}
+                {allScenesReady ? t('assets.regenerateAllScenes') : t('assets.generateAllScenes')}
               </button>
             </div>
           </div>

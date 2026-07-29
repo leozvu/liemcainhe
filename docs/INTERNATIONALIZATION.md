@@ -25,10 +25,11 @@ All shared interface copy lives in `services/i18n.ts`. Components consume it thr
 - Campaign Zero runbook, evidence gates, telemetry, team clock, provider reconciliation, and paid-test preflight.
 - Script Studio setup, output-language selector, editor, AI states, storyboard breakdown, character casting, and visual-prompt controls.
 - Content Studio trend board, brief axes, creative-direction controls, article editor, illustration planning, publishing workflow, library, insights, and short-film handoff.
+- Assets Studio character and location cards, Asset Library, batch generation, image prompts, consistency locks, Reference Pack controls, wardrobe variations, and accessible image actions.
 
 ## Next translation waves
 
-1. Assets, Voice, Director, and Export stages.
+1. Voice, Director, and Export stages.
 2. Operations, review portals, cost dashboards, empty/error states, and confirmation dialogs.
 3. Public/legal/help copy plus automated UI coverage for every route.
 

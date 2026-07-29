@@ -4,6 +4,7 @@ import { AspectRatio, Character, ReferenceAngle } from '../../types';
 import PromptEditor from './PromptEditor';
 import ImageUploadButton from './ImageUploadButton';
 import CharacterConsistencyPanel from './CharacterConsistencyPanel';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface CharacterCardProps {
   character: Character;
@@ -46,6 +47,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
   onLockGeneration,
   onUnlockGeneration,
 }) => {
+  const { t } = useLocale();
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingGender, setIsEditingGender] = useState(false);
   const [isEditingAge, setIsEditingAge] = useState(false);
@@ -94,15 +96,15 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
                 {character.status === 'failed' ? (
                   <>
                     <AlertCircle className="w-8 h-8 mb-2 text-red-500" />
-                    <span className="text-[10px] text-red-500 mb-2">Tạo ảnh thất bại</span>
+                    <span className="text-[10px] text-red-500 mb-2">{t('assets.imageFailed')}</span>
                     <ImageUploadButton
                       variant="inline"
                       size="small"
                       onUpload={onUpload}
                       onGenerate={onGenerate}
                       isGenerating={isGenerating}
-                      uploadLabel="Tải lên"
-                      generateLabel="Thử lại"
+                      uploadLabel={t('assets.upload')}
+                      generateLabel={t('assets.retry')}
                     />
                   </>
                 ) : (
@@ -114,8 +116,8 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
                       onUpload={onUpload}
                       onGenerate={onGenerate}
                       isGenerating={isGenerating}
-                      uploadLabel="Tải lên"
-                      generateLabel="Tạo ảnh"
+                      uploadLabel={t('assets.upload')}
+                      generateLabel={t('assets.generateImage')}
                     />
                   </>
                 )}
@@ -140,11 +142,14 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
               <div className="flex items-center gap-2 mb-1 group/name">
                 <h3 className="font-bold text-white text-base">{character.name}</h3>
                 <button
+                  type="button"
                   onClick={() => {
                     setEditName(character.name);
                     setIsEditingName(true);
                   }}
-                  className="opacity-0 group-hover/name:opacity-100 text-zinc-500 hover:text-zinc-300 transition-opacity"
+                  aria-label={t('assets.editCharacterName')}
+                  title={t('assets.editCharacterName')}
+                  className="h-11 w-11 inline-flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors"
                 >
                   <Edit2 className="w-3 h-3" />
                 </button>
@@ -203,11 +208,12 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
 
           <div className="flex flex-col gap-2 mt-2">
             <button 
+              type="button"
               onClick={onOpenWardrobe}
-              className="w-full py-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 border border-white/10 hover:border-cyan-300/30 transition-colors"
+              className="w-full min-h-11 py-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 border border-white/10 hover:border-cyan-300/30 transition-colors"
             >
               <Shirt className="w-3 h-3" />
-              Biến thể trang phục
+              {t('assets.wardrobeVariations')}
             </button>
 
             {character.referenceImage && (
@@ -218,18 +224,19 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
                   onUpload={onUpload}
                   onGenerate={onGenerate}
                   isGenerating={isGenerating}
-                  uploadLabel="Tải lên"
+                  uploadLabel={t('assets.upload')}
                 />
               </div>
             )}
 
             <button
+              type="button"
               onClick={onReplaceFromLibrary}
               disabled={isGenerating}
-              className="w-full py-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 border border-white/10 hover:border-cyan-300/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-full min-h-11 py-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 border border-white/10 hover:border-cyan-300/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <FolderPlus className="w-3 h-3" />
-              Thay từ thư viện
+              {t('assets.replaceFromLibrary')}
             </button>
           </div>
         </div>
@@ -240,8 +247,8 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           <PromptEditor
             prompt={character.visualPrompt || ''}
             onSave={onPromptSave}
-            label="Câu lệnh nhân vật"
-            placeholder="Nhập mô tả hình ảnh nhân vật..."
+            label={t('assets.characterPrompt')}
+            placeholder={t('assets.characterPromptPlaceholder')}
           />
         </div>
 
@@ -259,39 +266,42 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
         />
 
         <button
+          type="button"
           onClick={onGenerate}
           disabled={isGenerating || !character.visualPrompt}
-          className="w-full py-2 bg-gradient-to-r from-cyan-300 to-sky-400 hover:from-cyan-200 hover:to-sky-300 text-slate-950 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full min-h-11 py-2 bg-gradient-to-r from-cyan-300 to-sky-400 hover:from-cyan-200 hover:to-sky-300 text-slate-950 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {isGenerating ? (
             <>
               <Loader2 className="w-3 h-3 animate-spin" />
-              Đang tạo...
+              {t('assets.generating')}
             </>
           ) : (
             <>
               <Sparkles className="w-3 h-3" />
-              {character.referenceImage ? 'Tạo lại ảnh' : 'Tạo ảnh nhân vật'}
+              {character.referenceImage ? t('assets.regenerateImage') : t('assets.generateCharacter')}
             </>
           )}
         </button>
 
         <button
+          type="button"
           onClick={onAddToLibrary}
           disabled={isGenerating}
-          className="w-full py-2 mt-2 bg-white/[0.06] hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 hover:border-cyan-300/30 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full min-h-11 py-2 mt-2 bg-white/[0.06] hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 hover:border-cyan-300/30 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <FolderPlus className="w-3 h-3" />
-          Thêm vào thư viện
+          {t('assets.addToLibrary')}
         </button>
 
         <button
+          type="button"
           onClick={onDelete}
           disabled={isGenerating}
-          className="w-full py-2 mt-2 bg-transparent hover:bg-red-950/10 text-red-400 hover:text-red-300 border border-red-500/50 hover:border-red-400 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full min-h-11 py-2 mt-2 bg-transparent hover:bg-red-950/10 text-red-400 hover:text-red-300 border border-red-500/50 hover:border-red-400 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Trash2 className="w-3 h-3" />
-          Xóa nhân vật
+          {t('assets.deleteCharacter')}
         </button>
       </div>
     </div>

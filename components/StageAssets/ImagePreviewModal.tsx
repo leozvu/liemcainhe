@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface ImagePreviewModalProps {
   imageUrl: string | null;
@@ -7,15 +8,21 @@ interface ImagePreviewModalProps {
 }
 
 const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, onClose }) => {
+  const { t } = useLocale();
   if (!imageUrl) return null;
 
   return (
     <div 
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('assets.previewAlt')}
       className="absolute inset-0 z-50 bg-black/95 flex items-center justify-center backdrop-blur-sm animate-in fade-in duration-200"
       onClick={onClose}
     >
       <button 
+        type="button"
         onClick={onClose}
+        aria-label={t('assets.closePreview')}
         className="absolute top-6 right-6 p-3 hover:bg-white/10 rounded-full transition-colors group z-10"
       >
         <X className="w-6 h-6 text-white group-hover:rotate-90 transition-transform" />
@@ -23,13 +30,13 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({ imageUrl, onClose
       <div className="flex items-center justify-center p-8 w-full h-full">
         <img 
           src={imageUrl} 
-          alt="Xem trước"
+          alt={t('assets.previewAlt')}
           className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         />
       </div>
       <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-black/60 backdrop-blur rounded-lg border border-white/10">
-        <p className="text-xs text-zinc-300 font-mono">Nhấn vào bất kỳ đâu để đóng</p>
+        <p className="text-xs text-zinc-300 font-mono">{t('assets.closePreviewHint')}</p>
       </div>
     </div>
   );

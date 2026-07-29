@@ -3,6 +3,7 @@ import { MapPin, Check, Loader2, Trash2, Edit2, AlertCircle, FolderPlus, LockKey
 import { AspectRatio, GenerationLock } from '../../types';
 import PromptEditor from './PromptEditor';
 import ImageUploadButton from './ImageUploadButton';
+import { useLocale } from '../../contexts/LocaleContext';
 
 interface SceneCardProps {
   scene: {
@@ -44,6 +45,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
   onLockGeneration,
   onUnlockGeneration,
 }) => {
+  const { t } = useLocale();
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [isEditingAtmosphere, setIsEditingAtmosphere] = useState(false);
@@ -90,20 +92,20 @@ const SceneCard: React.FC<SceneCardProps> = ({
             {isGenerating ? (
               <>
                 <Loader2 className="w-10 h-10 mb-3 animate-spin text-cyan-300" />
-                <span className="text-[10px] text-zinc-500">Đang tạo...</span>
+                <span className="text-[10px] text-zinc-500">{t('assets.generating')}</span>
               </>
             ) : scene.status === 'failed' ? (
               <>
                 <AlertCircle className="w-10 h-10 mb-3 text-red-500" />
-                <span className="text-[10px] text-red-500 mb-2">Tạo ảnh thất bại</span>
+                <span className="text-[10px] text-red-500 mb-2">{t('assets.imageFailed')}</span>
                 <ImageUploadButton
                   variant="inline"
                   size="small"
                   onUpload={onUpload}
                   onGenerate={onGenerate}
                   isGenerating={isGenerating}
-                  uploadLabel="Tải lên"
-                  generateLabel="Thử lại"
+                  uploadLabel={t('assets.upload')}
+                  generateLabel={t('assets.retry')}
                 />
               </>
             ) : (
@@ -115,8 +117,8 @@ const SceneCard: React.FC<SceneCardProps> = ({
                   onUpload={onUpload}
                   onGenerate={onGenerate}
                   isGenerating={isGenerating}
-                  uploadLabel="Tải lên"
-                  generateLabel="Tạo ảnh"
+                  uploadLabel={t('assets.upload')}
+                  generateLabel={t('assets.generateImage')}
                 />
               </>
             )}
@@ -140,11 +142,14 @@ const SceneCard: React.FC<SceneCardProps> = ({
             <div className="flex items-center gap-2 flex-1 group/location">
               <h3 className="font-bold text-zinc-200 text-sm truncate">{scene.location}</h3>
               <button
+                type="button"
+                aria-label={t('assets.editSceneLocation')}
+                title={t('assets.editSceneLocation')}
                 onClick={() => {
                   setEditLocation(scene.location);
                   setIsEditingLocation(true);
                 }}
-                className="opacity-0 group-hover/location:opacity-100 text-zinc-500 hover:text-zinc-300 transition-opacity flex-shrink-0"
+                className="h-11 w-11 inline-flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0"
               >
                 <Edit2 className="w-3 h-3" />
               </button>
@@ -198,8 +203,8 @@ const SceneCard: React.FC<SceneCardProps> = ({
           <PromptEditor
             prompt={scene.visualPrompt || ''}
             onSave={onPromptSave}
-            label="Câu lệnh bối cảnh"
-            placeholder="Nhập mô tả hình ảnh bối cảnh..."
+            label={t('assets.scenePrompt')}
+            placeholder={t('assets.scenePromptPlaceholder')}
             maxHeight="max-h-[120px]"
           />
         </div>
@@ -212,7 +217,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
               onUpload={onUpload}
               onGenerate={onGenerate}
               isGenerating={isGenerating}
-              uploadLabel="Tải ảnh lên"
+              uploadLabel={t('assets.uploadImage')}
             />
           </div>
         )}
@@ -221,18 +226,18 @@ const SceneCard: React.FC<SceneCardProps> = ({
           <div className={`rounded-xl border px-3 py-2.5 ${scene.lock ? 'border-cyan-200/25 bg-cyan-300/[0.055]' : 'border-white/10 bg-black/10'}`}>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">Khóa bối cảnh</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">{t('assets.sceneLock')}</p>
                 <p className="text-[9px] text-zinc-600 truncate mt-0.5">
-                  {scene.lock ? `${scene.lock.modelId} · ${scene.lock.aspectRatio || currentAspectRatio}` : 'Giữ cùng model và tỷ lệ cho mọi shot'}
+                  {scene.lock ? `${scene.lock.modelId} · ${scene.lock.aspectRatio || currentAspectRatio}` : t('assets.keepSceneModel')}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={scene.lock ? onUnlockGeneration : onLockGeneration}
                 disabled={isGenerating}
-                title={scene.lock ? 'Mở khóa bối cảnh' : `Khóa ${currentModelId} · ${currentAspectRatio}`}
+                title={scene.lock ? t('assets.unlockScene') : t('assets.lockSceneParams', { model: currentModelId, ratio: currentAspectRatio })}
                 aria-pressed={Boolean(scene.lock)}
-                aria-label={scene.lock ? `Mở khóa bối cảnh ${scene.location}` : `Khóa model và tỷ lệ cho bối cảnh ${scene.location}`}
+                aria-label={scene.lock ? t('assets.unlockSceneNamed', { name: scene.location }) : t('assets.lockSceneNamed', { name: scene.location })}
                 className={`w-11 h-11 shrink-0 rounded-xl grid place-items-center border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 disabled:opacity-30 ${scene.lock
                   ? 'border-cyan-200/25 bg-cyan-300/10 text-cyan-200 hover:bg-cyan-300/15'
                   : 'border-white/10 bg-white/[0.04] text-zinc-500 hover:text-white hover:bg-white/[0.08]'}`}
@@ -245,23 +250,25 @@ const SceneCard: React.FC<SceneCardProps> = ({
 
         <div className="mt-3 pt-3 border-t border-white/10">
           <button
+            type="button"
             onClick={onAddToLibrary}
             disabled={isGenerating}
-            className="w-full py-2 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white border border-white/10 hover:border-cyan-300/30 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-full min-h-11 py-2 bg-white/[0.06] hover:bg-white/10 text-zinc-300 hover:text-white border border-white/10 hover:border-cyan-300/30 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <FolderPlus className="w-3 h-3" />
-            Thêm vào thư viện
+            {t('assets.addToLibrary')}
           </button>
         </div>
 
         <div className="mt-3 pt-3 border-t border-white/10">
           <button
+            type="button"
             onClick={onDelete}
             disabled={isGenerating}
-            className="w-full py-2 bg-transparent hover:bg-red-950/10 text-red-400 hover:text-red-300 border border-red-500/50 hover:border-red-400 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-full min-h-11 py-2 bg-transparent hover:bg-red-950/10 text-red-400 hover:text-red-300 border border-red-500/50 hover:border-red-400 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Trash2 className="w-3 h-3" />
-            Xóa bối cảnh
+            {t('assets.deleteScene')}
           </button>
         </div>
       </div>

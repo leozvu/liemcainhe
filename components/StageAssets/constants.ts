@@ -1,13 +1,13 @@
 export const STYLES = {
   mainContainer: "flex flex-col h-full bg-slate-950/35 relative overflow-hidden backdrop-blur-sm",
-  header: "h-16 border-b border-white/10 bg-slate-950/55 px-6 flex items-center justify-between shrink-0 backdrop-blur-xl",
-  content: "flex-1 overflow-y-auto p-8 space-y-12 relative z-10",
+  header: "min-h-16 border-b border-white/10 bg-slate-950/55 px-4 py-3 md:px-6 flex justify-between shrink-0 backdrop-blur-xl",
+  content: "flex-1 overflow-y-auto p-4 md:p-8 space-y-12 relative z-10",
   
   card: "bg-white/[0.045] border border-white/10 rounded-2xl overflow-hidden flex flex-col group hover:border-cyan-200/35 transition-all hover:shadow-xl hover:shadow-cyan-950/20 backdrop-blur",
   cardDark: "bg-slate-950/55 p-4 rounded-2xl border border-white/10",
   
-  primaryButton: "px-4 py-2 bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 hover:from-cyan-200 hover:to-sky-300 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20",
-  secondaryButton: "px-4 py-2 bg-white/[0.05] text-slate-400 border border-white/10 hover:text-white hover:border-cyan-300/30 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2",
+  primaryButton: "min-h-11 px-4 py-2 bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 hover:from-cyan-200 hover:to-sky-300 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20",
+  secondaryButton: "min-h-11 px-4 py-2 bg-white/[0.05] text-slate-400 border border-white/10 hover:text-white hover:border-cyan-300/30 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2",
   iconButton: "p-2 hover:bg-white/10 rounded-full transition-colors",
   smallButton: "px-3 py-1.5 bg-white/[0.06] text-slate-300 hover:bg-white/10 rounded-xl text-[10px] font-bold transition-all border border-white/10 flex items-center gap-1",
   
@@ -19,10 +19,10 @@ export const STYLES = {
   
   badge: "px-2 py-1 bg-cyan-300/10 border border-cyan-200/15 rounded-full text-[10px] text-cyan-100/70 font-mono uppercase",
   
-  modalOverlay: "absolute inset-0 z-50 bg-slate-950/90 flex items-center justify-center backdrop-blur-xl animate-in fade-in duration-200",
+  modalOverlay: "absolute inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-3 md:p-8 backdrop-blur-xl animate-in fade-in duration-200",
   modalContainer: "bg-slate-950/90 border border-cyan-200/15 w-full max-w-4xl max-h-[90vh] rounded-[1.75rem] flex flex-col shadow-2xl shadow-cyan-950/30 overflow-hidden",
-  modalHeader: "h-16 px-8 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.04]",
-  modalBody: "flex-1 overflow-y-auto p-8",
+  modalHeader: "min-h-16 px-4 md:px-8 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.04]",
+  modalBody: "flex-1 overflow-y-auto p-4 md:p-8",
 };
 
 export const GRID_LAYOUTS = {
