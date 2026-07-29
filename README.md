@@ -2,7 +2,7 @@
 
 > Xưởng sản xuất phim ngắn, truyện tranh chuyển động và bảng phân cảnh bằng AI của Egoric Agency.
 
-Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu luôn được tự lưu trên thiết bị; bản deploy hỗ trợ sao lưu dự án và media lên cloud theo tài khoản ChatGPT.
+Egoric Film Studio biến ý tưởng hoặc kịch bản thành một quy trình sản xuất có thể xem trước, chỉnh sửa và xuất bản. Dữ liệu luôn được tự lưu trên thiết bị; bản deploy hỗ trợ tài khoản nhân sự Egoric, phân quyền Owner/Director/Editor/Account và workspace cloud dùng chung.
 
 ## Quy trình sản xuất
 

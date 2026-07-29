@@ -127,3 +127,25 @@ export const distributionJobsSchema = {
   uniqueIndexes: [['owner_email', 'project_id', 'idempotency_key']],
   secretColumns: ['private_json'],
 } as const;
+
+export const authUsersSchema = {
+  table: 'egoric_auth_users',
+  primaryKey: ['id'],
+  uniqueIndexes: [['email']],
+  indexes: [['workspace_owner_email', 'status', 'role']],
+  secretColumns: ['password_salt', 'password_hash'],
+} as const;
+
+export const authSessionsSchema = {
+  table: 'egoric_auth_sessions',
+  primaryKey: ['token_hash'],
+  indexes: [['user_id', 'expires_at'], ['expires_at', 'revoked_at']],
+  secretColumns: ['token_hash'],
+} as const;
+
+export const authInvitesSchema = {
+  table: 'egoric_auth_invites',
+  primaryKey: ['token_hash'],
+  indexes: [['workspace_owner_email', 'used_at', 'expires_at'], ['email', 'used_at']],
+  secretColumns: ['token_hash'],
+} as const;

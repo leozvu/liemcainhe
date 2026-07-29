@@ -44,6 +44,8 @@ import WorkspaceSyncStatus from './WorkspaceSyncStatus';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useLocale } from '../contexts/LocaleContext';
 import { TranslationKey } from '../services/i18n';
+import AccountControl from './auth/AccountControl';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
   onOpenProject: (project: ProjectState) => void;
@@ -79,6 +81,7 @@ const getProjectPreview = (project: ProjectState) => {
 const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, onOpenProjectWithProductionControl, onOpenProjectWithClientReview, onShowOnboarding, onShowModelConfig, onShowOperations }) => {
   const { showAlert } = useAlert();
   const { t, localeTag } = useLocale();
+  const auth = useAuth();
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -242,11 +245,12 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
             {onShowOnboarding && (
               <button type="button" onClick={onShowOnboarding} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label={t('dashboard.guide')} title={t('dashboard.guideShort')}><HelpCircle className="h-4 w-4" /></button>
             )}
-            {onShowModelConfig && (
+            {onShowModelConfig && auth.can('production:use') && (
               <button type="button" onClick={onShowModelConfig} className="eg-button-secondary hidden items-center justify-center gap-2 px-4 text-xs font-semibold sm:inline-flex"><Cpu className="h-4 w-4" /> {t('dashboard.modelsApi')}</button>
             )}
             <button type="button" onClick={() => void openCloudProjects()} className="eg-icon-button flex h-11 w-11 items-center justify-center" aria-label={t('dashboard.cloudProjects')} title={t('dashboard.cloudProjects')}><Cloud className="h-4 w-4" /></button>
-            <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-4 text-xs font-bold"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">{t('dashboard.newProject')}</span></button>
+            {auth.can('production:use') && <button type="button" onClick={handleCreate} className="eg-button-primary inline-flex items-center justify-center gap-2 px-4 text-xs font-bold"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">{t('dashboard.newProject')}</span></button>}
+            <AccountControl compact />
           </nav>
         </div>
       </header>

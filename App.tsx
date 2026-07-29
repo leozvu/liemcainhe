@@ -17,6 +17,7 @@ import { hydrateDurableJobs, syncDurableJobs } from './services/durableJobServic
 import { syncLinkedCampaignFromProject } from './services/productionControlService';
 import { startWorkspaceAutoSync } from './services/workspaceSyncCoordinatorService';
 import { useLocale } from './contexts/LocaleContext';
+import { useAuth } from './contexts/AuthContext';
 
 const StageContent = React.lazy(() => import('./components/StageContent'));
 const StageScript = React.lazy(() => import('./components/StageScript'));
@@ -42,6 +43,8 @@ const WorkspaceLoader = () => {
 
 function App() {
   const { t } = useLocale();
+  const auth = useAuth();
+  const canUseProduction = auth.can('production:use');
   const [project, setProject] = useState<ProjectState | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [showSaveStatus, setShowSaveStatus] = useState(false);
@@ -84,7 +87,7 @@ function App() {
   };
 
   const handleShowModelConfig = () => {
-    setShowModelConfig(true);
+    if (canUseProduction) setShowModelConfig(true);
   };
 
   useEffect(() => {
@@ -107,7 +110,7 @@ function App() {
           event.error?.message?.includes('API Key missing') ||
           event.error?.message?.includes('Thiếu khóa API')) {
         console.warn('Phát hiện lỗi khóa API. Vui lòng cấu hình lại khóa API...');
-        setShowModelConfig(true);
+        if (canUseProduction) setShowModelConfig(true);
         event.preventDefault();
       }
     };
@@ -118,7 +121,7 @@ function App() {
           event.reason?.message?.includes('API Key missing') ||
           event.reason?.message?.includes('Thiếu khóa API')) {
         console.warn('Phát hiện lỗi khóa API. Vui lòng cấu hình lại khóa API...');
-        setShowModelConfig(true);
+        if (canUseProduction) setShowModelConfig(true);
         event.preventDefault();
       }
     };
@@ -130,7 +133,7 @@ function App() {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
-  }, [project?.id]);
+  }, [project?.id, canUseProduction]);
 
   useEffect(() => {
     if (project) {
@@ -316,7 +319,7 @@ function App() {
            onOpenProjectWithProductionControl={handleOpenProjectWithProductionControl}
            onOpenProjectWithClientReview={handleOpenProjectWithClientReview}
            onShowOnboarding={handleShowOnboarding}
-           onShowModelConfig={handleShowModelConfig}
+           onShowModelConfig={canUseProduction ? handleShowModelConfig : undefined}
            onShowOperations={() => setShowOperations(true)}
          />
          {showOnboarding && (
@@ -357,13 +360,13 @@ function App() {
         onExit={handleExitProject} 
         projectName={project.title}
         onShowOnboarding={handleShowOnboarding}
-        onShowModelConfig={() => setShowModelConfig(true)}
+        onShowModelConfig={canUseProduction ? () => setShowModelConfig(true) : undefined}
         workflowProgress={readiness.overallPercent}
         stageStatuses={stageStatuses}
         activeJobCount={activeJobCount}
         onOpenProductionCenter={openProductionCenter}
         onOpenOperations={() => setShowOperations(true)}
-        onOpenCreativeDirector={() => setShowCreativeDirector(true)}
+        onOpenCreativeDirector={canUseProduction ? () => setShowCreativeDirector(true) : undefined}
       />
       
       <main className="eg-stage-main flex-1">
@@ -380,7 +383,7 @@ function App() {
           {activeJobCount > 0 && <span className="eg-mobile-production-count">{activeJobCount}</span>}
         </button>
 
-        <button
+        {canUseProduction && <button
           type="button"
           onClick={() => setShowCreativeDirector(true)}
           className="eg-mobile-director-button"
@@ -388,7 +391,7 @@ function App() {
         >
           <Sparkles className="h-4 w-4" />
           <span>{t('app.aiDirector')}</span>
-        </button>
+        </button>}
         
         {showSaveStatus && (
           <div className="pointer-events-none absolute right-5 top-4 z-[90] flex min-h-9 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 font-mono text-[10px] text-zinc-300 shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">

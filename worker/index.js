@@ -59,6 +59,374 @@ const json = (payload, status = 200) => new Response(JSON.stringify(payload), {
 });
 
 const getAuthenticatedEmail = (request) => request.headers.get('oai-authenticated-user-email')?.trim().toLowerCase() || null;
+const getAuthenticatedRole = (request) => request.headers.get('x-egoric-user-role')?.trim().toLowerCase() || 'owner';
+const getAuthenticatedActorEmail = (request) => request.headers.get('x-egoric-actor-email')?.trim().toLowerCase() || getAuthenticatedEmail(request);
+
+const AUTH_ROLES = new Set(['owner', 'director', 'editor', 'account']);
+const AUTH_SESSION_COOKIE = '__Host-egoric_session';
+const AUTH_DEV_SESSION_COOKIE = 'egoric_session';
+const AUTH_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const AUTH_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTH_PASSWORD_ITERATIONS = 210_000;
+const AUTH_MAX_FAILED_LOGINS = 8;
+const AUTH_LOCK_MS = 15 * 60 * 1000;
+
+const ROLE_PERMISSIONS = {
+  owner: new Set(['*']),
+  director: new Set(['workspace:read', 'workspace:write', 'production:use', 'review:write', 'distribution:write', 'finance:read', 'team:read']),
+  editor: new Set(['workspace:read', 'workspace:write', 'production:use', 'review:write']),
+  account: new Set(['workspace:read', 'workspace:write', 'review:write', 'distribution:write', 'finance:read', 'finance:write']),
+};
+
+const isAppAuthEnabled = (env) => Boolean(env.EGORIC_BOOTSTRAP_TOKEN);
+const hasPermission = (role, permission) => ROLE_PERMISSIONS[role]?.has('*') || ROLE_PERMISSIONS[role]?.has(permission) || false;
+
+const requiredPermissionForRequest = (url, method) => {
+  if (url.pathname.startsWith('/api-proxy/')) return 'production:use';
+  if (url.pathname.startsWith(TREND_PREFIX)) return 'workspace:read';
+  if (url.pathname === '/api/jobs') return 'production:use';
+  if (url.pathname === '/api/reviews' || url.pathname === '/api/client-reviews') return 'review:write';
+  if (url.pathname.startsWith('/api/distribution-')) return 'distribution:write';
+  if (url.pathname === '/api/agency-economics') return method === 'GET' ? 'finance:read' : 'finance:write';
+  if (url.pathname.startsWith('/api/cloud/projects') || url.pathname.startsWith('/api/cloud/media')) {
+    return method === 'GET' || method === 'HEAD' ? 'workspace:read' : 'production:use';
+  }
+  if (url.pathname.startsWith('/api/cloud/')) return method === 'GET' || method === 'HEAD' ? 'workspace:read' : 'workspace:write';
+  if (url.pathname === '/api/account' && !['GET', 'HEAD'].includes(method)) return 'team:manage';
+  if (url.pathname === '/api/account/data' || url.pathname === '/api/account/export') return 'team:manage';
+  if (url.pathname === '/api/account/events' && method === 'GET') return 'finance:read';
+  if (url.pathname.startsWith('/api/account/')) return 'workspace:read';
+  if (url.pathname.startsWith('/api/')) return 'workspace:read';
+  return null;
+};
+
+const authBytesToBase64Url = (bytes) => btoa(String.fromCharCode(...bytes))
+  .replaceAll('+', '-')
+  .replaceAll('/', '_')
+  .replaceAll('=', '');
+
+const createSecureToken = (bytes = 32) => authBytesToBase64Url(crypto.getRandomValues(new Uint8Array(bytes)));
+
+const parseCookies = (request) => Object.fromEntries(
+  (request.headers.get('cookie') || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const separator = part.indexOf('=');
+      return separator < 0 ? [part, ''] : [part.slice(0, separator), decodeURIComponent(part.slice(separator + 1))];
+    }),
+);
+
+const readSessionToken = (request) => {
+  const cookies = parseCookies(request);
+  return cookies[AUTH_SESSION_COOKIE] || cookies[AUTH_DEV_SESSION_COOKIE] || null;
+};
+
+const sessionCookie = (request, token, maxAgeSeconds) => {
+  const secure = new URL(request.url).protocol === 'https:';
+  const name = secure ? AUTH_SESSION_COOKIE : AUTH_DEV_SESSION_COOKIE;
+  return `${name}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}${secure ? '; Secure' : ''}`;
+};
+
+const normalizeAuthEmail = (value) => {
+  const email = String(value || '').trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : null;
+};
+
+const validatePassword = (value) => {
+  const password = String(value || '');
+  if (password.length < 10 || password.length > 128) return 'Mật khẩu phải có từ 10 đến 128 ký tự.';
+  if (!/[A-Za-zÀ-ỹ]/u.test(password) || !/\d/.test(password)) return 'Mật khẩu cần có ít nhất một chữ cái và một chữ số.';
+  return null;
+};
+
+const secureEqual = (left, right) => {
+  const a = new TextEncoder().encode(String(left || ''));
+  const b = new TextEncoder().encode(String(right || ''));
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) difference |= (a[index] || 0) ^ (b[index] || 0);
+  return difference === 0;
+};
+
+const derivePasswordHash = async (password, salt, iterations = AUTH_PASSWORD_ITERATIONS) => {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({
+    name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations,
+  }, key, 256);
+  return authBytesToBase64Url(new Uint8Array(bits));
+};
+
+const publicAuthUser = (row) => row ? ({
+  id: row.id,
+  email: row.email,
+  displayName: row.displayName,
+  role: row.role,
+  workspaceOwnerEmail: row.workspaceOwnerEmail,
+  status: row.status,
+  createdAt: Number(row.createdAt) || undefined,
+  lastLoginAt: Number(row.lastLoginAt) || undefined,
+}) : null;
+
+async function resolveAppIdentity(request, env) {
+  const token = readSessionToken(request);
+  if (!token || !env.DB) return null;
+  const tokenHash = await hashText(token);
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    `SELECT u.id, u.email, u.display_name AS displayName, u.role,
+            u.workspace_owner_email AS workspaceOwnerEmail, u.status,
+            u.created_at AS createdAt, u.last_login_at AS lastLoginAt,
+            s.last_seen_at AS lastSeenAt
+     FROM egoric_auth_sessions s
+     INNER JOIN egoric_auth_users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND u.status = 'active'`
+  ).bind(tokenHash, now).first();
+  if (!row || !AUTH_ROLES.has(row.role)) return null;
+  if (now - Number(row.lastSeenAt || 0) > 5 * 60 * 1000) {
+    await env.DB.prepare('UPDATE egoric_auth_sessions SET last_seen_at = ? WHERE token_hash = ?').bind(now, tokenHash).run();
+  }
+  return { ...publicAuthUser(row), tokenHash };
+}
+
+const withAppIdentity = (request, identity) => {
+  const headers = new Headers(request.headers);
+  headers.delete('oai-authenticated-user-email');
+  headers.delete('oai-authenticated-user-full-name');
+  headers.delete('oai-authenticated-user-full-name-encoding');
+  headers.delete('x-egoric-user-role');
+  headers.delete('x-egoric-actor-email');
+  headers.delete('x-egoric-user-id');
+  headers.set('oai-authenticated-user-email', identity.workspaceOwnerEmail);
+  headers.set('x-egoric-actor-email', identity.email);
+  headers.set('x-egoric-user-role', identity.role);
+  headers.set('x-egoric-user-id', identity.id);
+  return new Request(request, { headers });
+};
+
+const requireSameOrigin = (request) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return null;
+  const origin = request.headers.get('origin');
+  if (origin && origin !== new URL(request.url).origin) return json({ error: 'Yêu cầu khác nguồn đã bị chặn.' }, 403);
+  if (!(request.headers.get('content-type') || '').toLowerCase().startsWith('application/json')) {
+    return json({ error: 'API chỉ nhận dữ liệu JSON.' }, 415);
+  }
+  return null;
+};
+
+async function issueAuthSession(request, env, userId) {
+  const token = createSecureToken();
+  const tokenHash = await hashText(token);
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO egoric_auth_sessions (token_hash, user_id, created_at, expires_at, last_seen_at, revoked_at)
+     VALUES (?, ?, ?, ?, ?, NULL)`
+  ).bind(tokenHash, userId, now, now + AUTH_SESSION_TTL_MS, now).run();
+  return { token, cookie: sessionCookie(request, token, AUTH_SESSION_TTL_MS / 1000) };
+}
+
+async function handleAuthApi(request, env, url) {
+  if (!isAppAuthEnabled(env)) return json({ error: 'Đăng nhập Egoric chưa được bật trên môi trường này.' }, 404);
+  if (!env.DB) return json({ error: 'Đăng nhập Egoric chưa được cấp D1.' }, 503);
+  const mutationError = requireSameOrigin(request);
+  if (mutationError) return mutationError;
+  const identity = await resolveAppIdentity(request, env);
+
+  if (url.pathname === '/api/auth/state' && request.method === 'GET') {
+    const row = await env.DB.prepare('SELECT COUNT(*) AS count FROM egoric_auth_users').first();
+    const setupRequired = Number(row?.count || 0) === 0;
+    return json({
+      authEnabled: true,
+      setupRequired,
+      user: publicAuthUser(identity),
+      ownerEmailHint: setupRequired ? normalizeAuthEmail(env.EGORIC_OWNER_EMAIL) || undefined : undefined,
+    });
+  }
+
+  if (url.pathname === '/api/auth/bootstrap' && request.method === 'POST') {
+    const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM egoric_auth_users').first();
+    if (Number(count?.count || 0) > 0) return json({ error: 'Workspace đã được khởi tạo.' }, 409);
+    const body = await request.json().catch(() => null);
+    const email = normalizeAuthEmail(body?.email);
+    const displayName = String(body?.displayName || '').trim().slice(0, 100);
+    const passwordError = validatePassword(body?.password);
+    const submittedSecretHash = await hashText(String(body?.bootstrapToken || ''));
+    const expectedSecretHash = await hashText(String(env.EGORIC_BOOTSTRAP_TOKEN || ''));
+    if (!secureEqual(submittedSecretHash, expectedSecretHash)) return json({ error: 'Mã khởi tạo không đúng.' }, 401);
+    const requiredOwnerEmail = normalizeAuthEmail(env.EGORIC_OWNER_EMAIL);
+    if (requiredOwnerEmail && email !== requiredOwnerEmail) return json({ error: `Owner phải dùng email ${requiredOwnerEmail} để giữ nguyên workspace hiện tại.` }, 400);
+    if (!email || !displayName || passwordError) return json({ error: passwordError || 'Họ tên hoặc email không hợp lệ.' }, 400);
+
+    const now = Date.now();
+    const id = `usr_${createSecureToken(18)}`;
+    const salt = createSecureToken(18);
+    const passwordHash = await derivePasswordHash(body.password, salt);
+    const created = await env.DB.prepare(
+      `INSERT INTO egoric_auth_users
+       (id, email, display_name, role, workspace_owner_email, password_salt, password_hash, password_iterations, status, failed_login_count, locked_until, created_at, updated_at, last_login_at)
+       SELECT ?, ?, ?, 'owner', ?, ?, ?, ?, 'active', 0, NULL, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM egoric_auth_users)`
+    ).bind(id, email, displayName, email, salt, passwordHash, AUTH_PASSWORD_ITERATIONS, now, now, now).run();
+    if (Number(created?.meta?.changes || 0) !== 1) return json({ error: 'Workspace vừa được một Owner khác khởi tạo.' }, 409);
+    const session = await issueAuthSession(request, env, id);
+    const response = json({ user: { id, email, displayName, role: 'owner', workspaceOwnerEmail: email, status: 'active', createdAt: now, lastLoginAt: now } }, 201);
+    response.headers.append('set-cookie', session.cookie);
+    return response;
+  }
+
+  if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+    const body = await request.json().catch(() => null);
+    const email = normalizeAuthEmail(body?.email);
+    const password = String(body?.password || '');
+    if (!email || !password) return json({ error: 'Email hoặc mật khẩu không đúng.' }, 401);
+    const row = await env.DB.prepare(
+      `SELECT id, email, display_name AS displayName, role, workspace_owner_email AS workspaceOwnerEmail,
+              password_salt AS passwordSalt, password_hash AS passwordHash, password_iterations AS passwordIterations,
+              status, failed_login_count AS failedLoginCount, locked_until AS lockedUntil,
+              created_at AS createdAt, last_login_at AS lastLoginAt
+       FROM egoric_auth_users WHERE email = ?`
+    ).bind(email).first();
+    const salt = row?.passwordSalt || 'egoric-invalid-login-normalization';
+    const candidate = await derivePasswordHash(password, salt, Number(row?.passwordIterations) || AUTH_PASSWORD_ITERATIONS);
+    const valid = Boolean(row && row.status === 'active' && secureEqual(candidate, row.passwordHash));
+    const now = Date.now();
+    if (!valid || Number(row?.lockedUntil || 0) > now) {
+      if (row) {
+        const failures = Number(row.failedLoginCount || 0) + 1;
+        const lockedUntil = failures >= AUTH_MAX_FAILED_LOGINS ? now + AUTH_LOCK_MS : null;
+        await env.DB.prepare(
+          'UPDATE egoric_auth_users SET failed_login_count = ?, locked_until = ?, updated_at = ? WHERE id = ?'
+        ).bind(failures >= AUTH_MAX_FAILED_LOGINS ? 0 : failures, lockedUntil, now, row.id).run();
+      }
+      return json({ error: 'Email hoặc mật khẩu không đúng. Nếu thử nhiều lần, hãy đợi 15 phút.' }, 401);
+    }
+    await env.DB.prepare(
+      'UPDATE egoric_auth_users SET failed_login_count = 0, locked_until = NULL, last_login_at = ?, updated_at = ? WHERE id = ?'
+    ).bind(now, now, row.id).run();
+    const session = await issueAuthSession(request, env, row.id);
+    const response = json({ user: publicAuthUser({ ...row, lastLoginAt: now }) });
+    response.headers.append('set-cookie', session.cookie);
+    return response;
+  }
+
+  if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+    const token = readSessionToken(request);
+    if (token) await env.DB.prepare('UPDATE egoric_auth_sessions SET revoked_at = ? WHERE token_hash = ?').bind(Date.now(), await hashText(token)).run();
+    const response = json({ signedOut: true });
+    response.headers.append('set-cookie', sessionCookie(request, '', 0));
+    return response;
+  }
+
+  const inviteMatch = url.pathname.match(/^\/api\/auth\/invites\/([^/]+)$/);
+  if (inviteMatch && request.method === 'GET') {
+    const token = decodeURIComponent(inviteMatch[1]);
+    const row = await env.DB.prepare(
+      `SELECT email, display_name AS displayName, role, expires_at AS expiresAt, used_at AS usedAt
+       FROM egoric_auth_invites WHERE token_hash = ?`
+    ).bind(await hashText(token)).first();
+    if (!row || row.usedAt || Number(row.expiresAt) <= Date.now()) return json({ error: 'Lời mời không tồn tại hoặc đã hết hạn.' }, 404);
+    return json({ invite: row });
+  }
+
+  if (url.pathname === '/api/auth/accept-invite' && request.method === 'POST') {
+    const body = await request.json().catch(() => null);
+    const tokenHash = await hashText(String(body?.token || ''));
+    const invite = await env.DB.prepare(
+      `SELECT token_hash AS tokenHash, email, display_name AS displayName, role,
+              workspace_owner_email AS workspaceOwnerEmail, expires_at AS expiresAt, used_at AS usedAt
+       FROM egoric_auth_invites WHERE token_hash = ?`
+    ).bind(tokenHash).first();
+    if (!invite || invite.usedAt || Number(invite.expiresAt) <= Date.now()) return json({ error: 'Lời mời không tồn tại hoặc đã hết hạn.' }, 404);
+    const displayName = String(body?.displayName || invite.displayName || '').trim().slice(0, 100);
+    const passwordError = validatePassword(body?.password);
+    if (!displayName || passwordError) return json({ error: passwordError || 'Họ tên không hợp lệ.' }, 400);
+    const existing = await env.DB.prepare('SELECT id FROM egoric_auth_users WHERE email = ?').bind(invite.email).first();
+    if (existing) return json({ error: 'Email này đã có tài khoản. Hãy đăng nhập.' }, 409);
+    const now = Date.now();
+    const id = `usr_${createSecureToken(18)}`;
+    const salt = createSecureToken(18);
+    const passwordHash = await derivePasswordHash(body.password, salt);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO egoric_auth_users
+         (id, email, display_name, role, workspace_owner_email, password_salt, password_hash, password_iterations, status, failed_login_count, locked_until, created_at, updated_at, last_login_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, NULL, ?, ?, ?)`
+      ).bind(id, invite.email, displayName, invite.role, invite.workspaceOwnerEmail, salt, passwordHash, AUTH_PASSWORD_ITERATIONS, now, now, now),
+      env.DB.prepare('UPDATE egoric_auth_invites SET used_at = ? WHERE token_hash = ? AND used_at IS NULL').bind(now, tokenHash),
+    ]);
+    const session = await issueAuthSession(request, env, id);
+    const response = json({ user: { id, email: invite.email, displayName, role: invite.role, workspaceOwnerEmail: invite.workspaceOwnerEmail, status: 'active', createdAt: now, lastLoginAt: now } }, 201);
+    response.headers.append('set-cookie', session.cookie);
+    return response;
+  }
+
+  if (!identity) return json({ error: 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.' }, 401);
+
+  if (url.pathname === '/api/auth/me' && request.method === 'GET') return json({ user: publicAuthUser(identity) });
+
+  if (url.pathname === '/api/auth/team' && request.method === 'GET') {
+    if (!hasPermission(identity.role, 'team:read') && identity.role !== 'owner') return json({ error: 'Bạn không có quyền xem đội ngũ.' }, 403);
+    const [users, invites] = await Promise.all([
+      env.DB.prepare(
+        `SELECT id, email, display_name AS displayName, role, workspace_owner_email AS workspaceOwnerEmail,
+                status, created_at AS createdAt, last_login_at AS lastLoginAt
+         FROM egoric_auth_users WHERE workspace_owner_email = ? ORDER BY role, display_name`
+      ).bind(identity.workspaceOwnerEmail).all(),
+      env.DB.prepare(
+        `SELECT email, display_name AS displayName, role, expires_at AS expiresAt, created_at AS createdAt
+         FROM egoric_auth_invites
+         WHERE workspace_owner_email = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC`
+      ).bind(identity.workspaceOwnerEmail, Date.now()).all(),
+    ]);
+    return json({ users: users.results || [], invites: invites.results || [], canManage: identity.role === 'owner' });
+  }
+
+  if (url.pathname === '/api/auth/invites' && request.method === 'POST') {
+    if (identity.role !== 'owner') return json({ error: 'Chỉ Owner được mời nhân sự.' }, 403);
+    const body = await request.json().catch(() => null);
+    const email = normalizeAuthEmail(body?.email);
+    const displayName = String(body?.displayName || '').trim().slice(0, 100);
+    const role = String(body?.role || '').toLowerCase();
+    if (!email || !displayName || !AUTH_ROLES.has(role) || role === 'owner') return json({ error: 'Thông tin lời mời hoặc vai trò không hợp lệ.' }, 400);
+    const existing = await env.DB.prepare('SELECT id FROM egoric_auth_users WHERE email = ?').bind(email).first();
+    if (existing) return json({ error: 'Email này đã có tài khoản.' }, 409);
+    const token = createSecureToken();
+    const tokenHash = await hashText(token);
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO egoric_auth_invites
+       (token_hash, email, display_name, role, workspace_owner_email, invited_by, expires_at, used_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+    ).bind(tokenHash, email, displayName, role, identity.workspaceOwnerEmail, identity.id, now + AUTH_INVITE_TTL_MS, now).run();
+    return json({ invite: { email, displayName, role, expiresAt: now + AUTH_INVITE_TTL_MS }, inviteUrl: `${url.origin}/?invite=${encodeURIComponent(token)}` }, 201);
+  }
+
+  const userMatch = url.pathname.match(/^\/api\/auth\/users\/([^/]+)$/);
+  if (userMatch && request.method === 'PATCH') {
+    if (identity.role !== 'owner') return json({ error: 'Chỉ Owner được đổi quyền nhân sự.' }, 403);
+    const userId = decodeURIComponent(userMatch[1]);
+    const body = await request.json().catch(() => null);
+    const role = body?.role == null ? null : String(body.role).toLowerCase();
+    const status = body?.status == null ? null : String(body.status).toLowerCase();
+    if ((role && !AUTH_ROLES.has(role)) || (status && !['active', 'disabled'].includes(status))) return json({ error: 'Vai trò hoặc trạng thái không hợp lệ.' }, 400);
+    if (userId === identity.id && ((role && role !== 'owner') || status === 'disabled')) return json({ error: 'Owner không thể tự hạ quyền hoặc khóa chính mình.' }, 409);
+    const target = await env.DB.prepare('SELECT id, role FROM egoric_auth_users WHERE id = ? AND workspace_owner_email = ?').bind(userId, identity.workspaceOwnerEmail).first();
+    if (!target) return json({ error: 'Không tìm thấy nhân sự.' }, 404);
+    if (target.role === 'owner' && role && role !== 'owner') {
+      const owners = await env.DB.prepare("SELECT COUNT(*) AS count FROM egoric_auth_users WHERE workspace_owner_email = ? AND role = 'owner' AND status = 'active'").bind(identity.workspaceOwnerEmail).first();
+      if (Number(owners?.count || 0) <= 1) return json({ error: 'Workspace phải luôn có ít nhất một Owner.' }, 409);
+    }
+    await env.DB.prepare(
+      `UPDATE egoric_auth_users SET role = COALESCE(?, role), status = COALESCE(?, status), updated_at = ?
+       WHERE id = ? AND workspace_owner_email = ?`
+    ).bind(role, status, Date.now(), userId, identity.workspaceOwnerEmail).run();
+    if (status === 'disabled') await env.DB.prepare('UPDATE egoric_auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').bind(Date.now(), userId).run();
+    return json({ updated: true });
+  }
+
+  return json({ error: 'Không tìm thấy API đăng nhập.' }, 404);
+}
 
 const ALLOWED_PROXY_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const ALLOWED_PROXY_HEADERS = new Set([
@@ -2415,7 +2783,7 @@ async function serveApp(request, env) {
   const url = new URL(request.url);
   const acceptsHtml = (request.headers.get('accept') || '').includes('text/html');
   const legalPath = ['/privacy.html', '/terms.html'].includes(url.pathname);
-  if (request.method === 'GET' && acceptsHtml && !legalPath && !url.searchParams.has('review') && !getAuthenticatedEmail(request)) {
+  if (!isAppAuthEnabled(env) && request.method === 'GET' && acceptsHtml && !legalPath && !url.searchParams.has('review') && !getAuthenticatedEmail(request)) {
     return publicReviewLanding();
   }
   const response = await env.ASSETS.fetch(request);
@@ -2431,12 +2799,37 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname.startsWith('/api/auth/')) {
+      try {
+        return await handleAuthApi(request, env, url);
+      } catch (error) {
+        console.error('Egoric auth API error', error);
+        return json({ error: 'Đăng nhập Egoric tạm thời gặp lỗi. Hãy thử lại.' }, 500);
+      }
+    }
+
     if (url.pathname.startsWith('/api/client-review/')) {
       try {
         return await handlePublicClientReviewApi(request, env, url);
       } catch (error) {
         console.error('Public client review API error', error);
         return json({ error: error instanceof Error ? error.message : 'Cổng duyệt khách hàng thất bại.' }, 500);
+      }
+    }
+
+    if (isAppAuthEnabled(env)) {
+      let identity;
+      try {
+        identity = await resolveAppIdentity(request, env);
+      } catch (error) {
+        console.error('Egoric session resolution error', error);
+        return json({ error: 'Không kiểm tra được phiên đăng nhập.' }, 503);
+      }
+      if (identity) request = withAppIdentity(request, identity);
+      const permission = requiredPermissionForRequest(url, request.method);
+      if (permission && !identity) return json({ error: 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.' }, 401);
+      if (permission && !hasPermission(identity.role, permission)) {
+        return json({ error: `Vai trò ${identity.role} không có quyền thực hiện thao tác này.` }, 403);
       }
     }
 

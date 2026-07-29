@@ -21,6 +21,8 @@ import WorkspaceSyncStatus from './WorkspaceSyncStatus';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useLocale } from '../contexts/LocaleContext';
 import { TranslationKey } from '../services/i18n';
+import AccountControl from './auth/AccountControl';
+import { useAuth } from '../contexts/AuthContext';
 
 const LOGO_URL = '/egoric-agency-icon.png';
 
@@ -64,6 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenCreativeDirector,
 }) => {
   const { t } = useLocale();
+  const auth = useAuth();
   return (
     <aside className="eg-sidebar select-none" aria-label={t('sidebar.workflow')}>
       <div className="eg-sidebar-brand">
@@ -146,7 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <Gauge className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">{t('sidebar.openOperations')}</span>
           </button>
         )}
-        {onShowModelConfig && (
+        {onShowModelConfig && auth.can('production:use') && (
           <button type="button" onClick={onShowModelConfig} className="eg-sidebar-tool flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-zinc-500 hover:bg-white/[.035] hover:text-white" title={t('sidebar.modelConfigTitle')}>
             <Cpu className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">{t('sidebar.modelConfig')}</span>
           </button>
@@ -156,6 +159,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <HelpCircle className="h-4 w-4 shrink-0" /><span className="eg-sidebar-copy text-[11px] font-medium">{t('sidebar.help')}</span>
           </button>
         )}
+        <div className="mt-2 border-t border-white/[.06] pt-2"><AccountControl /></div>
       </div>
     </aside>
   );

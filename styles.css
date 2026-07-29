@@ -119,6 +119,130 @@ h4,
   background-size: 48px 48px, 48px 48px, auto, auto;
 }
 
+.eg-auth-page {
+  position: relative;
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: hidden;
+  padding: 24px;
+  background:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
+    radial-gradient(circle at 18% 18%, rgba(216,185,118,.08), transparent 28%),
+    radial-gradient(circle at 82% 8%, rgba(121,230,223,.10), transparent 30%),
+    var(--eg-canvas);
+  background-size: 48px 48px, 48px 48px, auto, auto, auto;
+}
+
+.eg-auth-page::after {
+  position: absolute;
+  inset: auto 8% -32% auto;
+  width: min(560px, 70vw);
+  aspect-ratio: 1;
+  border: 1px solid rgba(121,230,223,.08);
+  border-radius: 50%;
+  box-shadow: 0 0 0 80px rgba(121,230,223,.018), 0 0 0 160px rgba(121,230,223,.012);
+  content: "";
+  pointer-events: none;
+}
+
+.eg-auth-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(960px, 100%);
+  min-height: 590px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 28px;
+  background: rgba(9,13,18,.92);
+  box-shadow: 0 36px 120px rgba(0,0,0,.48);
+  backdrop-filter: blur(28px);
+  grid-template-columns: minmax(280px, .82fr) minmax(420px, 1.18fr);
+}
+
+.eg-auth-brand-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid rgba(255,255,255,.07);
+  padding: 48px;
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.035), transparent 48%),
+    radial-gradient(circle at 18% 20%, rgba(216,185,118,.08), transparent 32%),
+    #0b0f14;
+}
+
+.eg-auth-form-panel {
+  align-self: center;
+  width: 100%;
+  max-width: 520px;
+  padding: 48px 56px;
+}
+
+.eg-auth-input {
+  min-height: 44px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 10px;
+  background: rgba(0,0,0,.24);
+  padding: 0 14px;
+  color: var(--eg-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.eg-auth-input:hover {
+  border-color: rgba(255,255,255,.17);
+}
+
+.eg-auth-input:focus {
+  border-color: rgba(121,230,223,.45);
+  background: rgba(4,9,12,.65);
+  box-shadow: 0 0 0 3px rgba(121,230,223,.08);
+}
+
+.eg-auth-input:read-only {
+  color: var(--eg-text-2);
+  background: rgba(255,255,255,.025);
+}
+
+select.eg-auth-input option {
+  color: var(--eg-text);
+  background: var(--eg-surface-2);
+}
+
+@media (max-width: 760px) {
+  .eg-auth-page {
+    align-items: start;
+    padding: 72px 14px 24px;
+  }
+
+  .eg-auth-shell {
+    display: block;
+    min-height: 0;
+    border-radius: 22px;
+  }
+
+  .eg-auth-brand-panel {
+    min-height: 148px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    padding: 28px;
+  }
+
+  .eg-auth-form-panel {
+    padding: 32px 24px 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eg-auth-input {
+    transition: none;
+  }
+}
+
 .eg-stage-main {
   margin-left: 248px;
   min-width: 0;
