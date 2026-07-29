@@ -466,6 +466,7 @@ export interface CreativeDirectorMessage {
   content: string;
   createdAt: number;
   proposalId?: string;
+  missionId?: string;
 }
 
 export interface CreativeDirectorPlanStep {
@@ -532,6 +533,7 @@ export interface CreativeDirectorProposal {
   requiresApproval: boolean;
   status: CreativeDirectorProposalStatus;
   changes: CreativeDirectorProposalChanges;
+  missionRequest?: CreativeDirectorMissionRequest;
   createdAt: number;
   appliedAt?: number;
 }
@@ -543,6 +545,7 @@ export interface CreativeDirectorRun {
   startedAt: number;
   completedAt?: number;
   proposalId?: string;
+  missionId?: string;
   jobId?: string;
   error?: string;
 }
@@ -554,6 +557,12 @@ export type CreativeDirectorToolName =
   | 'generate-end-keyframe'
   | 'generate-video'
   | 'generate-voice';
+
+export interface CreativeDirectorMissionRequest {
+  goal: string;
+  tools: CreativeDirectorToolName[];
+  shotIds: string[];
+}
 
 export type CreativeDirectorActionStatus = 'pending' | 'blocked' | 'running' | 'completed' | 'failed' | 'skipped';
 export type CreativeDirectorMissionStatus = 'draft' | 'awaiting-approval' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -589,6 +598,7 @@ export interface CreativeDirectorMission {
   goal: string;
   status: CreativeDirectorMissionStatus;
   actions: CreativeDirectorMissionAction[];
+  request?: CreativeDirectorMissionRequest;
   estimatedCostUsd: number;
   createdAt: number;
   startedAt?: number;

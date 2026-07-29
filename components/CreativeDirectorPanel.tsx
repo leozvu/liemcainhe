@@ -275,18 +275,24 @@ const CreativeDirectorPanel: React.FC<CreativeDirectorPanelProps> = ({
     updateProject(started.project);
     try {
       const result = await consultCreativeDirector(started.project, query);
-      updateProject((current) => {
-        let next = completeCreativeDirectorRun(current, started.run.id, result);
-        const currentMode = normalizeCreativeDirectorState(next.creativeDirector).mode;
-        const safeAutoApply = currentMode === 'autopilot'
-          && result.proposal
-          && ['moodboard', 'production-plan', 'timeline'].includes(result.proposal.kind)
-          && result.proposal.estimatedCostUsd === 0;
-        if (safeAutoApply) next = applyCreativeDirectorProposal(next, result.proposal!.id);
-        return next;
-      });
+      let next = completeCreativeDirectorRun(started.project, started.run.id, result);
+      const currentMode = normalizeCreativeDirectorState(next.creativeDirector).mode;
+      const safeAutoApply = currentMode === 'autopilot'
+        && result.proposal
+        && ['moodboard', 'production-plan', 'timeline'].includes(result.proposal.kind)
+        && result.proposal.estimatedCostUsd === 0;
+      if (safeAutoApply) next = applyCreativeDirectorProposal(next, result.proposal!.id);
+      updateProject(next);
       setSuggestedReplies(result.suggestedReplies);
-      if (result.proposal?.kind === 'moodboard') setActiveTab('moodboard');
+      const linkedMissionId = normalizeCreativeDirectorState(next.creativeDirector)
+        .runs.find((run) => run.id === started.run.id)?.missionId;
+      if (linkedMissionId) {
+        setActiveTab('plan');
+        const mission = normalizeCreativeDirectorState(next.creativeDirector).missions.find((item) => item.id === linkedMissionId);
+        if (currentMode === 'autopilot' && mission && mission.actions.length > 0 && mission.estimatedCostUsd <= state.budgetLimitUsd) {
+          void runMission(linkedMissionId, next);
+        }
+      } else if (result.proposal?.kind === 'moodboard') setActiveTab('moodboard');
     } catch (caught: any) {
       const message = caught?.message || 'Không thể kết nối mô hình hội thoại.';
       updateProject((current) => failCreativeDirectorRun(current, started.run.id, message));
@@ -305,7 +311,17 @@ const CreativeDirectorPanel: React.FC<CreativeDirectorPanelProps> = ({
   }, [initialPrompt, isOpen]);
 
   const applyProposal = (proposalId: string) => {
-    updateProject((current) => applyCreativeDirectorProposal(current, proposalId));
+    const next = applyCreativeDirectorProposal(project, proposalId);
+    updateProject(next);
+    const linkedMissionId = normalizeCreativeDirectorState(next.creativeDirector)
+      .runs.find((run) => run.proposalId === proposalId)?.missionId;
+    if (!linkedMissionId) return;
+    setActiveTab('plan');
+    const nextState = normalizeCreativeDirectorState(next.creativeDirector);
+    const mission = nextState.missions.find((item) => item.id === linkedMissionId);
+    if (nextState.mode === 'autopilot' && mission && mission.actions.length > 0 && mission.estimatedCostUsd <= nextState.budgetLimitUsd) {
+      void runMission(linkedMissionId, next);
+    }
   };
 
   const rejectProposal = (proposalId: string) => {

@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ProjectState } from '../types';
 import { createDefaultCreativeDirectorState, normalizeCreativeDirectorState } from '../services/creativeDirectorState';
-import { applyCreativeDirectorProposal, estimateRemainingProductionCost } from '../services/creativeDirectorService';
+import {
+  applyCreativeDirectorProposal,
+  beginCreativeDirectorRun,
+  completeCreativeDirectorRun,
+  estimateRemainingProductionCost,
+  inferCreativeDirectorToolRequest,
+  sanitizeCreativeDirectorToolRequest,
+} from '../services/creativeDirectorService';
 import { createDefaultWorkflowState, normalizeWorkflowState } from '../services/workflowService';
 import {
   createCreativeDirectorMission,
@@ -166,6 +173,121 @@ describe('Đạo diễn AI', () => {
     };
     project.shots[0].workflow = { keyframesStale: false, videoStale: false };
     expect(createCreativeDirectorMission(project).mission.actions).toHaveLength(0);
+  });
+
+  it('chỉ lập đúng tool được agent yêu cầu và tự kéo theo các phụ thuộc bắt buộc', () => {
+    const project = projectFixture();
+    project.shots = [{
+      id: 'shot_video',
+      sceneId: 'scene_1',
+      actionSummary: 'An bước vào phòng.',
+      dialogue: 'Xin chào.',
+      cameraMovement: 'Dolly in',
+      characters: ['char_1'],
+      keyframes: [],
+    }];
+
+    const request = {
+      goal: 'Dựng video cho cảnh mở đầu',
+      tools: ['generate-video' as const],
+      shotIds: ['shot_video'],
+    };
+    const { mission } = createCreativeDirectorMission(project, request.goal, request);
+    expect(mission.actions.map((action) => action.tool)).toEqual([
+      'generate-character-image',
+      'generate-scene-image',
+      'generate-start-keyframe',
+      'generate-end-keyframe',
+      'generate-video',
+    ]);
+    expect(mission.actions.some((action) => action.tool === 'generate-voice')).toBe(false);
+    expect(mission.request).toEqual(request);
+  });
+
+  it('lọc toolRequest lạ trước khi đưa vào bộ thực thi', () => {
+    expect(sanitizeCreativeDirectorToolRequest({
+      goal: 'Tạo video',
+      tools: ['generate-video', 'delete-project', 'generate-video'],
+      shotIds: ['shot_1'],
+    })).toEqual({ goal: 'Tạo video', tools: ['generate-video'], shotIds: ['shot_1'] });
+    expect(sanitizeCreativeDirectorToolRequest({ tools: ['delete-project'] })).toBeUndefined();
+  });
+
+  it('có fallback cục bộ khi model quên trả toolRequest nhưng người dùng ra lệnh rõ ràng', () => {
+    expect(inferCreativeDirectorToolRequest('Hãy dựng video cho dự án này')?.tools).toEqual(['generate-video']);
+    expect(inferCreativeDirectorToolRequest('Giúp tôi tạo toàn bộ hình ảnh')?.tools).toEqual([
+      'generate-character-image',
+      'generate-scene-image',
+      'generate-start-keyframe',
+      'generate-end-keyframe',
+    ]);
+    expect(inferCreativeDirectorToolRequest('Tạo ảnh đi')?.tools).toHaveLength(4);
+    expect(inferCreativeDirectorToolRequest('Làm sao để tạo video đẹp hơn?')).toBeUndefined();
+    expect(inferCreativeDirectorToolRequest('Phản biện nhịp video hiện tại')).toBeUndefined();
+  });
+
+  it('nối toolRequest từ hội thoại thành nhiệm vụ có thể duyệt và chạy', () => {
+    const started = beginCreativeDirectorRun(projectFixture(), 'Tạo video cho dự án');
+    const next = completeCreativeDirectorRun(started.project, started.run.id, {
+      message: 'Tôi đã chuẩn bị chuỗi công cụ cần thiết.',
+      diagnosis: [],
+      plan: [],
+      toolRequest: {
+        goal: 'Tạo video cho dự án',
+        tools: ['generate-video'],
+        shotIds: [],
+      },
+      memory: [],
+      suggestedReplies: [],
+    });
+    const director = normalizeCreativeDirectorState(next.creativeDirector);
+    const run = director.runs.find((item) => item.id === started.run.id);
+    expect(run?.missionId).toBeTruthy();
+    expect(director.messages.at(-1)?.missionId).toBe(run?.missionId);
+    expect(director.missions.find((mission) => mission.id === run?.missionId)?.request?.tools).toEqual(['generate-video']);
+  });
+
+  it('chờ áp dụng storyboard rồi mới lập nhiệm vụ tool trên các shot mới', () => {
+    const started = beginCreativeDirectorRun(projectFixture(), 'Tạo storyboard rồi dựng video');
+    const toolRequest = { goal: 'Dựng cảnh mới', tools: ['generate-video' as const], shotIds: ['shot_new'] };
+    const completed = completeCreativeDirectorRun(started.project, started.run.id, {
+      message: 'Storyboard cần được duyệt trước khi dựng.',
+      diagnosis: [],
+      plan: [],
+      proposal: {
+        id: 'proposal_with_tool',
+        kind: 'storyboard',
+        title: 'Storyboard mới',
+        summary: 'Một cảnh mở đầu.',
+        rationale: [],
+        affectedShotIds: ['shot_new'],
+        estimatedCostUsd: 0,
+        requiresApproval: true,
+        status: 'pending',
+        changes: {
+          shots: [{
+            id: 'shot_new',
+            sceneId: 'scene_1',
+            actionSummary: 'An bước vào phòng.',
+            cameraMovement: 'Dolly in',
+            characters: ['char_1'],
+          }],
+        },
+        missionRequest: toolRequest,
+        createdAt: 2,
+      },
+      toolRequest,
+      memory: [],
+      suggestedReplies: [],
+    });
+    expect(normalizeCreativeDirectorState(completed.creativeDirector).missions).toHaveLength(0);
+
+    const applied = applyCreativeDirectorProposal(completed, 'proposal_with_tool');
+    const director = normalizeCreativeDirectorState(applied.creativeDirector);
+    const run = director.runs.find((item) => item.id === started.run.id);
+    const mission = director.missions.find((item) => item.id === run?.missionId);
+    expect(applied.shots[0].id).toBe('shot_new');
+    expect(mission?.actions.some((action) => action.tool === 'generate-video')).toBe(true);
   });
 
   it('chặn riêng voice chưa cấu hình nhưng vẫn lập các hành động hình ảnh', () => {

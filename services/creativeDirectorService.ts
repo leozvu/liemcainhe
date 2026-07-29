@@ -1,12 +1,14 @@
 import {
   CoreStage,
   CreativeDirectorPlanStep,
+  CreativeDirectorMissionRequest,
   CreativeDirectorProposal,
   CreativeDirectorProposalChanges,
   CreativeDirectorProposalKind,
   CreativeDirectorRun,
   CreativeDirectorShotDraft,
   CreativeDirectorState,
+  CreativeDirectorToolName,
   MoodboardSpec,
   ProjectState,
   Shot,
@@ -25,9 +27,18 @@ import {
 } from './workflowService';
 import { normalizeCreativeDirectorState } from './creativeDirectorState';
 import { buildBrandKitPromptContext, inspectBrandCompliance } from './brandKitService';
+import { createCreativeDirectorMission } from './creativeDirectorMissionService';
 
 const CORE_STAGES: CoreStage[] = ['script', 'assets', 'voice', 'director', 'export'];
 const PROPOSAL_KINDS: CreativeDirectorProposalKind[] = ['script', 'storyboard', 'moodboard', 'production-plan', 'timeline'];
+const DIRECTOR_TOOLS: CreativeDirectorToolName[] = [
+  'generate-character-image',
+  'generate-scene-image',
+  'generate-start-keyframe',
+  'generate-end-keyframe',
+  'generate-video',
+  'generate-voice',
+];
 const MAX_CONTEXT_SCRIPT = 16_000;
 const MAX_CONTEXT_SHOTS = 80;
 
@@ -55,9 +66,58 @@ export interface CreativeDirectorResult {
   diagnosis: string[];
   plan: CreativeDirectorPlanStep[];
   proposal?: CreativeDirectorProposal;
+  toolRequest?: CreativeDirectorMissionRequest;
   memory: string[];
   suggestedReplies: string[];
 }
+
+export const sanitizeCreativeDirectorToolRequest = (value: unknown): CreativeDirectorMissionRequest | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const source = value as Record<string, unknown>;
+  const tools = Array.isArray(source.tools)
+    ? Array.from(new Set(source.tools.filter((tool): tool is CreativeDirectorToolName => DIRECTOR_TOOLS.includes(tool as CreativeDirectorToolName))))
+    : [];
+  if (!tools.length) return undefined;
+  return {
+    goal: text(source.goal, 'Thực thi yêu cầu media từ Đạo diễn AI', 300),
+    tools,
+    shotIds: list(source.shotIds, 160),
+  };
+};
+
+export const inferCreativeDirectorToolRequest = (query: string): CreativeDirectorMissionRequest | undefined => {
+  const normalized = query.trim().toLocaleLowerCase('vi');
+  const containsAny = (terms: string[]): boolean => terms.some((term) => normalized.includes(term));
+  if (!normalized || containsAny(['đừng', 'không được', 'do not', "don't"])) return undefined;
+  if (containsAny(['làm sao', 'như thế nào', 'cách nào', 'how to', 'how can'])) return undefined;
+  const hasExecutionVerb = containsAny(['hãy', 'giúp', 'bắt đầu', 'chạy', 'thực thi', 'tạo', 'dựng', 'làm', 'render', 'generate', 'produce']);
+  if (!hasExecutionVerb) return undefined;
+
+  const tools = new Set<CreativeDirectorToolName>();
+  if (containsAny(['video', 'clip', 'phim'])) tools.add('generate-video');
+  if (containsAny(['voice', 'giọng', 'thoại', 'lồng tiếng', 'thu âm', 'audio'])) tools.add('generate-voice');
+  if (containsAny(['keyframe', 'khung đầu', 'khung cuối', 'khung hình'])) {
+    tools.add('generate-start-keyframe');
+    tools.add('generate-end-keyframe');
+  }
+  if (containsAny(['ảnh nhân vật', 'character image', 'character sheet'])) tools.add('generate-character-image');
+  if (containsAny(['ảnh bối cảnh', 'scene image', 'ảnh cảnh'])) tools.add('generate-scene-image');
+  if (containsAny(['ảnh', 'image', 'visual', 'hình ảnh']) && !tools.size) {
+    tools.add('generate-character-image');
+    tools.add('generate-scene-image');
+    tools.add('generate-start-keyframe');
+    tools.add('generate-end-keyframe');
+  }
+  if (containsAny(['tool', 'công cụ', 'media', 'pipeline', 'quy trình', 'toàn bộ']) && !tools.size) {
+    DIRECTOR_TOOLS.forEach((tool) => tools.add(tool));
+  }
+  if (!tools.size) return undefined;
+  return {
+    goal: query.trim().slice(0, 300),
+    tools: Array.from(tools),
+    shotIds: [],
+  };
+};
 
 export const estimateRemainingProductionCost = (project: ProjectState): CreativeDirectorCostEstimate => {
   const policy = getUsagePolicy();
@@ -244,7 +304,8 @@ Nhiệm vụ của bạn:
 - Luôn dựa trên dữ liệu dự án được cung cấp; không bịa rằng một ảnh, giọng hoặc video đã được tạo.
 - Ưu tiên continuity nhân vật, bối cảnh, ánh sáng, nhịp kể và khả năng sản xuất thực tế.
 - Xem Brand Kit/Brand Guard trong dữ liệu dự án là nguồn sự thật bắt buộc; không dùng từ cấm, không đổi cách gọi sản phẩm và phải cảnh báo khi brief xung đột thương hiệu.
-- Không tự gọi công cụ trả phí. Chỉ đề xuất thay đổi có cấu trúc để ứng dụng cho người dùng duyệt.
+- Bạn không trực tiếp gọi API media. Khi người dùng yêu cầu rõ ràng tạo/chạy ảnh, keyframe, video hoặc voice, hãy phát một toolRequest có cấu trúc để bộ điều phối của ứng dụng chạy đúng công cụ.
+- Chỉ phát toolRequest khi người dùng yêu cầu thực thi media; không phát khi họ chỉ hỏi, phản biện, tư vấn hoặc lập kế hoạch. Không bao giờ nói media đã được tạo trước khi ứng dụng báo hoàn tất.
 - Trả lời hoàn toàn bằng tiếng Việt tự nhiên, không dùng thuật ngữ tiếng Trung và không nhắc tới nguồn gốc phần mềm.
 - Nếu thông tin chưa đủ, vẫn đưa ra chẩn đoán hữu ích và hỏi tối đa một câu ngắn trong message.
 - Chi phí trong proposal chỉ là chi phí media dự kiến; dùng 0 nếu proposal chỉ sửa văn bản/cấu trúc.
@@ -272,6 +333,11 @@ Chỉ trả về một đối tượng JSON hợp lệ theo schema:
       "timeline":[{"shotId":"shot_id","duration":8,"transition":"cut|crossfade|fade-black","transitionDuration":0.4,"audioNote":"...","editNote":"..."}]
     }
   },
+  "toolRequest": null hoặc {
+    "goal":"Mục tiêu thực thi ngắn gọn",
+    "tools":["generate-character-image|generate-scene-image|generate-start-keyframe|generate-end-keyframe|generate-video|generate-voice"],
+    "shotIds":["shot_id; để rỗng nếu áp dụng cho toàn dự án"]
+  },
   "memory":["Chỉ lưu quyết định hoặc sở thích dài hạn đã được người dùng thể hiện"],
   "suggestedReplies":["Câu trả lời nhanh tiếp theo"]
 }
@@ -296,6 +362,8 @@ export const consultCreativeDirector = async (
   });
   const parsed = parseModelJson<Record<string, unknown>>(raw);
   const plan = sanitizePlan(parsed.plan);
+  const toolRequest = sanitizeCreativeDirectorToolRequest(parsed.toolRequest)
+    || inferCreativeDirectorToolRequest(query);
   let proposal: CreativeDirectorProposal | undefined;
   if (parsed.proposal && typeof parsed.proposal === 'object') {
     const source = parsed.proposal as Record<string, unknown>;
@@ -314,6 +382,7 @@ export const consultCreativeDirector = async (
       requiresApproval: true,
       status: 'pending',
       changes: sanitizeChanges(source.changes),
+      missionRequest: toolRequest,
       createdAt: Date.now(),
     };
   }
@@ -334,9 +403,39 @@ export const consultCreativeDirector = async (
     diagnosis: diagnosis.slice(0, 16),
     plan,
     proposal,
+    toolRequest,
     memory: list(parsed.memory, 12),
     suggestedReplies: list(parsed.suggestedReplies, 4),
   };
+};
+
+const linkMissionToRun = (
+  project: ProjectState,
+  runId: string,
+  missionId: string,
+  proposalId?: string,
+): ProjectState => {
+  const state = normalizeCreativeDirectorState(project.creativeDirector);
+  return {
+    ...project,
+    creativeDirector: {
+      ...state,
+      messages: state.messages.map((message) => (
+        proposalId ? message.proposalId === proposalId : message.id === state.messages.at(-1)?.id
+      ) ? { ...message, missionId } : message),
+      runs: state.runs.map((run) => run.id === runId ? { ...run, missionId } : run),
+    },
+  };
+};
+
+const createLinkedMission = (
+  project: ProjectState,
+  runId: string,
+  request: CreativeDirectorMissionRequest,
+  proposalId?: string,
+): ProjectState => {
+  const created = createCreativeDirectorMission(project, request.goal, request);
+  return linkMissionToRun(created.project, runId, created.mission.id, proposalId);
 };
 
 export const beginCreativeDirectorRun = (
@@ -406,9 +505,11 @@ export const completeCreativeDirectorRun = (
     },
   };
   const jobId = state.runs.find((run) => run.id === runId)?.jobId;
-  if (!jobId) return completed;
-  const withCompletedStatus = setProductionJobStatus(completed, jobId, 'completed');
-  return patchProductionJob(withCompletedStatus, jobId, { completedUnits: 1 });
+  const withCompletedJob = jobId
+    ? patchProductionJob(setProductionJobStatus(completed, jobId, 'completed'), jobId, { completedUnits: 1 })
+    : completed;
+  if (!result.toolRequest || result.proposal) return withCompletedJob;
+  return createLinkedMission(withCompletedJob, runId, result.toolRequest);
 };
 
 export const failCreativeDirectorRun = (
@@ -527,7 +628,7 @@ export const applyCreativeDirectorProposal = (
   if (proposal.changes.shots?.length) next = { ...next, shots: buildShots(next, proposal.changes.shots), stage: 'script' };
 
   const current = normalizeCreativeDirectorState(next.creativeDirector);
-  return {
+  const applied: ProjectState = {
     ...next,
     lastModified: now,
     creativeDirector: {
@@ -545,6 +646,9 @@ export const applyCreativeDirectorProposal = (
       }].slice(-100),
     },
   };
+  if (!proposal.missionRequest) return applied;
+  const runId = current.runs.find((run) => run.proposalId === proposalId)?.id;
+  return runId ? createLinkedMission(applied, runId, proposal.missionRequest, proposalId) : applied;
 };
 
 export const rejectCreativeDirectorProposal = (

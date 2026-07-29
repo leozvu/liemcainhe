@@ -2,6 +2,7 @@ import {
   Character,
   CreativeDirectorMission,
   CreativeDirectorMissionAction,
+  CreativeDirectorMissionRequest,
   CreativeDirectorToolName,
   Keyframe,
   ProjectState,
@@ -130,7 +131,43 @@ const getAssetDependencyIds = (
   return Array.from(dependencyIds);
 };
 
-const planActions = (project: ProjectState): CreativeDirectorMissionAction[] => {
+const filterRequestedActions = (
+  project: ProjectState,
+  actions: CreativeDirectorMissionAction[],
+  request?: CreativeDirectorMissionRequest,
+): CreativeDirectorMissionAction[] => {
+  if (!request?.tools.length) return actions;
+  const requestedTools = new Set(request.tools);
+  const requestedShots = new Set(request.shotIds.map(String));
+  const requestedShotData = project.shots.filter((shot) => requestedShots.has(String(shot.id)));
+  const matchesShotScope = (action: CreativeDirectorMissionAction): boolean => {
+    if (!requestedShots.size) return true;
+    if (action.input?.shotId) return requestedShots.has(String(action.input.shotId));
+    if (action.tool === 'generate-character-image') {
+      return requestedShotData.some((shot) => shot.characters.some((id) => sameId(id, action.resourceId)));
+    }
+    if (action.tool === 'generate-scene-image') {
+      return requestedShotData.some((shot) => sameId(shot.sceneId, action.resourceId));
+    }
+    return false;
+  };
+
+  const actionById = new Map(actions.map((action) => [action.id, action]));
+  const keepIds = new Set(actions
+    .filter((action) => requestedTools.has(action.tool) && matchesShotScope(action))
+    .map((action) => action.id));
+  const includeDependencies = (actionId: string) => {
+    actionById.get(actionId)?.dependsOn.forEach((dependencyId) => {
+      if (keepIds.has(dependencyId)) return;
+      keepIds.add(dependencyId);
+      includeDependencies(dependencyId);
+    });
+  };
+  Array.from(keepIds).forEach(includeDependencies);
+  return actions.filter((action) => keepIds.has(action.id));
+};
+
+const planActions = (project: ProjectState, request?: CreativeDirectorMissionRequest): CreativeDirectorMissionAction[] => {
   if (!project.scriptData) return [];
   const rates = getUsagePolicy().rates;
   const actions: CreativeDirectorMissionAction[] = [];
@@ -218,14 +255,15 @@ const planActions = (project: ProjectState): CreativeDirectorMissionAction[] => 
     }
   });
 
-  return actions;
+  return filterRequestedActions(project, actions, request);
 };
 
 export const createCreativeDirectorMission = (
   project: ProjectState,
   goal = 'Hoàn thiện các media còn thiếu của dự án',
+  request?: CreativeDirectorMissionRequest,
 ): { project: ProjectState; mission: CreativeDirectorMission } => {
-  const actions = planActions(project);
+  const actions = planActions(project, request);
   const estimatedCostUsd = roundCost(actions
     .filter((action) => action.status !== 'blocked')
     .reduce((sum, action) => sum + action.estimatedCostUsd, 0));
@@ -234,6 +272,7 @@ export const createCreativeDirectorMission = (
     goal,
     status: actions.length === 0 ? 'completed' : estimatedCostUsd > 0 ? 'awaiting-approval' : 'draft',
     actions,
+    request,
     estimatedCostUsd,
     createdAt: Date.now(),
     completedAt: actions.length === 0 ? Date.now() : undefined,
