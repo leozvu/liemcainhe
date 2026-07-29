@@ -204,7 +204,7 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject, onOpenDi
   const publish = async () => {
     if (publishing) return;
     if (!hosted) {
-      showAlert('Link public chỉ được phát hành trên bản Sites đã deploy và đăng nhập. Bản local không tạo link giả.', { type: 'info' });
+      showAlert('Link public chỉ được phát hành trên bản Egoric đã deploy và đăng nhập. Bản local không tạo link giả.', { type: 'info' });
       return;
     }
     if (!activeRound?.masterOutputId) {
@@ -383,8 +383,8 @@ const ClientReviewManager: React.FC<Props> = ({ project, updateProject, onOpenDi
           {publishing && <div className="mt-5 rounded-2xl border border-cyan-200/15 bg-cyan-200/[.045] p-4" aria-live="polite"><div className="flex items-center justify-between gap-3 text-[10px] text-cyan-100"><span>{progressDetail}</span><span className="font-mono">{progress}%</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[var(--eg-accent)] transition-[width] duration-300" style={{ width: `${progress}%` }} /></div></div>}
           <button type="button" onClick={() => void publish()} disabled={publishing || !hosted || !activeRound?.masterOutputId || !versionLabel.trim() || !agencySummary.readyForClient} className="eg-button-primary mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40">{publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />} {portals.length ? 'Phát hành version mới' : 'Tạo link và gửi duyệt'}</button>
           {hosted && !agencySummary.readyForClient && <p className="mt-3 text-[10px] leading-4 text-amber-100/70">Nút phát hành sẽ mở sau khi Director, Editor và Account đều duyệt media hiện tại.</p>}
-          {!hosted && <p className="mt-3 text-[10px] leading-4 text-amber-100/70">Bản local không tạo link giả. Sau khi deploy Sites, dự án và media sẽ được đồng bộ lên D1/R2 trước khi phát hành.</p>}
-          {hosted && <p className="mt-3 text-[10px] leading-4 text-zinc-600">Khách ngoài workspace chỉ mở được link sau khi quyền truy cập Sites được bật công khai. Dashboard nội bộ vẫn được server chặn nếu không đăng nhập.</p>}
+          {!hosted && <p className="mt-3 text-[10px] leading-4 text-amber-100/70">Bản local không tạo link giả. Trên bản Egoric production, dự án và media được đồng bộ lên D1/R2 trước khi phát hành.</p>}
+          {hosted && <p className="mt-3 text-[10px] leading-4 text-zinc-600">Khách ngoài workspace chỉ mở được link review bảo mật. Dashboard nội bộ vẫn được server chặn nếu không đăng nhập.</p>}
         </div>
 
         <div className="eg-panel overflow-hidden">

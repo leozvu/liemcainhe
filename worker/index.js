@@ -1066,7 +1066,7 @@ async function ensureAccountProfile(request, env, email) {
 async function handleAccountApi(request, env, url) {
   if (!env.DB) return json({ error: 'Workspace chưa được cấp cơ sở dữ liệu.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để mở workspace.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để mở workspace.' }, 401);
 
   if (url.pathname === '/api/account' && request.method === 'GET') {
     const profile = await ensureAccountProfile(request, env, email);
@@ -1186,7 +1186,7 @@ async function handleAccountApi(request, env, url) {
       return json({ error: 'Thiếu xác nhận xóa dữ liệu.' }, 400);
     }
     const owner = await hashOwner(email);
-    await deleteMediaPrefix(env.MEDIA, `${owner}/`);
+    if (env.MEDIA) await deleteMediaPrefix(env.MEDIA, `${owner}/`);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM egoric_client_review_comments WHERE portal_id IN (SELECT id FROM egoric_client_review_portals WHERE owner_email = ?)').bind(email),
       env.DB.prepare('DELETE FROM egoric_distribution_jobs WHERE owner_email = ?').bind(email),
@@ -1229,7 +1229,7 @@ const mapCampaignFinancial = (row) => ({
 async function handleAgencyEconomicsApi(request, env) {
   if (!env.DB) return json({ error: 'Dashboard tài chính chưa được cấp cơ sở dữ liệu.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để xem tài chính agency.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để xem tài chính agency.' }, 401);
 
   if (request.method === 'GET') {
     const [usage, financials, projects, portals] = await Promise.all([
@@ -1393,7 +1393,7 @@ const prepareProductionJobWrite = (env, email, projectId, job, claimOnly = false
 async function handleJobsApi(request, env, url) {
   if (!env.DB) return json({ error: 'Workspace chưa được cấp cơ sở dữ liệu.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để dùng hàng đợi bền vững.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để dùng hàng đợi bền vững.' }, 401);
   const projectId = safeProjectId(url.searchParams.get('projectId'));
   if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
 
@@ -1459,7 +1459,7 @@ async function handleJobsApi(request, env, url) {
 async function handleReviewsApi(request, env, url) {
   if (!env.DB) return json({ error: 'Workspace chưa được cấp cơ sở dữ liệu.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để dùng sổ duyệt.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để dùng sổ duyệt.' }, 401);
   const projectId = safeProjectId(url.searchParams.get('projectId'));
   if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
   const stages = new Set(['script', 'assets', 'voice', 'director', 'export']);
@@ -1721,7 +1721,7 @@ const buildReviewVersion = (project, reviewRound, label, note, number) => {
 async function handleClientReviewsApi(request, env, url) {
   if (!env.DB || !env.MEDIA) return json({ error: 'Cổng duyệt chưa được cấp D1/R2.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để quản lý link duyệt.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để quản lý link duyệt.' }, 401);
   const projectId = safeProjectId(url.searchParams.get('projectId'));
   if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
 
@@ -1867,7 +1867,7 @@ const hydrateDistributionPackage = (row) => {
 async function handleDistributionPackagesApi(request, env, url) {
   if (!env.DB || !env.MEDIA) return json({ error: 'Distribution Gateway chưa được cấp D1/R2.' }, 503);
   const email = getAuthenticatedEmail(request);
-  if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT để quản lý gói phát hành.' }, 401);
+  if (!email) return json({ error: 'Hãy đăng nhập Egoric để quản lý gói phát hành.' }, 401);
   const projectId = safeProjectId(url.searchParams.get('projectId'));
   if (!projectId) return json({ error: 'Mã dự án không hợp lệ.' }, 400);
 
@@ -3055,17 +3055,39 @@ export default {
       const [prefix, origin] = target;
       if (!ALLOWED_PROXY_METHODS.has(request.method)) return json({ error: 'Phương thức proxy không được hỗ trợ.' }, 405);
       const email = getAuthenticatedEmail(request);
-      if (!email) return json({ error: 'Hãy đăng nhập bằng ChatGPT trước khi gọi nhà cung cấp AI.' }, 401);
+      if (!email) return json({ error: 'Hãy đăng nhập Egoric trước khi gọi nhà cung cấp AI.' }, 401);
       const contentLength = Number(request.headers.get('content-length') || 0);
       if (contentLength > 30 * 1024 * 1024) return json({ error: 'Yêu cầu API vượt giới hạn 30 MB.' }, 413);
       const bucket = prefix.slice('/api-proxy/'.length).split('/')[0];
       if (!(await enforceProxyRateLimit(env, email, bucket))) {
         return json({ error: 'Bạn đang gửi quá nhiều yêu cầu. Hãy chờ một phút rồi thử lại.' }, 429);
       }
+      let modelHint = 'unknown';
+      if ((request.headers.get('content-type') || '').includes('application/json') && contentLength < 1024 * 1024) {
+        try {
+          const payload = await request.clone().json();
+          modelHint = cleanText(payload?.model, 160) || 'unknown';
+        } catch { /* Không ghi request body hoặc prompt vào log. */ }
+      }
       const response = await fetch(createUpstreamRequest(request, url, prefix, origin));
       const headers = new Headers(response.headers);
       headers.set('cache-control', 'no-store');
       headers.set('x-content-type-options', 'nosniff');
+      if (!response.ok) {
+        let upstreamRequestId = response.headers.get('x-request-id') || response.headers.get('request-id') || '';
+        if (!upstreamRequestId) {
+          try {
+            const preview = (await response.clone().text()).slice(0, 2000);
+            upstreamRequestId = preview.match(/(?:request\s*id|request_id)\s*[:=]?\s*([a-z0-9_-]{8,})/i)?.[1] || '';
+          } catch { /* Response gốc vẫn được trả nguyên vẹn cho client. */ }
+        }
+        console.error('Egoric AI upstream error', {
+          provider: bucket,
+          status: response.status,
+          model: modelHint,
+          requestId: upstreamRequestId || undefined,
+        });
+      }
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
 

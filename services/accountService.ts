@@ -1,4 +1,5 @@
 import { getUsagePolicy, getUsageRecords, getUsageSummary, UsageRecord } from './usageService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export interface SystemEvent {
   id: string;
@@ -45,7 +46,7 @@ const localProfile = (): AccountProfile => {
   }
 };
 
-const isHosted = () => typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+const isHosted = isHostedRuntime;
 
 export const getAccountOverview = async (): Promise<AccountOverview> => {
   if (isHosted()) {

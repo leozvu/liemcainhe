@@ -12,6 +12,7 @@ import {
   WORKSPACE_COLLECTIONS,
   WorkspaceCollection,
 } from './workspaceSyncService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export const WORKSPACE_SYNC_APPLIED_EVENT = 'egoric:workspace-sync-applied';
 
@@ -235,8 +236,7 @@ export const createWorkspaceSyncController = (
   };
 };
 
-const hosted = (): boolean => typeof window !== 'undefined'
-  && window.location.hostname.endsWith('.chatgpt.site');
+const hosted = isHostedRuntime;
 
 const online = (): boolean => typeof navigator === 'undefined' || navigator.onLine !== false;
 

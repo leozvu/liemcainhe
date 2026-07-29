@@ -12,6 +12,10 @@ import {
 } from './modelRegistry';
 import { ModelType } from '../types/model';
 import { localizeApiErrorMessage } from './apiErrorLocalization';
+import {
+  getProviderModelAvailability,
+  saveProviderModelAvailability,
+} from './providerCapabilities';
 
 export interface ProviderVerificationResult {
   success: boolean;
@@ -97,7 +101,11 @@ export const verifyProviderApiKey = async (
       };
     }
     if (providerId === SHOPAIKEY_PROVIDER_ID) {
-      const discoveredModels = Array.isArray(payload?.data) ? payload.data.length : 0;
+      const apiModelIds = Array.isArray(payload?.data)
+        ? payload.data.map((model: any) => String(model?.id || '').trim()).filter(Boolean)
+        : [];
+      saveProviderModelAvailability(providerId, apiModelIds);
+      const discoveredModels = apiModelIds.length;
       return {
         success: true,
         message: discoveredModels
@@ -144,11 +152,32 @@ export const discoverProviderModels = async (
       .filter((model: any) => (model.supportedGenerationMethods || []).includes('generateContent'))
       .map((model: any) => ({ id: String(model.name || '').replace(/^models\//, ''), name: model.displayName || model.name, type: 'chat' as const }));
   }
-  return (payload.data || []).map((model: any) => ({
+  const discovered = (payload.data || []).map((model: any) => ({
     id: model.id,
     name: model.name || model.display_name || model.id,
     // /v1/models không công bố contract phân loại media. Ảnh/video đã có
     // catalog riêng; model phát hiện động chỉ được nhập vào tuyến hội thoại.
     type: 'chat' as const,
   }));
+  saveProviderModelAvailability(providerId, discovered.map((model: DiscoveredProviderModel) => model.id));
+  return discovered;
+};
+
+/**
+ * Nạp quyền model miễn phí trước lượt chat đầu tiên của phiên.
+ * Nếu endpoint catalog tạm lỗi, vẫn để request chính chạy để không biến health
+ * check thành single point of failure.
+ */
+export const refreshProviderModelAvailability = async (
+  providerId: string,
+  apiKey: string,
+): Promise<string[] | undefined> => {
+  const cached = getProviderModelAvailability(providerId);
+  if (cached) return cached.apiModelIds;
+  try {
+    const discovered = await discoverProviderModels(providerId, apiKey);
+    return discovered.map((model) => model.id);
+  } catch {
+    return undefined;
+  }
 };

@@ -18,6 +18,7 @@ import {
   SyncTransport,
 } from './workspaceSyncService';
 import type { WorkspaceFieldTestEvidence } from './workspaceFieldTestService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export type CampaignZeroStatus = 'running' | 'completed';
 export type CampaignZeroStage = 'brief' | 'pre-production' | 'production' | 'review' | 'editing' | 'delivery' | 'operations';
@@ -211,7 +212,7 @@ export const syncCampaignZeroRuns = async (options: {
   store?: LocalStore;
   transport?: SyncTransport;
 } = {}): Promise<CampaignZeroSyncReport> => {
-  const hosted = options.hosted ?? (typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site'));
+  const hosted = options.hosted ?? isHostedRuntime();
   if (!hosted) return { phase: 'local-only', pulled: 0, pushed: 0 };
   const outcome = await syncCollection(
     'campaignZeroRuns',

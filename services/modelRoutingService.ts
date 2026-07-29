@@ -2,6 +2,8 @@ import { ModelDefinition, ModelType } from '../types/model';
 import { getApiKeyForModel, getModels } from './modelRegistry';
 import { ProviderHealth, getProviderHealth, shouldSkipProvider } from './providerHealthService';
 import { assertUsageAllowed, recordUsage } from './usageService';
+import { classifyApiError } from './apiErrorLocalization';
+import { isProviderModelAllowed } from './providerCapabilities';
 
 export interface ModelRoutingPolicy {
   enabled: boolean;
@@ -13,9 +15,9 @@ const STORAGE_KEY = 'egoric_model_routing_policy_v1';
 
 const DEFAULT_POLICY: ModelRoutingPolicy = {
   enabled: true,
-  maxAttempts: 3,
+  maxAttempts: 2,
   fallbackModelIds: {
-    chat: ['shopaikey-grok-fast', 'shopaikey-qwen3.5-plus', 'shopaikey-gpt-4.1'],
+    chat: ['shopaikey-grok-fast', 'shopaikey-gpt-5-mini', 'shopaikey-qwen3.5-plus', 'shopaikey-gpt-4.1'],
     image: [],
     video: [],
   },
@@ -61,28 +63,29 @@ export const getRoutingCandidates = (type: ModelType, preferred: ModelDefinition
   const models = getModels(type).filter((model) => model.isEnabled);
   // Một lần tạo media có thể bị tính phí ngay cả khi kết quả không dùng được.
   // Ảnh/video tuyệt đối không tự gọi model thứ hai nếu người dùng chưa chủ động chọn.
-  // ShopAIKey là một cổng gom nhiều model nhưng dùng chung một số dư. Tự đổi
-  // model sau lỗi có thể biến một thao tác của người dùng thành nhiều lượt tính
-  // phí, trong khi lỗi hạ tầng vẫn nằm ở cùng nhà cung cấp. Chế độ nội bộ vì vậy
-  // luôn dừng sau model đã chọn; người dùng có thể chủ động thử lại sau.
+  // Chat chỉ chuyển model khi request trước hỏng ở tầng mạng/server, không có
+  // output để sử dụng. Media vẫn tuyệt đối không tự gọi model thứ hai.
   const allowFallback = type === 'chat'
-    && preferred.providerId !== 'kie-ai'
-    && preferred.providerId !== 'shopaikey';
+    && preferred.providerId !== 'kie-ai';
   const orderedIds = [preferred.id, ...(policy.enabled && allowFallback ? policy.fallbackModelIds[type] : [])];
   const seen = new Set<string>();
   const ordered = orderedIds
     .map((id) => models.find((model) => model.id === id))
     .filter((model): model is ModelDefinition => Boolean(model))
-    .filter((model) => !seen.has(model.id) && Boolean(seen.add(model.id)));
+    .filter((model) => !seen.has(model.id) && Boolean(seen.add(model.id)))
+    .filter((model) => isProviderModelAllowed(model.providerId, model.apiModel || model.id) !== false);
   const configured = ordered.filter((model) => Boolean(getApiKeyForModel(model.id)));
   const usable = applyCircuitBreaker(configured.length ? configured : ordered, getProviderHealth());
   return usable.slice(0, Math.max(1, policy.maxAttempts));
 };
 
 export const canFallbackFromModelError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  if (/an toàn nội dung|content policy|tham số không hợp lệ|lời thoại phải|400/.test(message)) return false;
-  return /hạn mức|quota|balance|429|401|403|500|502|503|504|hết thời gian|timeout|mạng|network|failed to fetch|không thể kết nối|gián đoạn|service unavailable/.test(message);
+  const message = error instanceof Error ? error.message : String(error);
+  const status = Number((error as { status?: unknown } | null)?.status);
+  const category = classifyApiError(message, Number.isFinite(status) ? status : undefined);
+  return category === 'server'
+    || category === 'network'
+    || /\b50[0-9]\b|service unavailable|bad gateway|gateway timeout/i.test(message);
 };
 
 export const executeWithModelFallback = async <T>(input: {
@@ -95,6 +98,9 @@ export const executeWithModelFallback = async <T>(input: {
 }): Promise<T> => {
   assertUsageAllowed();
   const candidates = getRoutingCandidates(input.type, input.preferred);
+  if (!candidates.length) {
+    throw new Error('Khóa API hiện tại không cấp quyền cho các mô hình đã cấu hình. Hãy kiểm tra nhóm model của khóa trong Mô hình và API.');
+  }
   let lastError: unknown;
 
   for (let index = 0; index < candidates.length; index += 1) {
@@ -124,7 +130,15 @@ export const executeWithModelFallback = async <T>(input: {
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
       });
-      if (index === candidates.length - 1 || !canFallbackFromModelError(error)) throw error;
+      if (index === candidates.length - 1 || !canFallbackFromModelError(error)) {
+        if (error && typeof error === 'object') {
+          Object.defineProperty(error, 'modelRoutingExhausted', {
+            value: true,
+            configurable: true,
+          });
+        }
+        throw error;
+      }
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Không có tuyến mô hình khả dụng');

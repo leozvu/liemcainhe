@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { updateCampaignDeliverable, updateCampaignStatus } from './campaignService';
 import { getAllAgencyCampaigns, saveAgencyCampaign } from './storageService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export interface ClientReviewWorkspace {
   portals: ClientReviewPortal[];
@@ -44,8 +45,7 @@ export interface PublicReviewDecisionInput {
   note?: string;
 }
 
-const hostedWorkspace = (): boolean => typeof window !== 'undefined'
-  && window.location.hostname.endsWith('.chatgpt.site');
+const hostedWorkspace = isHostedRuntime;
 
 const parseResponse = async <T>(response: Response, fallback: string): Promise<T> => {
   const payload = await response.json().catch(() => ({}));

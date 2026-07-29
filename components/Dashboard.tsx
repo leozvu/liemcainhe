@@ -27,6 +27,7 @@ import {
   X,
 } from 'lucide-react';
 import { AssetLibraryItem, Character, ProjectState, Scene } from '../types';
+import { isHostedRuntime } from '../services/hostedRuntime';
 import {
   createNewProjectState,
   deleteAssetFromLibrary,
@@ -129,8 +130,8 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
     } catch (error) {
       setCloudProjects([]);
       showAlert(
-        typeof window !== 'undefined' && !window.location.hostname.endsWith('.chatgpt.site')
-          ? 'Dự án cloud chỉ hoạt động trên bản đã deploy và đăng nhập ChatGPT.'
+        !isHostedRuntime()
+          ? 'Dự án cloud chỉ hoạt động trên bản Egoric đã deploy và đăng nhập.'
           : error instanceof Error ? error.message : 'Không thể tải dự án cloud',
         { type: 'warning' },
       );
@@ -371,7 +372,7 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onOpenProjectWithDirector, 
         <div className="fixed inset-0 z-[185] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xl" onClick={() => setShowCloud(false)}>
           <div className="eg-panel flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-4 border-b eg-divider p-5 md:p-7">
-              <div><div className="eg-kicker">Đám mây Egoric</div><h2 className="mt-1 text-xl font-semibold text-white">Dự án đã sao lưu</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Dữ liệu tách theo tài khoản ChatGPT đang đăng nhập. Khôi phục sẽ tạo hoặc cập nhật bản trên thiết bị.</p></div>
+              <div><div className="eg-kicker">Đám mây Egoric</div><h2 className="mt-1 text-xl font-semibold text-white">Dự án đã sao lưu</h2><p className="mt-1 text-xs leading-5 text-zinc-500">Dữ liệu tách theo tài khoản nhân sự Egoric đang đăng nhập. Khôi phục sẽ tạo hoặc cập nhật bản trên thiết bị.</p></div>
               <button type="button" onClick={() => setShowCloud(false)} className="eg-icon-button flex h-11 w-11 shrink-0 items-center justify-center" aria-label="Đóng dự án cloud"><X className="h-4 w-4" /></button>
             </header>
             <div className="eg-safe-scroll flex-1 overflow-y-auto p-5 md:p-7">

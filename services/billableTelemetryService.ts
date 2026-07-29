@@ -1,5 +1,6 @@
 import { ProductionJob, ProductionJobKind, ProjectState } from '../types';
 import type { TelemetryCloudStatus, UsageKind, UsageRecord } from './usageService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export type BillableLifecyclePhase =
   | 'preflight-passed'
@@ -102,8 +103,7 @@ const writeStoredEvents = (events: BillableLifecycleEvent[]): void => {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('egoric-billable-lifecycle-updated'));
 };
 
-const isHosted = (): boolean =>
-  typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+const isHosted = isHostedRuntime;
 
 const postHostedLifecycle = async (event: BillableLifecycleEvent): Promise<TelemetryCloudStatus> => {
   if (!isHosted()) return 'local-only';

@@ -6,6 +6,7 @@ import {
   DistributionPublishJob,
   DistributionVisibility,
 } from '../types';
+import { isHostedRuntime } from './hostedRuntime';
 
 export interface DistributionOperationsWorkspace {
   connections: DistributionConnection[];
@@ -27,8 +28,7 @@ export interface DistributionJobResult {
   duplicate?: boolean;
 }
 
-const hostedWorkspace = (): boolean => typeof window !== 'undefined'
-  && window.location.hostname.endsWith('.chatgpt.site');
+const hostedWorkspace = isHostedRuntime;
 
 const parseResponse = async <T>(response: Response, fallback: string): Promise<T> => {
   const payload = await response.json().catch(() => ({}));

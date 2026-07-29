@@ -21,6 +21,7 @@ import {
   setProviderApiKey,
 } from '../../services/modelRegistry';
 import { DiscoveredProviderModel, discoverProviderModels, verifyProviderApiKey } from '../../services/providerService';
+import { clearProviderModelAvailability } from '../../services/providerCapabilities';
 import { useLocale } from '../../contexts/LocaleContext';
 import { TranslationKey } from '../../services/i18n';
 
@@ -141,6 +142,7 @@ const GlobalSettings: React.FC<GlobalSettingsProps> = ({ onRefresh }) => {
 
   const handleClear = (provider: ModelProvider) => {
     setProviderApiKey(provider.id, '');
+    clearProviderModelAvailability(provider.id);
     setDraftKeys((current) => ({ ...current, [provider.id]: '' }));
     setVisibleKeys((current) => ({ ...current, [provider.id]: false }));
     setProviders(getProviders());

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { isHostedRuntime } from '../services/hostedRuntime';
 import {
   AlertTriangle,
   ArchiveRestore,
@@ -94,7 +95,7 @@ const ProductionCenter: React.FC<Props> = ({
   const teamAttentionCount = productionTasks.filter((task) => ['in-progress', 'review', 'blocked'].includes(task.status)).length;
   const activeJobs = workflow.jobs.filter((job) => ['queued', 'running'].includes(job.status));
   const failedJobs = workflow.jobs.filter((job) => ['failed', 'interrupted'].includes(job.status));
-  const hosted = typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+  const hosted = isHostedRuntime();
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -137,7 +138,7 @@ const ProductionCenter: React.FC<Props> = ({
   const syncCloud = async () => {
     if (syncing) return;
     if (!hosted) {
-      showAlert('Sao lưu cloud chỉ hoạt động trên bản đã deploy và đăng nhập ChatGPT. Bản local vẫn tự lưu trên thiết bị.', { type: 'info' });
+      showAlert('Sao lưu cloud chỉ hoạt động trên bản Egoric đã deploy và đăng nhập. Bản local vẫn tự lưu trên thiết bị.', { type: 'info' });
       return;
     }
 
@@ -146,7 +147,7 @@ const ProductionCenter: React.FC<Props> = ({
       stage: 'export',
       label: 'Sao lưu dự án và media',
       totalUnits: 100,
-      detail: 'Đồng bộ D1/R2 theo tài khoản ChatGPT hiện tại.',
+      detail: 'Đồng bộ D1/R2 theo tài khoản nhân sự Egoric hiện tại.',
     });
     setSyncing(true);
     updateProject((previous) => {

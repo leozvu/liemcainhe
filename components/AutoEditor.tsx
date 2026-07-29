@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { isHostedRuntime } from '../services/hostedRuntime';
 import {
   AlertTriangle,
   Archive,
@@ -152,7 +153,7 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport, onO
   const sources = useMemo(() => getAutoEditorSources(project), [project]);
   const editing = useMemo(() => getAutoEditorEditingReport(project), [project]);
   const releaseGate = useMemo(() => getAISupervisorGate(project), [project]);
-  const hosted = typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+  const hosted = isHostedRuntime();
   const logoAssets = project.brandKitSnapshot?.assets.filter((asset) => asset.type === 'logo' && asset.url) || [];
   const musicInputRef = useRef<HTMLInputElement>(null);
   const [renderingId, setRenderingId] = useState<string>();
@@ -292,7 +293,7 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport, onO
           storage: 'downloaded' as const,
           bytes: artifact.bytes,
           checksum: await createBlobChecksum(artifact.blob),
-          archiveError: 'Bản local chỉ tải file xuống thiết bị; mở bản Sites để lưu master bền vững.',
+          archiveError: 'Bản local chỉ tải file xuống thiết bị; mở bản Egoric production để lưu master bền vững.',
         };
       }
 
@@ -531,7 +532,7 @@ const AutoEditor: React.FC<Props> = ({ project, updateProject, onOpenExport, onO
                 <div>
                   <div className="eg-kicker">06 · Master Library</div>
                   <h3 className="mt-1 text-lg font-semibold text-white">Kho bản dựng sẵn sàng duyệt và phân phối</h3>
-                  <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">MP4 render trên bản Sites được tải xuống và lưu ngay lên R2. Không còn phụ thuộc Blob tạm trong tab.</p>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">MP4 render trên bản Egoric production được tải xuống và lưu ngay lên kho media cloud. Không còn phụ thuộc Blob tạm trong tab.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className={`eg-chip ${archivedMasterCount ? 'border-emerald-200/20 bg-emerald-200/[.07] text-emerald-100' : 'border-white/10 bg-white/[.04] text-zinc-500'}`}><Cloud className="h-3 w-3" /> {archivedMasterCount} bản cloud</span>

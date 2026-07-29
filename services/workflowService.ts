@@ -19,6 +19,7 @@ import {
 import { isVoiceProviderConfigured, normalizeProductionVoiceProviderId } from './voiceRegistry';
 import { normalizeCreativeDirectorState } from './creativeDirectorState';
 import { applyTransition } from './jobStateMachine';
+import { isHostedRuntime } from './hostedRuntime';
 
 export interface StageReadiness {
   id: CoreStage;
@@ -228,7 +229,7 @@ export const getPreflightItems = (project: ProjectState): PreflightItem[] => {
   const providerIds = new Set(project.voiceStudio?.profiles.map((profile) => profile.providerId) || []);
   if (dialogueShots.length && providerIds.size === 0) providerIds.add(project.voiceStudio?.defaultProviderId || 'shopaikey');
   const voiceReady = Array.from(providerIds).every((providerId) => isVoiceProviderConfigured(providerId));
-  const hosted = typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+  const hosted = isHostedRuntime();
 
   return [
     {
@@ -262,7 +263,7 @@ export const getPreflightItems = (project: ProjectState): PreflightItem[] => {
     {
       id: 'cloud',
       label: 'Sao lưu đám mây',
-      detail: hosted ? 'Có thể đồng bộ dự án và media bằng tài khoản ChatGPT hiện tại.' : 'Chỉ hoạt động trên bản Sites đã đăng nhập; bản local vẫn tự lưu trên thiết bị.',
+      detail: hosted ? 'Có thể đồng bộ dự án và media bằng tài khoản nhân sự Egoric hiện tại.' : 'Chỉ hoạt động trên bản Egoric đã deploy và đăng nhập; bản local vẫn tự lưu trên thiết bị.',
       status: hosted ? 'ready' : 'warning',
       action: 'cloud',
     },

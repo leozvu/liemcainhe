@@ -9,6 +9,7 @@ import {
   ProjectState,
 } from '../types';
 import { getAgencyReviewSourceSignature } from './agencyReviewService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export interface DistributionPlatformMeta {
   label: string;
@@ -175,8 +176,7 @@ export const isDistributionPackageCurrent = (project: ProjectState, item: Distri
     && `master:${output.id}:${output.checksum}` === item.artifactSignature);
 };
 
-const hostedWorkspace = (): boolean => typeof window !== 'undefined'
-  && window.location.hostname.endsWith('.chatgpt.site');
+const hostedWorkspace = isHostedRuntime;
 
 const parseResponse = async <T>(response: Response, fallback: string): Promise<T> => {
   const payload = await response.json().catch(() => ({}));

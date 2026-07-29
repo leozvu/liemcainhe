@@ -1,8 +1,8 @@
 import { ProductionJob, ProjectState } from '../types';
 import { reconcileInterruptedJobs } from './jobStateMachine';
+import { isHostedRuntime } from './hostedRuntime';
 
-export const isHostedWorkspace = (): boolean =>
-  typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+export const isHostedWorkspace = isHostedRuntime;
 
 export const syncDurableJobs = async (projectId: string, jobs: ProductionJob[]): Promise<void> => {
   if (!isHostedWorkspace()) return;

@@ -1,4 +1,5 @@
 import { ModelType } from '../types/model';
+import { isHostedRuntime } from './hostedRuntime';
 
 export type UsageKind = ModelType | 'voice' | 'cloud' | 'export';
 export type UsageStatus = 'success' | 'failed';
@@ -166,7 +167,7 @@ const calculateUsage = (kind: UsageKind, inputSize = 0, durationSeconds = 0, mod
 export type TelemetryCloudStatus = 'synced' | 'local-only';
 
 const postHostedUsage = async (record: UsageRecord): Promise<TelemetryCloudStatus> => {
-  if (typeof window === 'undefined' || !window.location.hostname.endsWith('.chatgpt.site')) {
+  if (!isHostedRuntime()) {
     return 'local-only';
   }
   const response = await fetch('/api/account/usage', {

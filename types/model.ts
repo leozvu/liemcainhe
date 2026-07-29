@@ -235,6 +235,18 @@ export const BUILTIN_CHAT_MODELS: ChatModelDefinition[] = [
     params: { ...DEFAULT_CHAT_PARAMS },
   },
   {
+    id: 'shopaikey-gpt-5-mini',
+    name: 'GPT-5 Mini',
+    apiModel: 'gpt-5-mini',
+    type: 'chat',
+    providerId: SHOPAIKEY_PROVIDER_ID,
+    endpoint: '/v1/chat/completions',
+    description: 'Tuyến dự phòng ổn định, chi phí thấp cho JSON storyboard và tác vụ vận hành.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_CHAT_PARAMS },
+  },
+  {
     id: 'shopaikey-gpt-5.2',
     name: 'GPT-5.2',
     apiModel: 'gpt-5.2-2025-12-11',

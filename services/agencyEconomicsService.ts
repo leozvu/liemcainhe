@@ -1,6 +1,7 @@
 import { AgencyCampaign, AgencyClient, ProjectState } from '../types';
 import { getAllAgencyCampaigns, getAllAgencyClients, getAllProjectsMetadata } from './storageService';
 import { getUsageRecords, isTelemetryDryRunRecord, UsageKind, UsageRecord } from './usageService';
+import { isHostedRuntime } from './hostedRuntime';
 
 export interface CampaignFinancialProfile {
   campaignId: string;
@@ -105,7 +106,7 @@ export interface AgencyEconomicsReport {
 }
 
 const FINANCIALS_KEY = 'egoric_campaign_financials_v1';
-const hosted = (): boolean => typeof window !== 'undefined' && window.location.hostname.endsWith('.chatgpt.site');
+const hosted = isHostedRuntime;
 const clampAmount = (value: number, max = 1_000_000_000_000): number => Math.max(0, Math.min(max, Number(value) || 0));
 
 const parseFinancials = (): CampaignFinancialProfile[] => {

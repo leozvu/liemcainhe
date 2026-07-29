@@ -10,9 +10,11 @@ import {
 } from '../services/modelRegistry';
 import { verifyProviderApiKey } from '../services/providerService';
 import { callShopAIKeyImageApi, callShopAIKeyVideoApi } from '../services/adapters/shopAIKeyAdapter';
+import { callChatApi } from '../services/adapters/chatAdapter';
 import { generateVoice } from '../services/voiceService';
 import { setVoiceCredentials } from '../services/voiceRegistry';
 import { SHOPAIKEY_PROVIDER_ID } from '../types/model';
+import { clearProviderModelAvailability } from '../services/providerCapabilities';
 
 const createStorage = () => {
   const values = new Map<string, string>();
@@ -31,6 +33,7 @@ describe('ShopAIKey internal gateway mode', () => {
     vi.stubGlobal('localStorage', createStorage());
     vi.stubGlobal('sessionStorage', createStorage());
     clearCredentialVault();
+    clearProviderModelAvailability(SHOPAIKEY_PROVIDER_ID);
     resetRegistry();
   });
 
@@ -61,6 +64,31 @@ describe('ShopAIKey internal gateway mode', () => {
       discoveredModels: 2,
     });
     expect(fetchMock.mock.calls[0][0]).toBe('/api-proxy/shopaikey/v1/models');
+  });
+
+  it('đọc quyền model rồi fallback Grok sang GPT-5 Mini khi upstream trả 5xx', async () => {
+    setProviderApiKey(SHOPAIKEY_PROVIDER_ID, 'sk-test');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [{ id: 'grok-4-1-fast-reasoning' }, { id: 'gpt-5-mini' }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { message: 'upstream unavailable (request id: req_grok)' },
+      }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: '{"shots":[]}' } }],
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const preferred = getModels('chat').find((model) => model.id === 'shopaikey-grok-fast') as any;
+
+    await expect(callChatApi({ prompt: 'Tạo storyboard JSON', responseFormat: 'json' }, preferred))
+      .resolves.toBe('{"shots":[]}');
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    const fallbackBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
+    expect(firstBody.model).toBe('grok-4-1-fast-reasoning');
+    expect(fallbackBody.model).toBe('gpt-5-mini');
   });
 
   it('gửi ảnh Nano Banana đúng endpoint, tỉ lệ và reference pack', async () => {

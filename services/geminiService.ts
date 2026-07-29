@@ -4,6 +4,7 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_VIDEO_MODEL_ID,
   DEFAULT_PROVIDER_ID,
+  SHOPAIKEY_PROVIDER_ID,
   ChatModelDefinition,
   ImageModelDefinition,
   MediaExecutionContext,
@@ -150,7 +151,7 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
     } catch (e: any) {
       lastError = e;
       // Xác định lỗi có thể thử lại.
-      const isRetryableError = 
+      const isRetryableError = !e.modelRoutingExhausted && (
         e.status === 429 || 
         e.status === 502 ||
         e.status === 503 ||
@@ -170,7 +171,8 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
         e.message?.includes('ECONNRESET') ||
         e.message?.includes('ETIMEDOUT') ||
         e.message?.includes('network') ||
-        e.status >= 500;
+        e.status >= 500
+      );
       
       if (isRetryableError && i < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, i);
@@ -198,70 +200,12 @@ const cleanJsonString = (str: string): string => {
 
 const chatCompletion = async (prompt: string, model: string = DEFAULT_CHAT_MODEL_ID, temperature: number = 0.7, maxTokens: number = 8192, responseFormat?: 'json_object', timeout: number = 600000): Promise<string> => {
   const resolvedModel = resolveModel('chat', model) as ChatModelDefinition | undefined;
-  const provider = resolvedModel ? getProviderById(resolvedModel.providerId) : undefined;
-  if (resolvedModel && provider?.protocol === 'kie') {
-    return callChatApi({
-      prompt,
-      responseFormat: responseFormat === 'json_object' ? 'json' : 'text',
-      timeout,
-      overrideParams: { temperature, maxTokens },
-    }, resolvedModel);
-  }
-
-  const apiKey = checkApiKey('chat', model);
-  const requestModel = resolveRequestModel('chat', model);
-  
-  const requestBody: any = {
-    model: requestModel,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: temperature,
-    max_tokens: maxTokens
-  };
-  
-  if (responseFormat === 'json_object') {
-    requestBody.response_format = { type: 'json_object' };
-  }
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const apiBase = getApiBase('chat', model);
-    const endpoint = resolvedModel?.endpoint || '/v1/chat/completions';
-    const response = await fetch(`${apiBase}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
-    });
-
-  if (!response.ok) {
-    let errorMessage = `Lỗi HTTP: ${response.status}`;
-    const raw = await response.text();
-    try {
-      if (raw) {
-        const errorData = JSON.parse(raw);
-        errorMessage = errorData.error?.message || errorData.message || errorMessage;
-      }
-    } catch (_) {
-      if (raw) errorMessage = raw;
-    }
-    throw new Error(localizeApiErrorMessage(errorMessage, response.status));
-  }
-
-  const data = JSON.parse(await response.text() || '{}');
-  return data.choices?.[0]?.message?.content || '';
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    // Kiểm tra lỗi hết thời gian chờ.
-    if (error.name === 'AbortError') {
-      throw new Error(`Yêu cầu hết thời gian chờ (${timeout} ms)`);
-    }
-    throw error;
-  }
+  return callChatApi({
+    prompt,
+    responseFormat: responseFormat === 'json_object' ? 'json' : 'text',
+    timeout,
+    overrideParams: { temperature, maxTokens },
+  }, resolvedModel);
 };
 
 /**
@@ -282,6 +226,19 @@ const chatCompletionStream = async (
   timeout: number = 600000,
   onDelta?: (delta: string) => void
 ): Promise<string> => {
+  const resolvedModel = resolveModel('chat', model) as ChatModelDefinition | undefined;
+  if (resolvedModel?.providerId === SHOPAIKEY_PROVIDER_ID) {
+    // Tuyến nội bộ ưu tiên độ tin cậy và fallback có kiểm soát. Trả kết quả
+    // một lần cho UI thay vì giữ một đường SSE cũ bỏ qua router trung tâm.
+    const result = await callChatApi({
+      prompt,
+      responseFormat: responseFormat === 'json_object' ? 'json' : 'text',
+      timeout,
+      overrideParams: { temperature },
+    }, resolvedModel);
+    onDelta?.(result);
+    return result;
+  }
   const apiKey = checkApiKey('chat', model);
   const requestModel = resolveRequestModel('chat', model);
   const requestBody: any = {
@@ -300,7 +257,6 @@ const chatCompletionStream = async (
 
   try {
     const apiBase = getApiBase('chat', model);
-    const resolvedModel = resolveModel('chat', model);
     const endpoint = resolvedModel?.endpoint || '/v1/chat/completions';
     const response = await fetch(`${apiBase}${endpoint}`, {
       method: 'POST',

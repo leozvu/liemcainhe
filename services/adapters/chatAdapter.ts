@@ -1,7 +1,7 @@
-import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_PROVIDER_ID } from '../../types/model';
+import { ChatModelDefinition, ChatOptions, ChatModelParams, DEFAULT_PROVIDER_ID, SHOPAIKEY_PROVIDER_ID } from '../../types/model';
 import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel, getProviderById } from '../modelRegistry';
 import { localizeApiErrorMessage } from '../apiErrorLocalization';
-import { verifyProviderApiKey } from '../providerService';
+import { refreshProviderModelAvailability, verifyProviderApiKey } from '../providerService';
 import { executeWithModelFallback } from '../modelRoutingService';
 import { callKieChatApi } from './kieAdapter';
 
@@ -139,12 +139,14 @@ const callChatApiOnce = async (
       
       if (!res.ok) {
         let errorMessage = `Lỗi HTTP: ${res.status}`;
-        try {
-          const errorData = await res.json();
-          errorMessage = errorData.error?.message || errorMessage;
-        } catch (e) {
-          const errorText = await res.text();
-          if (errorText) errorMessage = errorText;
+        const raw = await res.text();
+        if (raw) {
+          try {
+            const errorData = JSON.parse(raw);
+            errorMessage = errorData.error?.message || errorData.message || raw;
+          } catch {
+            errorMessage = raw;
+          }
         }
         throw new ProviderHttpError(localizeApiErrorMessage(errorMessage, res.status), res.status);
       }
@@ -154,8 +156,17 @@ const callChatApiOnce = async (
     
     clearTimeout(timeoutId);
     
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    let data: any;
+    try {
+      data = JSON.parse(await response.text() || '{}');
+    } catch {
+      throw new ProviderHttpError('Dịch vụ AI trả về dữ liệu không hợp lệ. Ứng dụng sẽ thử tuyến dự phòng an toàn.', 502);
+    }
+    const rawContent = data.choices?.[0]?.message?.content;
+    const content = typeof rawContent === 'string' ? rawContent : '';
+    if (!content.trim()) {
+      throw new ProviderHttpError('Dịch vụ AI không trả về nội dung. Ứng dụng sẽ thử tuyến dự phòng an toàn.', 502);
+    }
     
     if (options.responseFormat === 'json') {
       return cleanJsonResponse(content);
@@ -179,6 +190,10 @@ export const callChatApi = async (
 ): Promise<string> => {
   const preferred = model || getActiveChatModel();
   if (!preferred) throw new Error('Không có mô hình hội thoại khả dụng');
+  const apiKey = getApiKeyForModel(preferred.id);
+  if (preferred.providerId === SHOPAIKEY_PROVIDER_ID && apiKey) {
+    await refreshProviderModelAvailability(preferred.providerId, apiKey);
+  }
   return executeWithModelFallback({
     type: 'chat',
     preferred,

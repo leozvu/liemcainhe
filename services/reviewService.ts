@@ -1,4 +1,5 @@
 import { CoreStage } from '../types';
+import { isHostedRuntime } from './hostedRuntime';
 
 export type ReviewNoteStatus = 'open' | 'resolved';
 export type ApprovalStatus = 'pending' | 'changes-requested' | 'approved';
@@ -30,7 +31,7 @@ export interface ReviewWorkspace {
 const emptyWorkspace = (): ReviewWorkspace => ({ notes: [], approvals: [], hosted: false });
 
 export const getReviewWorkspace = async (projectId: string): Promise<ReviewWorkspace> => {
-  if (!window.location.hostname.endsWith('.chatgpt.site')) return emptyWorkspace();
+  if (!isHostedRuntime()) return emptyWorkspace();
   const response = await fetch(`/api/reviews?projectId=${encodeURIComponent(projectId)}`);
   if (!response.ok) return emptyWorkspace();
   const payload = await response.json();
